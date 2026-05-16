@@ -73,7 +73,7 @@ export default function Privacy() {
           <h1 className="text-[clamp(2.5rem,7vw,6rem)] font-black mb-4 leading-none tracking-tight">
             Privacy <span className="text-red-500">Policy</span>
           </h1>
-          <p className="text-gray-400 text-sm">Last updated: April 1, 2025</p>
+          <p className="text-gray-400 text-sm">Last updated: May 16, 2026</p>
         </div>
       </div>
 
@@ -164,10 +164,22 @@ export default function Privacy() {
                     <h2 className="text-lg font-black text-gray-900 tracking-tight">How We Share Your Information</h2>
                   </div>
                   <div className="px-6 py-6 space-y-5 text-gray-600 text-sm leading-relaxed">
-                    <p>We do not sell, rent, or trade your personal information to third parties. We may share your information in the following limited circumstances:</p>
+                    <p>We do not sell or trade your personal information. We share data with the following categories of trusted service providers, each of whom is contractually required to keep your information confidential and use it only to deliver services on our behalf:</p>
                     <div className="space-y-2">
-                      <SubHead>Service Providers</SubHead>
-                      <p>We share information with trusted third-party providers who assist in operating our business — including Stripe (payments), Mindbody (scheduling), email marketing platforms, and analytics providers. These parties are contractually required to keep your information confidential.</p>
+                      <SubHead>Payments &amp; Membership</SubHead>
+                      <p><strong className="text-gray-900">Stripe</strong> (payment processing), <strong className="text-gray-900">MindBody</strong> (class scheduling, membership management, attendance).</p>
+                    </div>
+                    <div className="space-y-2">
+                      <SubHead>Communications</SubHead>
+                      <p><strong className="text-gray-900">Resend</strong> (transactional and marketing email), <strong className="text-gray-900">Twilio</strong> (SMS notifications and marketing), <strong className="text-gray-900">GoHighLevel</strong> (CRM and conversation history).</p>
+                    </div>
+                    <div className="space-y-2">
+                      <SubHead>Hosting &amp; Infrastructure</SubHead>
+                      <p><strong className="text-gray-900">Supabase</strong> (database and authentication), <strong className="text-gray-900">Netlify</strong> (web hosting and content delivery).</p>
+                    </div>
+                    <div className="space-y-2">
+                      <SubHead>Advertising &amp; Analytics</SubHead>
+                      <p><strong className="text-gray-900">Meta Platforms, Inc.</strong> (Facebook and Instagram advertising via Meta Pixel and the Meta Conversions API). When you visit our trial signup pages or complete an action like submitting a form or starting checkout, we send Meta event information (such as PageView, Lead, and InitiateCheckout events) and, where you have provided it, hashed contact data (email, phone, name) so Meta can measure the performance of our advertising and show our ads to relevant audiences. This data is hashed before transmission using industry-standard SHA-256. See section 04 for more detail on the Meta Pixel and Conversions API and how to opt out.</p>
                     </div>
                     <div className="space-y-2">
                       <SubHead>Legal Requirements</SubHead>
@@ -185,15 +197,15 @@ export default function Privacy() {
                 <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
                   <div className="flex items-center gap-4 bg-gray-50 px-6 py-4 border-b border-gray-200">
                     <span className="text-red-500 font-black text-sm tracking-widest">04</span>
-                    <h2 className="text-lg font-black text-gray-900 tracking-tight">Cookies and Tracking Technologies</h2>
+                    <h2 className="text-lg font-black text-gray-900 tracking-tight">Cookies, Tracking Technologies &amp; the Meta Pixel</h2>
                   </div>
-                  <div className="px-6 py-6 space-y-4 text-gray-600 text-sm leading-relaxed">
-                    <p>Our website uses cookies to enhance your experience, recognize you, remember your preferences, and analyze traffic. We use the following types:</p>
+                  <div className="px-6 py-6 space-y-5 text-gray-600 text-sm leading-relaxed">
+                    <p>Our website uses cookies and similar tracking technologies (including web beacons, pixels, and local storage) to enhance your experience, recognize you on return visits, remember your preferences, analyze traffic, and measure the performance of our advertising. We use the following categories:</p>
                     <ul className="space-y-3">
                       {[
-                        { name: 'Essential cookies', desc: 'Necessary for the website to function properly.' },
-                        { name: 'Analytics cookies', desc: 'Help us understand how visitors use our site (e.g., Google Analytics).' },
-                        { name: 'Marketing cookies', desc: 'Used to deliver relevant ads and track campaign effectiveness.' },
+                        { name: 'Essential cookies', desc: 'Necessary for the website to function properly (session, security, load balancing). Cannot be disabled without breaking core site functionality.' },
+                        { name: 'Analytics cookies', desc: 'Help us understand how visitors use our site so we can improve it.' },
+                        { name: 'Advertising cookies', desc: 'Set by Meta (Facebook and Instagram) and other advertising partners so we can measure conversions from our ads and show ads to relevant audiences.' },
                       ].map((item) => (
                         <li key={item.name} className="flex gap-3">
                           <span className="mt-1.5 w-1.5 h-1.5 bg-red-500 rounded-full flex-shrink-0" />
@@ -201,7 +213,46 @@ export default function Privacy() {
                         </li>
                       ))}
                     </ul>
-                    <p>You can control cookies through your browser settings. Disabling cookies may affect certain features on our website.</p>
+
+                    <div className="space-y-3 pt-2">
+                      <SubHead>Meta Pixel and Meta Conversions API</SubHead>
+                      <p>
+                        Pages on our website — particularly the trial signup pages at <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">betterbodybootcamp.com/trial/*</code> — load the Meta Pixel from Meta Platforms, Inc. The Pixel allows us to measure the effectiveness of our advertising on Facebook and Instagram and to show our ads to audiences that are likely to be interested in our services.
+                      </p>
+                      <p>
+                        Each of our four studio locations operates an independent Meta Pixel, and the Pixel loaded on a given page is scoped to that specific studio's advertising account. When the Pixel fires, the following events may be sent to Meta:
+                      </p>
+                      <BulletList items={[
+                        'PageView — when a page on our site loads.',
+                        'Lead — when you submit a trial signup form (sent before checkout so that abandoned signups can still be measured).',
+                        'InitiateCheckout — when you proceed from our form to the Stripe checkout page.',
+                        'Purchase — when a paid trial is completed (sent server-side via the Meta Conversions API).',
+                      ]} />
+                      <p>
+                        Where you have provided it, we may also send Meta hashed (SHA-256) personal identifiers such as your email address, phone number, name, city, and zip code so Meta can match the event to your account for measurement and ad personalization. We never send Meta your payment card information, government identifiers, or precise health information.
+                      </p>
+                      <p>
+                        We also use the <strong className="text-gray-900">Meta Conversions API</strong> to send conversion events to Meta server-to-server. This is in addition to (and in some cases instead of) browser-based Pixel events so that conversions can still be measured if your browser blocks third-party tracking.
+                      </p>
+                      <p>
+                        For more information about how Meta uses this data, see Meta's{' '}
+                        <a href="https://www.facebook.com/privacy/policy/" target="_blank" rel="noopener noreferrer" className="text-red-600 hover:text-red-700 underline">Privacy Policy</a>
+                        {' '}and the{' '}
+                        <a href="https://www.facebook.com/business/help/471978536642445" target="_blank" rel="noopener noreferrer" className="text-red-600 hover:text-red-700 underline">Meta Business Tools Terms</a>.
+                      </p>
+                    </div>
+
+                    <div className="space-y-3 pt-2">
+                      <SubHead>How to Opt Out of Ad Tracking</SubHead>
+                      <BulletList items={[
+                        'Manage your Meta ad preferences and request restriction of data use directly at facebook.com/adpreferences and instagram.com/accounts/privacy_and_security.',
+                        'Use your browser settings to block third-party cookies or to enable Do Not Track / Global Privacy Control signals (we honor GPC where required by law).',
+                        'Install a browser tracking-prevention tool (e.g., Privacy Badger, uBlock Origin) or use a browser with built-in tracking protection.',
+                        'On iOS 14.5+ and Android 13+, decline App Tracking Transparency / advertising ID permission when prompted by the Facebook or Instagram apps.',
+                        'Email privacy@betterbodybootcamp.com to request that we suppress your contact data from being sent to advertising partners.',
+                      ]} />
+                      <p>Disabling cookies or opting out of ad tracking will not prevent you from using our website, but certain personalization features and ad-relevance may be reduced.</p>
+                    </div>
                   </div>
                 </div>
               </section>
