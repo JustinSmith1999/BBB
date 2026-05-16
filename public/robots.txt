@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /our-team
+
+Sitemap: https://betterbodybootcamp.com/sitemap.xml

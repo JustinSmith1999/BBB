@@ -1,0 +1,29 @@
+# Netlify build + routing config for betterbodybootcamp.com.
+# Vite/React SPA at root, owner dashboard reverse-proxied to bbbmarketing.netlify.app at /dashboard.
+
+[build]
+  command   = "npm run build"
+  publish   = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# /dashboard and /dashboard/* are reverse-proxied to the standalone owner dashboard.
+# URL bar stays as betterbodybootcamp.com/dashboard; content comes from bbbmarketing.
+[[redirects]]
+  from   = "/dashboard"
+  to     = "https://bbbmarketing.netlify.app/"
+  status = 200
+  force  = true
+
+[[redirects]]
+  from   = "/dashboard/*"
+  to     = "https://bbbmarketing.netlify.app/:splat"
+  status = 200
+  force  = true
+
+# SPA fallback for everything else — React Router handles client-side routing.
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200

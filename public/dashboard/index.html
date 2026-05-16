@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BBB Owner Dashboard</title>
+  <link rel="icon" type="image/png" href="https://uracuwugpxqjfgtuobal.supabase.co/storage/v1/object/public/logos/cropped-0140_bbb_newstrike_logo-design_black_1.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    :root {
+      --page-bg: #F6F7F9; --card-bg: #FFFFFF; --ink: #0A0F1C; --ink-strong: #0F172A;
+      --ink-dim: #475569; --ink-mute: #94A3B8; --border: #E5E7EB;
+      --red: #E11D2A; --green: #10B981; --blue: #2563EB; --amber: #F59E0B; --purple: #A855F7;
+      --font: 'Inter', -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: var(--page-bg); font-family: var(--font); color: var(--ink); -webkit-font-smoothing: antialiased; }
+    a { color: inherit; text-decoration: none; }
+    button { font-family: var(--font); cursor: pointer; }
+    .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .login-card { width: 100%; max-width: 380px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; padding: 32px; }
+    .login-eyebrow { font-size: 11px; color: var(--red); font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; }
+    .login-title { font-size: 24px; color: var(--ink-strong); font-weight: 700; letter-spacing: -0.4px; margin: 6px 0 4px; }
+    .login-sub { font-size: 13px; color: var(--ink-dim); margin-bottom: 24px; }
+    .login-field { margin-bottom: 14px; }
+    .login-field label { display: block; font-size: 11px; color: var(--ink-mute); font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; margin-bottom: 6px; }
+    .login-field input { width: 100%; height: 40px; padding: 0 12px; font-size: 14px; font-family: var(--font); border: 1px solid var(--border); border-radius: 8px; background: var(--card-bg); color: var(--ink-strong); }
+    .login-field input:focus { outline: none; border-color: var(--ink-strong); }
+    .login-btn { width: 100%; height: 42px; border: 0; border-radius: 8px; background: var(--red); color: #fff; font-size: 14px; font-weight: 600; margin-top: 6px; }
+    .login-btn:hover { background: #C81825; }
+    .login-btn:disabled { opacity: 0.6; cursor: wait; }
+    .login-error { font-size: 12px; color: var(--red); margin-top: 10px; min-height: 16px; }
+    .freshness-banner { background: #FEF3C7; border-bottom: 1px solid #FCD34D; padding: 8px 24px; font-size: 12px; color: #78350F; text-align: center; }
+    .header { background: var(--card-bg); border-bottom: 1px solid var(--border); padding: 24px; display: flex; flex-direction: column; gap: 18px; }
+    .header-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+    .header-titles .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; }
+    .header-titles h1 { font-size: 26px; color: var(--ink-strong); font-weight: 700; letter-spacing: -0.4px; margin-top: 4px; }
+    .header-titles .sub { font-size: 13px; color: var(--ink-dim); margin-top: 2px; }
+    .header-meta { font-size: 11px; color: var(--ink-mute); font-weight: 600; text-align: right; }
+    .signout-btn { background: transparent; border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; font-size: 11px; color: var(--ink-dim); font-weight: 600; margin-top: 8px; }
+    .signout-btn:hover { background: var(--page-bg); }
+    .toggle { display: flex; gap: 6px; flex-wrap: wrap; }
+    .chip { padding: 8px 14px; border-radius: 999px; background: var(--card-bg); border: 1px solid var(--border); font-size: 13px; font-weight: 600; color: var(--ink-dim); letter-spacing: -0.1px; transition: all 0.12s ease; }
+    .chip:hover { border-color: var(--ink-strong); }
+    .chip.active { color: #fff; border-color: transparent; }
+    .hero-row { padding: 24px 24px 0; display: grid; gap: 18px; grid-template-columns: 1fr; }
+    @media (min-width: 720px)  { .hero-row { grid-template-columns: 1fr 1fr; } }
+    @media (min-width: 1120px) { .hero-row { grid-template-columns: repeat(4, 1fr); } }
+    .hero-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; }
+    .hero-eye { font-size: 10px; font-weight: 700; letter-spacing: 1.3px; text-transform: uppercase; }
+    .hero-value { font-size: 38px; color: var(--ink-strong); font-weight: 700; letter-spacing: -1px; font-variant-numeric: tabular-nums; margin-top: 6px; }
+    .hero-sub { font-size: 11px; color: var(--ink-dim); margin-top: 4px; }
+    .grid { padding: 24px; display: grid; gap: 18px; grid-template-columns: 1fr; }
+    @media (min-width: 720px)  { .grid { grid-template-columns: 1fr 1fr; } }
+    @media (min-width: 1320px) { .grid.cols3 { grid-template-columns: repeat(3, 1fr); } }
+    .grid + .grid { padding-top: 0; }
+    .full-row { grid-column: 1 / -1; }
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+    .card .eye { font-size: 10px; font-weight: 700; letter-spacing: 1.3px; text-transform: uppercase; }
+    .card h2 { font-size: 18px; color: var(--ink-strong); font-weight: 700; letter-spacing: -0.3px; margin: 4px 0 16px; }
+    .row { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .row:last-child { border-bottom: 0; }
+    .row .label { font-size: 13px; color: var(--ink-dim); }
+    .row .value { font-size: 22px; color: var(--ink-strong); font-weight: 700; letter-spacing: -0.3px; font-variant-numeric: tabular-nums; }
+    .row .value-sub { font-size: 11px; color: var(--ink-mute); margin-left: 6px; }
+    .value.green { color: var(--green); }
+    .value.amber { color: var(--amber); }
+    .big-number { font-size: 44px; color: var(--ink-strong); font-weight: 700; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+    .big-number-sub { font-size: 12px; color: var(--ink-dim); margin-top: 2px; margin-bottom: 14px; }
+    .stub-card { background: linear-gradient(135deg, #F0F9FF 0%, #FFFFFF 100%); border: 1px dashed #BFDBFE; }
+    .stub-tag { display: inline-block; background: var(--blue); color: #fff; font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; margin-left: 8px; vertical-align: middle; }
+    .empty, .loading { font-size: 13px; color: var(--ink-mute); font-style: italic; padding: 8px 0; }
+    .footer { padding: 24px; text-align: center; font-size: 11px; color: var(--ink-mute); }
+    .chart-wrap { position: relative; height: 240px; }
+    .chart-wrap.short { height: 180px; }
+    table.data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .data-table th { text-align: left; padding: 8px 10px; background: var(--page-bg); font-size: 10px; color: var(--ink-dim); font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+    .data-table td { padding: 8px 10px; font-size: 13px; color: var(--ink-strong); border-bottom: 1px solid var(--border); }
+    .data-table tr:last-child td { border-bottom: 0; }
+    .data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .data-table .name { font-weight: 600; }
+    .lifetime-strip { display: flex; gap: 18px; padding: 10px 0 4px; flex-wrap: wrap; }
+    .lifetime-stat { font-size: 11px; color: var(--ink-mute); font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; }
+    .lifetime-stat strong { display: block; font-size: 18px; color: var(--ink-strong); font-weight: 700; letter-spacing: -0.3px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+    .social-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; margin-bottom: 6px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: background 0.12s ease; }
+    .social-row:hover { background: var(--page-bg); }
+    .social-left { display: flex; align-items: center; gap: 10px; }
+    .social-dot { width: 8px; height: 8px; border-radius: 999px; }
+    .social-name { font-size: 13px; color: var(--ink-strong); font-weight: 600; }
+    .social-followers { font-size: 14px; color: var(--ink-strong); font-weight: 700; font-variant-numeric: tabular-nums; }
+    .social-handle { font-size: 11px; color: var(--ink-dim); }
+    .social-live { display: inline-block; width: 6px; height: 6px; border-radius: 999px; background: var(--green); margin-right: 4px; vertical-align: middle; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    // NOTE: This is the verified-only build of the dashboard. All metrics here are
+    // sourced directly from mindbody_sales (Supabase RPC get_marketing_dashboard v16+).
+    // The full version (with login, full charts, etc) lives at /Users/justinsmith/Desktop/bbb-marketing/index.html
+    // and should be kept in sync with this file when changes are made.
+    location.replace('https://bbbmarketing.netlify.app/');
+  </script>
+</body>
+</html>

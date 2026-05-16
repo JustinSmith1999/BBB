@@ -1,0 +1,7 @@
+# /dashboard reverse-proxies to the standalone owner dashboard at bbbmarketing.netlify.app.
+# 200! status keeps the URL bar at betterbodybootcamp.com/dashboard.
+/dashboard               https://bbbmarketing.netlify.app/             200!
+/dashboard/*             https://bbbmarketing.netlify.app/:splat       200!
+
+# SPA fallback for client-side React Router.
+/*                       /index.html                                    200
