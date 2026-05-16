@@ -62,7 +62,7 @@ const LOCATIONS: Record<string, LocationConfig> = {
     zip: '11366',
     phone: '(646) 566-8207',
     image: '/freshmeadows-final.webp',
-    metaPixelId: '2285251355659022',
+    metaPixelId: '979328851475276',
   },
   'williamsburg': {
     slug: 'williamsburg',
