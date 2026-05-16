@@ -1,15 +1,42 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
 export default function Footer() {
   const [email, setEmail] = useState('');
   const [joined, setJoined] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  const handleJoin = (e: React.FormEvent) => {
+  const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email.trim()) {
+    const value = email.trim();
+    if (!value || submitting) return;
+
+    setSubmitting(true);
+    setErrorMsg('');
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/subscribe-newsletter`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'apikey': SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ email: value, source: 'footer-newsletter' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || 'Could not subscribe. Please try again.');
+      }
       setJoined(true);
       setEmail('');
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Could not subscribe.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -32,34 +59,41 @@ export default function Footer() {
             {joined ? (
               <p className="text-sm" style={{ color: 'var(--brand-red)' }}>You're on the list.</p>
             ) : (
-              <form onSubmit={handleJoin} className="flex gap-2">
-                <input
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder="your@email.com"
-                  required
-                  className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg outline-none"
-                  style={{
-                    backgroundColor: 'var(--bg-elevated)',
-                    border: '1px solid var(--divider)',
-                    color: 'var(--text-primary)',
-                  }}
-                />
-                <button
-                  type="submit"
-                  className="text-sm font-bold px-4 py-2 rounded-lg transition-colors duration-200"
-                  style={{
-                    backgroundColor: 'var(--brand-red)',
-                    color: 'var(--text-primary)',
-                    whiteSpace: 'nowrap',
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--brand-red-hover)')}
-                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'var(--brand-red)')}
-                >
-                  Join
-                </button>
-              </form>
+              <>
+                <form onSubmit={handleJoin} className="flex gap-2">
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="your@email.com"
+                    required
+                    disabled={submitting}
+                    className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg outline-none disabled:opacity-60"
+                    style={{
+                      backgroundColor: 'var(--bg-elevated)',
+                      border: '1px solid var(--divider)',
+                      color: 'var(--text-primary)',
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="text-sm font-bold px-4 py-2 rounded-lg transition-colors duration-200 disabled:opacity-60 disabled:cursor-wait"
+                    style={{
+                      backgroundColor: 'var(--brand-red)',
+                      color: 'var(--text-primary)',
+                      whiteSpace: 'nowrap',
+                    }}
+                    onMouseEnter={e => { if (!submitting) e.currentTarget.style.backgroundColor = 'var(--brand-red-hover)'; }}
+                    onMouseLeave={e => { if (!submitting) e.currentTarget.style.backgroundColor = 'var(--brand-red)'; }}
+                  >
+                    {submitting ? '...' : 'Join'}
+                  </button>
+                </form>
+                {errorMsg && (
+                  <p className="text-xs mt-2" style={{ color: '#fca5a5' }}>{errorMsg}</p>
+                )}
+              </>
             )}
           </div>
 

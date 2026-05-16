@@ -271,8 +271,9 @@ export default function LocationTrialSignup() {
           <span className="inline-block px-3 py-1 sm:px-4 sm:py-1.5 bg-white/15 backdrop-blur-sm rounded-full text-[10px] sm:text-xs font-bold tracking-[0.2em] uppercase border border-white/30 mb-4 sm:mb-6 whitespace-nowrap">
             {location.badge}
           </span>
-          <h1 className="text-[clamp(1.75rem,8.5vw,5rem)] font-black mb-3 sm:mb-6 leading-[1.05] whitespace-nowrap tracking-tight">
-            TWO WEEKS FOR $49
+          <h1 className="font-black mb-3 sm:mb-6 leading-[0.95] tracking-tight">
+            <span className="block text-4xl sm:text-6xl md:text-7xl lg:text-8xl">TWO WEEKS</span>
+            <span className="block text-5xl sm:text-7xl md:text-8xl lg:text-[9rem] mt-1">FOR $49</span>
           </h1>
           <p className="text-sm sm:text-lg md:text-xl lg:text-2xl font-medium leading-snug sm:leading-relaxed max-w-md sm:max-w-3xl mx-auto mb-6 sm:mb-8 px-2">
             Unlimited classes at <span className="whitespace-nowrap">Better Body Bootcamp {location.name}</span>. Real training. Real results.
@@ -302,32 +303,32 @@ export default function LocationTrialSignup() {
           <div className="grid lg:grid-cols-5 gap-6 sm:gap-8 lg:gap-12">
 
             {/* LEFT: Why + What's Included + Studio Card */}
-            <div className="lg:col-span-2 space-y-5 sm:space-y-6 text-center lg:text-left">
+            <div className="lg:col-span-2 space-y-5 sm:space-y-6">
               <div>
-                <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-4 sm:mb-6 text-gray-900">Why Better Body?</h2>
-                <div className="space-y-3 sm:space-y-4">
-                  <div className="flex items-start gap-3 justify-center lg:justify-start text-left">
+                <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-4 sm:mb-6 text-gray-900 text-center lg:text-left">Why Better Body?</h2>
+                <div className="space-y-3 sm:space-y-4 max-w-xs sm:max-w-none mx-auto">
+                  <div className="flex items-start gap-3">
                     <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0 mt-0.5 sm:mt-1" />
                     <div>
                       <h3 className="font-bold text-gray-900 mb-0.5 sm:mb-1 text-sm sm:text-base">Real Strength Training</h3>
                       <p className="text-gray-600 text-xs sm:text-sm">Proven methods that deliver lasting results.</p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3 justify-center lg:justify-start text-left">
+                  <div className="flex items-start gap-3">
                     <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0 mt-0.5 sm:mt-1" />
                     <div>
                       <h3 className="font-bold text-gray-900 mb-0.5 sm:mb-1 text-sm sm:text-base">Dynamic Workouts</h3>
                       <p className="text-gray-600 text-xs sm:text-sm">Never boring, always challenging.</p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3 justify-center lg:justify-start text-left">
+                  <div className="flex items-start gap-3">
                     <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0 mt-0.5 sm:mt-1" />
                     <div>
                       <h3 className="font-bold text-gray-900 mb-0.5 sm:mb-1 text-sm sm:text-base">Engaged Trainers</h3>
                       <p className="text-gray-600 text-xs sm:text-sm">Coaches who care about your progress.</p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3 justify-center lg:justify-start text-left">
+                  <div className="flex items-start gap-3">
                     <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0 mt-0.5 sm:mt-1" />
                     <div>
                       <h3 className="font-bold text-gray-900 mb-0.5 sm:mb-1 text-sm sm:text-base">Community Driven</h3>
@@ -337,9 +338,9 @@ export default function LocationTrialSignup() {
                 </div>
               </div>
 
-              <div className="bg-gradient-to-br from-red-50 to-white border-2 border-red-100 rounded-2xl p-5 sm:p-6 text-left">
+              <div className="bg-gradient-to-br from-red-50 to-white border-2 border-red-100 rounded-2xl p-5 sm:p-6">
                 <h3 className="font-bold text-base sm:text-lg text-gray-900 mb-3 text-center lg:text-left">Your 2-Week Trial Includes:</h3>
-                <ul className="space-y-1.5 sm:space-y-2 text-gray-700 text-xs sm:text-sm">
+                <ul className="space-y-1.5 sm:space-y-2 text-gray-700 text-xs sm:text-sm max-w-xs sm:max-w-none mx-auto">
                   <li className="flex items-start gap-2"><span className="text-red-600 mt-0.5">•</span> Unlimited access to all classes</li>
                   <li className="flex items-start gap-2"><span className="text-red-600 mt-0.5">•</span> Complete fitness assessment</li>
                   <li className="flex items-start gap-2"><span className="text-red-600 mt-0.5">•</span> Personalized goal setting</li>
@@ -351,14 +352,14 @@ export default function LocationTrialSignup() {
                 </div>
               </div>
 
-              <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 sm:p-5 text-left">
+              <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 sm:p-5">
                 <h4 className="font-bold text-gray-900 mb-2 sm:mb-3 text-xs sm:text-sm uppercase tracking-wide text-center lg:text-left">Your Studio</h4>
-                <div className="space-y-2 text-xs sm:text-sm text-gray-700">
-                  <div className="flex items-start gap-2 justify-center lg:justify-start">
+                <div className="space-y-2 text-xs sm:text-sm text-gray-700 max-w-xs sm:max-w-none mx-auto">
+                  <div className="flex items-start gap-2">
                     <MapPin className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
                     <span>{location.address}<br/>{location.city}, {location.state} {location.zip}</span>
                   </div>
-                  <div className="flex items-center gap-2 justify-center lg:justify-start">
+                  <div className="flex items-center gap-2">
                     <Phone className="w-4 h-4 text-red-600 flex-shrink-0" />
                     <a href={`tel:${location.phone}`} className="hover:text-red-600 transition-colors font-semibold">{location.phone}</a>
                   </div>
