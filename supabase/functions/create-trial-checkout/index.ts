@@ -41,7 +41,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: location, error: locationError } = await supabase
       .from("locations")
-      .select("stripe_secret_key, stripe_publishable_key, stripe_price_id")
+      .select("stripe_secret_key, stripe_publishable_key, stripe_price_id, name")
       .eq("id", locationId)
       .single();
 
@@ -51,6 +51,41 @@ Deno.serve(async (req: Request) => {
 
     if (!location.stripe_secret_key || !location.stripe_price_id) {
       throw new Error("Stripe credentials not configured for this location");
+    }
+
+    // ─── Save lead to leads table BEFORE Stripe redirect ───────────────────
+    // This captures every trial form submission into the BBB ERP, so abandoned
+    // checkouts can be chased by win-back automation. Non-blocking — if the
+    // insert fails for any reason, we still proceed to checkout.
+    try {
+      const studioSlug = (location.name ?? "")
+        .toLowerCase()
+        .replace(/\s+/g, "-");
+      const noteParts = [
+        address ? `Address: ${address}` : null,
+        city ? `City: ${city}` : null,
+        zipCode ? `Zip: ${zipCode}` : null,
+        country ? `Country: ${country}` : null,
+        newsletter ? "Newsletter: yes" : null,
+      ].filter(Boolean);
+      const { error: leadErr } = await supabase
+        .from("leads")
+        .upsert(
+          {
+            full_name: customerName ?? null,
+            email: customerEmail ?? null,
+            phone: customerPhone ?? null,
+            source: `trial-form-${studioSlug}`,
+            stage: "pending_checkout",
+            studio_slug: studioSlug,
+            last_touch_at: new Date().toISOString(),
+            notes: noteParts.join(" · ") || null,
+          },
+          { onConflict: "email" }
+        );
+      if (leadErr) console.error("lead upsert failed:", leadErr.message);
+    } catch (e) {
+      console.error("lead upsert exception:", e);
     }
 
     const stripe = new Stripe(location.stripe_secret_key, {

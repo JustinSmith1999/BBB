@@ -1,18 +1,18 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Navigate } from 'react-router-dom';
-import { ArrowRight, CheckCircle, Clock, Users, Zap, MapPin, Phone } from 'lucide-react';
+import { ArrowRight, CheckCircle, Clock, Users, Zap, MapPin, Phone, Lock } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
 
-// ─── PER-GYM TRIAL CONFIG ───────────────────────────────────────────────────
-// Each gym has its own Stripe account and its own $49 trial product.
-// To wire a new gym: paste its Stripe Checkout URL into `stripeUrl` below.
-//
-// Fresh Meadows confirmed live (May 2026).
-// Astoria / Bayside / Williamsburg → paste each gym's Stripe Checkout link
-// here. Until then, the button shows a friendly "Coming soon — call us" state.
+// ─── PER-GYM CONFIG ─────────────────────────────────────────────────────────
+// `locationId` is the Supabase row UUID for the gym. The edge function
+// `create-trial-checkout` looks up that row to find the gym's stripe_secret_key
+// and stripe_price_id, so each gym charges to its own Stripe account.
+// Address/phone/image are hardcoded here to keep first-paint fast (no Supabase
+// fetch needed). Verified against the locations table on 2026-05-15.
 // ─────────────────────────────────────────────────────────────────────────────
 type LocationConfig = {
   slug: string;
+  locationId: string;
   name: string;
   badge: string;
   address: string;
@@ -21,12 +21,12 @@ type LocationConfig = {
   zip: string;
   phone: string;
   image: string;
-  stripeUrl: string | null;
 };
 
 const LOCATIONS: Record<string, LocationConfig> = {
   'astoria': {
     slug: 'astoria',
+    locationId: 'dcf94b47-dcc8-4176-96e9-f0cdd0fc6b45',
     name: 'Astoria',
     badge: 'ASTORIA · QUEENS',
     address: '31-18 Steinway Street',
@@ -35,10 +35,10 @@ const LOCATIONS: Record<string, LocationConfig> = {
     zip: '11103',
     phone: '(718) 704-9954',
     image: '/astoria-final.webp',
-    stripeUrl: null, // TODO: paste Astoria Stripe Checkout URL
   },
   'bayside': {
     slug: 'bayside',
+    locationId: '5c0e8383-dd2f-4f8f-bfea-5cc477cec4c7',
     name: 'Bayside',
     badge: 'BAYSIDE · QUEENS',
     address: '3447 Bell Blvd',
@@ -47,10 +47,10 @@ const LOCATIONS: Record<string, LocationConfig> = {
     zip: '11361',
     phone: '(646) 566-8870',
     image: '/bayside-final.webp',
-    stripeUrl: null, // TODO: paste Bayside Stripe Checkout URL
   },
   'fresh-meadows': {
     slug: 'fresh-meadows',
+    locationId: '6bbbe077-bcc6-4d9d-a10b-7605c1484752',
     name: 'Fresh Meadows',
     badge: 'FRESH MEADOWS · QUEENS',
     address: '76-46 164th Street',
@@ -59,10 +59,10 @@ const LOCATIONS: Record<string, LocationConfig> = {
     zip: '11366',
     phone: '(646) 566-8207',
     image: '/freshmeadows-final.webp',
-    stripeUrl: 'https://buy.stripe.com/bJeeVd5fpaH7gbycmD7EQ02',
   },
   'williamsburg': {
     slug: 'williamsburg',
+    locationId: '80536b45-df0e-42d1-880c-e9301372e1cf',
     name: 'Williamsburg',
     badge: 'WILLIAMSBURG · BROOKLYN',
     address: '487 Driggs Ave',
@@ -71,12 +71,27 @@ const LOCATIONS: Record<string, LocationConfig> = {
     zip: '11211',
     phone: '(718) 683-1864',
     image: '/williamsburg-final.webp',
-    stripeUrl: null, // TODO: paste Williamsburg Stripe Checkout URL
   },
 };
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
 export default function LocationTrialSignup() {
   const { location: locationParam } = useParams<{ location: string }>();
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState('');
+  const [formData, setFormData] = useState({
+    fullName: '',
+    email: '',
+    phone: '',
+    address: '',
+    city: '',
+    zipCode: '',
+    country: 'US',
+    termsAccepted: false,
+    newsletter: false,
+  });
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -85,13 +100,71 @@ export default function LocationTrialSignup() {
   const key = (locationParam ?? '').toLowerCase();
   const location = LOCATIONS[key];
 
+  // Pre-fill city to match the gym's city to save the user a step
+  useEffect(() => {
+    if (location && !formData.city) {
+      setFormData(prev => ({ ...prev, city: location.city }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location?.slug]);
+
   if (!location) {
     return <Navigate to="/trial" replace />;
   }
 
-  const handleClaimClick = () => {
-    if (location.stripeUrl) {
-      window.location.href = location.stripeUrl;
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value,
+    }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (!formData.termsAccepted) {
+      setError('Please agree to the trial terms before continuing.');
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/create-trial-checkout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'apikey': SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          locationId: location.locationId,
+          locationName: location.name,
+          customerEmail: formData.email,
+          customerName: formData.fullName,
+          customerPhone: formData.phone,
+          address: formData.address,
+          city: formData.city,
+          zipCode: formData.zipCode,
+          country: formData.country,
+          newsletter: formData.newsletter,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.url) {
+        throw new Error(data.error || 'Could not start checkout. Please try again or call us.');
+      }
+
+      // Redirect to gym-specific Stripe Checkout
+      window.location.href = data.url;
+    } catch (err) {
+      console.error('Trial checkout error:', err);
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+      setIsProcessing(false);
     }
   };
 
@@ -140,63 +213,63 @@ export default function LocationTrialSignup() {
       </div>
 
       {/* MAIN CARD ────────────────────────────────────────────────────────── */}
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-20">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-20">
         <div className="bg-white rounded-3xl shadow-2xl p-6 sm:p-10 lg:p-12 mb-12">
 
-          {/* Why + What's included grid */}
-          <div className="grid md:grid-cols-2 gap-8 mb-10">
-            <div>
-              <h2 className="text-2xl sm:text-3xl font-bold mb-6 text-gray-900">Why Better Body?</h2>
-              <div className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <CheckCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
-                  <div>
-                    <h3 className="font-bold text-gray-900 mb-1">Real Strength Training</h3>
-                    <p className="text-gray-600">No gimmicks. Just proven methods that deliver lasting results.</p>
+          <div className="grid lg:grid-cols-5 gap-8 lg:gap-12">
+
+            {/* LEFT: Why + What's Included + Studio Card */}
+            <div className="lg:col-span-2 space-y-6">
+              <div>
+                <h2 className="text-2xl sm:text-3xl font-bold mb-6 text-gray-900">Why Better Body?</h2>
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
+                    <div>
+                      <h3 className="font-bold text-gray-900 mb-1">Real Strength Training</h3>
+                      <p className="text-gray-600 text-sm">Proven methods that deliver lasting results.</p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <CheckCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
-                  <div>
-                    <h3 className="font-bold text-gray-900 mb-1">Dynamic Workouts</h3>
-                    <p className="text-gray-600">Never boring, always challenging. Every session pushes you further.</p>
+                  <div className="flex items-start gap-3">
+                    <CheckCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
+                    <div>
+                      <h3 className="font-bold text-gray-900 mb-1">Dynamic Workouts</h3>
+                      <p className="text-gray-600 text-sm">Never boring, always challenging.</p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <CheckCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
-                  <div>
-                    <h3 className="font-bold text-gray-900 mb-1">Engaged Trainers</h3>
-                    <p className="text-gray-600">Coaches who care about your progress and keep you motivated.</p>
+                  <div className="flex items-start gap-3">
+                    <CheckCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
+                    <div>
+                      <h3 className="font-bold text-gray-900 mb-1">Engaged Trainers</h3>
+                      <p className="text-gray-600 text-sm">Coaches who care about your progress.</p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <CheckCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
-                  <div>
-                    <h3 className="font-bold text-gray-900 mb-1">Community Driven</h3>
-                    <p className="text-gray-600">Train alongside people who are serious about their goals.</p>
+                  <div className="flex items-start gap-3">
+                    <CheckCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
+                    <div>
+                      <h3 className="font-bold text-gray-900 mb-1">Community Driven</h3>
+                      <p className="text-gray-600 text-sm">Train alongside people serious about their goals.</p>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div>
-              <div className="bg-gradient-to-br from-red-50 to-white border-2 border-red-100 rounded-2xl p-6 mb-4">
-                <h3 className="font-bold text-xl text-gray-900 mb-4">Your 2-Week Trial Includes:</h3>
-                <ul className="space-y-3 text-gray-700">
+              <div className="bg-gradient-to-br from-red-50 to-white border-2 border-red-100 rounded-2xl p-6">
+                <h3 className="font-bold text-lg text-gray-900 mb-3">Your 2-Week Trial Includes:</h3>
+                <ul className="space-y-2 text-gray-700 text-sm">
                   <li className="flex items-center gap-2"><span className="text-red-600">•</span> Unlimited access to all classes</li>
                   <li className="flex items-center gap-2"><span className="text-red-600">•</span> Complete fitness assessment</li>
-                  <li className="flex items-center gap-2"><span className="text-red-600">•</span> Personalized goal setting session</li>
+                  <li className="flex items-center gap-2"><span className="text-red-600">•</span> Personalized goal setting</li>
                   <li className="flex items-center gap-2"><span className="text-red-600">•</span> Full access at our {location.name} studio</li>
                 </ul>
-                <div className="border-t border-red-100 mt-5 pt-4 flex justify-between items-center">
-                  <span className="font-bold text-gray-700 uppercase text-sm tracking-wider">Total</span>
+                <div className="border-t border-red-100 mt-4 pt-3 flex justify-between items-center">
+                  <span className="font-bold text-gray-700 uppercase text-xs tracking-wider">Total</span>
                   <span className="text-3xl font-black text-red-600">$49</span>
                 </div>
               </div>
 
-              {/* Studio details card */}
               <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5">
-                <h4 className="font-bold text-gray-900 mb-3">Your Studio</h4>
+                <h4 className="font-bold text-gray-900 mb-3 text-sm uppercase tracking-wide">Your Studio</h4>
                 <div className="space-y-2 text-sm text-gray-700">
                   <div className="flex items-start gap-2">
                     <MapPin className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
@@ -209,46 +282,148 @@ export default function LocationTrialSignup() {
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* CTA section ─────────────────────────────────────────────────── */}
-          <div className="border-t border-gray-100 pt-8">
-            <div className="text-center mb-6">
-              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
-                Claim Your Trial at {location.name}
-              </h2>
-              <p className="text-gray-600">
-                Classes fill up fast. Secure your spot now.
-              </p>
-            </div>
+            {/* RIGHT: Form ─────────────────────────────────────────────── */}
+            <div className="lg:col-span-3">
+              <div className="bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-2xl p-6 sm:p-8">
+                <div className="mb-6">
+                  <h2 className="text-2xl font-bold text-gray-900 mb-1">Claim Your Trial</h2>
+                  <p className="text-sm text-gray-600">
+                    Two weeks of unlimited classes at <span className="font-semibold">{location.name}</span> for just $49.
+                  </p>
+                </div>
 
-            {location.stripeUrl ? (
-              <button
-                onClick={handleClaimClick}
-                className="group w-full sm:w-auto sm:mx-auto sm:flex bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-8 py-4 rounded-xl font-black text-lg uppercase tracking-wider transition-all transform hover:scale-[1.02] shadow-lg hover:shadow-red-600/50 flex items-center justify-center gap-3"
-              >
-                Start My $49 Trial
-                <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
-              </button>
-            ) : (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-center max-w-2xl mx-auto">
-                <p className="text-amber-900 font-semibold mb-1">Online checkout coming soon for {location.name}</p>
-                <p className="text-amber-800 text-sm mb-3">
-                  Call us to claim your trial today:
-                </p>
-                <a
-                  href={`tel:${location.phone}`}
-                  className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-bold transition-colors"
-                >
-                  <Phone className="w-5 h-5" />
-                  {location.phone}
-                </a>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Full Name</label>
+                    <input
+                      type="text"
+                      name="fullName"
+                      value={formData.fullName}
+                      onChange={handleChange}
+                      required
+                      autoComplete="name"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900"
+                    />
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Email</label>
+                      <input
+                        type="email"
+                        name="email"
+                        value={formData.email}
+                        onChange={handleChange}
+                        required
+                        autoComplete="email"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Phone</label>
+                      <input
+                        type="tel"
+                        name="phone"
+                        value={formData.phone}
+                        onChange={handleChange}
+                        required
+                        autoComplete="tel"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Address</label>
+                    <input
+                      type="text"
+                      name="address"
+                      value={formData.address}
+                      onChange={handleChange}
+                      required
+                      autoComplete="street-address"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900"
+                    />
+                  </div>
+
+                  <div className="grid sm:grid-cols-3 gap-4">
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">City</label>
+                      <input
+                        type="text"
+                        name="city"
+                        value={formData.city}
+                        onChange={handleChange}
+                        required
+                        autoComplete="address-level2"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Zip</label>
+                      <input
+                        type="text"
+                        name="zipCode"
+                        value={formData.zipCode}
+                        onChange={handleChange}
+                        required
+                        autoComplete="postal-code"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 pt-2">
+                    <label className="flex items-start gap-2 cursor-pointer text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        name="termsAccepted"
+                        checked={formData.termsAccepted}
+                        onChange={handleChange}
+                        required
+                        className="mt-0.5 w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                      />
+                      <span>I agree to the trial terms. Trial expires 14 days from purchase.</span>
+                    </label>
+                    <label className="flex items-start gap-2 cursor-pointer text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        name="newsletter"
+                        checked={formData.newsletter}
+                        onChange={handleChange}
+                        className="mt-0.5 w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                      />
+                      <span>Send me class schedules and updates</span>
+                    </label>
+                  </div>
+
+                  {error && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
+                      {error}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={isProcessing}
+                    className="group w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-6 py-4 rounded-xl font-black text-lg uppercase tracking-wider transition-all transform hover:scale-[1.01] shadow-lg hover:shadow-red-600/40 flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none"
+                  >
+                    {isProcessing ? 'Processing...' : (
+                      <>
+                        Continue to Secure Checkout · $49
+                        <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                      </>
+                    )}
+                  </button>
+
+                  <div className="flex items-center justify-center gap-2 text-xs text-gray-500 pt-2">
+                    <Lock className="w-3.5 h-3.5" />
+                    Payment processed securely via Stripe
+                  </div>
+                </form>
               </div>
-            )}
-
-            <p className="text-center text-xs text-gray-500 mt-6">
-              Secure checkout powered by Stripe. Trial valid for 14 days from purchase.
-            </p>
+            </div>
           </div>
         </div>
       </div>
