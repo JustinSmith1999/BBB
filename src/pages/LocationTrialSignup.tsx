@@ -21,6 +21,7 @@ type LocationConfig = {
   zip: string;
   phone: string;
   image: string;
+  metaPixelId: string | null; // each gym has its own Meta Pixel for ad attribution
 };
 
 const LOCATIONS: Record<string, LocationConfig> = {
@@ -35,6 +36,7 @@ const LOCATIONS: Record<string, LocationConfig> = {
     zip: '11103',
     phone: '(718) 704-9954',
     image: '/astoria-final.webp',
+    metaPixelId: '1291566006435758',
   },
   'bayside': {
     slug: 'bayside',
@@ -47,6 +49,7 @@ const LOCATIONS: Record<string, LocationConfig> = {
     zip: '11361',
     phone: '(646) 566-8870',
     image: '/bayside-final.webp',
+    metaPixelId: null, // TODO: paste Bayside Meta Pixel ID
   },
   'fresh-meadows': {
     slug: 'fresh-meadows',
@@ -59,6 +62,7 @@ const LOCATIONS: Record<string, LocationConfig> = {
     zip: '11366',
     phone: '(646) 566-8207',
     image: '/freshmeadows-final.webp',
+    metaPixelId: null, // TODO: paste Fresh Meadows Meta Pixel ID
   },
   'williamsburg': {
     slug: 'williamsburg',
@@ -71,11 +75,60 @@ const LOCATIONS: Record<string, LocationConfig> = {
     zip: '11211',
     phone: '(718) 683-1864',
     image: '/williamsburg-final.webp',
+    metaPixelId: '2160299368182872',
   },
 };
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+// Meta Pixel — typed globally so TS doesn't complain when we call window.fbq()
+declare global {
+  interface Window {
+    fbq?: (...args: unknown[]) => void;
+    _fbq?: unknown;
+  }
+}
+
+/**
+ * Inject the Meta Pixel <script> for a specific gym, fire PageView once, and
+ * return a cleanup function. We re-init the pixel for whichever gym the user
+ * lands on so the conversion goes to that gym's Ads Manager.
+ */
+function loadMetaPixel(pixelId: string): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const SCRIPT_ID = `meta-pixel-${pixelId}`;
+  // Avoid double-injecting if the user re-navigates within SPA
+  if (document.getElementById(SCRIPT_ID)) {
+    window.fbq?.('init', pixelId);
+    window.fbq?.('track', 'PageView');
+    return () => {};
+  }
+  // Standard Meta Pixel snippet, inlined so we can scope it per-gym
+  const inline = document.createElement('script');
+  inline.id = SCRIPT_ID;
+  inline.text = `
+    !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+    n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];
+    s.parentNode.insertBefore(t,s)}(window, document,'script',
+    'https://connect.facebook.net/en_US/fbevents.js');
+    fbq('init', '${pixelId}');
+    fbq('track', 'PageView');
+  `;
+  document.head.appendChild(inline);
+  // <noscript> fallback for bots / no-JS visitors
+  const ns = document.createElement('noscript');
+  ns.id = `${SCRIPT_ID}-ns`;
+  ns.innerHTML = `<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${pixelId}&ev=PageView&noscript=1" />`;
+  document.head.appendChild(ns);
+  return () => {
+    document.getElementById(SCRIPT_ID)?.remove();
+    document.getElementById(`${SCRIPT_ID}-ns`)?.remove();
+  };
+}
 
 export default function LocationTrialSignup() {
   const { location: locationParam } = useParams<{ location: string }>();
@@ -108,6 +161,16 @@ export default function LocationTrialSignup() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location?.slug]);
 
+  // Per-gym Meta Pixel — load that gym's pixel + fire PageView on mount.
+  // Cleanup removes the script when navigating away so visiting a different
+  // gym's trial page initializes the correct pixel instead of stacking them.
+  useEffect(() => {
+    if (location?.metaPixelId) {
+      return loadMetaPixel(location.metaPixelId);
+    }
+    return undefined;
+  }, [location?.metaPixelId]);
+
   if (!location) {
     return <Navigate to="/trial" replace />;
   }
@@ -130,6 +193,16 @@ export default function LocationTrialSignup() {
     }
 
     setIsProcessing(true);
+
+    // Meta Pixel — fire Lead the moment they submit (counts pre-checkout)
+    if (location.metaPixelId && window.fbq) {
+      window.fbq('track', 'Lead', {
+        content_name: `${location.name} 2-Week Trial`,
+        content_category: 'trial',
+        value: 49,
+        currency: 'USD',
+      });
+    }
 
     try {
       const response = await fetch(`${SUPABASE_URL}/functions/v1/create-trial-checkout`, {
@@ -157,6 +230,16 @@ export default function LocationTrialSignup() {
 
       if (!response.ok || !data.url) {
         throw new Error(data.error || 'Could not start checkout. Please try again or call us.');
+      }
+
+      // Meta Pixel — fire InitiateCheckout right before Stripe redirect
+      if (location.metaPixelId && window.fbq) {
+        window.fbq('track', 'InitiateCheckout', {
+          content_name: `${location.name} 2-Week Trial`,
+          content_category: 'trial',
+          value: 49,
+          currency: 'USD',
+        });
       }
 
       // Redirect to gym-specific Stripe Checkout
