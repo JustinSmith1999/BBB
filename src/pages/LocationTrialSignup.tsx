@@ -260,107 +260,107 @@ export default function LocationTrialSignup() {
     />
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
       {/* HERO ─────────────────────────────────────────────────────────────── */}
-      <div className="relative bg-gradient-to-br from-red-600 via-red-700 to-red-800 text-white pt-24 pb-16 sm:pt-32 sm:pb-20 overflow-hidden">
+      <div className="relative bg-gradient-to-br from-red-600 via-red-700 to-red-800 text-white pt-20 pb-10 sm:pt-28 sm:pb-16 lg:pt-32 lg:pb-20 overflow-hidden">
         <div className="absolute inset-0 bg-black/10"></div>
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-20 left-10 w-72 h-72 bg-white rounded-full blur-3xl"></div>
           <div className="absolute bottom-10 right-10 w-96 h-96 bg-white rounded-full blur-3xl"></div>
         </div>
 
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
-          <span className="inline-block px-4 py-1.5 bg-white/15 backdrop-blur-sm rounded-full text-xs font-bold tracking-[0.2em] uppercase border border-white/30 mb-6">
+        <div className="max-w-5xl mx-auto px-3 sm:px-6 lg:px-8 text-center relative z-10">
+          <span className="inline-block px-3 py-1 sm:px-4 sm:py-1.5 bg-white/15 backdrop-blur-sm rounded-full text-[10px] sm:text-xs font-bold tracking-[0.2em] uppercase border border-white/30 mb-4 sm:mb-6 whitespace-nowrap">
             {location.badge}
           </span>
-          <h1 className="text-[clamp(2.5rem,10vw,5.5rem)] font-black mb-6 leading-tight">
+          <h1 className="text-[clamp(1.75rem,8.5vw,5rem)] font-black mb-3 sm:mb-6 leading-[1.05] whitespace-nowrap tracking-tight">
             TWO WEEKS FOR $49
           </h1>
-          <p className="text-lg sm:text-xl md:text-2xl font-medium leading-relaxed max-w-3xl mx-auto mb-8">
-            Unlimited classes at Better Body Bootcamp {location.name}. Real training. Real results.
+          <p className="text-sm sm:text-lg md:text-xl lg:text-2xl font-medium leading-snug sm:leading-relaxed max-w-md sm:max-w-3xl mx-auto mb-6 sm:mb-8 px-2">
+            Unlimited classes at <span className="whitespace-nowrap">Better Body Bootcamp {location.name}</span>. Real training. Real results.
           </p>
 
-          <div className="flex flex-wrap justify-center gap-4 sm:gap-8 mt-10">
-            <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-lg border border-white/20">
-              <Clock className="w-5 h-5" />
-              <span className="font-semibold">14 Days Unlimited</span>
+          <div className="flex flex-nowrap justify-center items-center gap-1.5 sm:gap-4 lg:gap-8 mt-6 sm:mt-10 px-1">
+            <div className="flex items-center justify-center gap-1 sm:gap-2 bg-white/10 backdrop-blur-sm px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg border border-white/20 flex-1 sm:flex-initial">
+              <Clock className="w-3.5 h-3.5 sm:w-5 sm:h-5 flex-shrink-0" />
+              <span className="font-semibold text-[10px] sm:text-base whitespace-nowrap">14 Days</span>
             </div>
-            <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-lg border border-white/20">
-              <Users className="w-5 h-5" />
-              <span className="font-semibold">Expert Trainers</span>
+            <div className="flex items-center justify-center gap-1 sm:gap-2 bg-white/10 backdrop-blur-sm px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg border border-white/20 flex-1 sm:flex-initial">
+              <Users className="w-3.5 h-3.5 sm:w-5 sm:h-5 flex-shrink-0" />
+              <span className="font-semibold text-[10px] sm:text-base whitespace-nowrap">Expert Trainers</span>
             </div>
-            <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-lg border border-white/20">
-              <Zap className="w-5 h-5" />
-              <span className="font-semibold">High-Energy Workouts</span>
+            <div className="flex items-center justify-center gap-1 sm:gap-2 bg-white/10 backdrop-blur-sm px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg border border-white/20 flex-1 sm:flex-initial">
+              <Zap className="w-3.5 h-3.5 sm:w-5 sm:h-5 flex-shrink-0" />
+              <span className="font-semibold text-[10px] sm:text-base whitespace-nowrap">High-Energy</span>
             </div>
           </div>
         </div>
       </div>
 
       {/* MAIN CARD ────────────────────────────────────────────────────────── */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-20">
-        <div className="bg-white rounded-3xl shadow-2xl p-6 sm:p-10 lg:p-12 mb-12">
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 -mt-4 sm:-mt-8 relative z-20">
+        <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl p-4 sm:p-10 lg:p-12 mb-8 sm:mb-12">
 
-          <div className="grid lg:grid-cols-5 gap-8 lg:gap-12">
+          <div className="grid lg:grid-cols-5 gap-6 sm:gap-8 lg:gap-12">
 
             {/* LEFT: Why + What's Included + Studio Card */}
-            <div className="lg:col-span-2 space-y-6">
+            <div className="lg:col-span-2 space-y-5 sm:space-y-6 text-center lg:text-left">
               <div>
-                <h2 className="text-2xl sm:text-3xl font-bold mb-6 text-gray-900">Why Better Body?</h2>
-                <div className="space-y-4">
-                  <div className="flex items-start gap-3">
-                    <CheckCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
+                <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-4 sm:mb-6 text-gray-900">Why Better Body?</h2>
+                <div className="space-y-3 sm:space-y-4">
+                  <div className="flex items-start gap-3 justify-center lg:justify-start text-left">
+                    <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0 mt-0.5 sm:mt-1" />
                     <div>
-                      <h3 className="font-bold text-gray-900 mb-1">Real Strength Training</h3>
-                      <p className="text-gray-600 text-sm">Proven methods that deliver lasting results.</p>
+                      <h3 className="font-bold text-gray-900 mb-0.5 sm:mb-1 text-sm sm:text-base">Real Strength Training</h3>
+                      <p className="text-gray-600 text-xs sm:text-sm">Proven methods that deliver lasting results.</p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3">
-                    <CheckCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
+                  <div className="flex items-start gap-3 justify-center lg:justify-start text-left">
+                    <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0 mt-0.5 sm:mt-1" />
                     <div>
-                      <h3 className="font-bold text-gray-900 mb-1">Dynamic Workouts</h3>
-                      <p className="text-gray-600 text-sm">Never boring, always challenging.</p>
+                      <h3 className="font-bold text-gray-900 mb-0.5 sm:mb-1 text-sm sm:text-base">Dynamic Workouts</h3>
+                      <p className="text-gray-600 text-xs sm:text-sm">Never boring, always challenging.</p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3">
-                    <CheckCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
+                  <div className="flex items-start gap-3 justify-center lg:justify-start text-left">
+                    <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0 mt-0.5 sm:mt-1" />
                     <div>
-                      <h3 className="font-bold text-gray-900 mb-1">Engaged Trainers</h3>
-                      <p className="text-gray-600 text-sm">Coaches who care about your progress.</p>
+                      <h3 className="font-bold text-gray-900 mb-0.5 sm:mb-1 text-sm sm:text-base">Engaged Trainers</h3>
+                      <p className="text-gray-600 text-xs sm:text-sm">Coaches who care about your progress.</p>
                     </div>
                   </div>
-                  <div className="flex items-start gap-3">
-                    <CheckCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
+                  <div className="flex items-start gap-3 justify-center lg:justify-start text-left">
+                    <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0 mt-0.5 sm:mt-1" />
                     <div>
-                      <h3 className="font-bold text-gray-900 mb-1">Community Driven</h3>
-                      <p className="text-gray-600 text-sm">Train alongside people serious about their goals.</p>
+                      <h3 className="font-bold text-gray-900 mb-0.5 sm:mb-1 text-sm sm:text-base">Community Driven</h3>
+                      <p className="text-gray-600 text-xs sm:text-sm">Train alongside people serious about their goals.</p>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-gradient-to-br from-red-50 to-white border-2 border-red-100 rounded-2xl p-6">
-                <h3 className="font-bold text-lg text-gray-900 mb-3">Your 2-Week Trial Includes:</h3>
-                <ul className="space-y-2 text-gray-700 text-sm">
-                  <li className="flex items-center gap-2"><span className="text-red-600">•</span> Unlimited access to all classes</li>
-                  <li className="flex items-center gap-2"><span className="text-red-600">•</span> Complete fitness assessment</li>
-                  <li className="flex items-center gap-2"><span className="text-red-600">•</span> Personalized goal setting</li>
-                  <li className="flex items-center gap-2"><span className="text-red-600">•</span> Full access at our {location.name} studio</li>
+              <div className="bg-gradient-to-br from-red-50 to-white border-2 border-red-100 rounded-2xl p-5 sm:p-6 text-left">
+                <h3 className="font-bold text-base sm:text-lg text-gray-900 mb-3 text-center lg:text-left">Your 2-Week Trial Includes:</h3>
+                <ul className="space-y-1.5 sm:space-y-2 text-gray-700 text-xs sm:text-sm">
+                  <li className="flex items-start gap-2"><span className="text-red-600 mt-0.5">•</span> Unlimited access to all classes</li>
+                  <li className="flex items-start gap-2"><span className="text-red-600 mt-0.5">•</span> Complete fitness assessment</li>
+                  <li className="flex items-start gap-2"><span className="text-red-600 mt-0.5">•</span> Personalized goal setting</li>
+                  <li className="flex items-start gap-2"><span className="text-red-600 mt-0.5">•</span> Full access at our {location.name} studio</li>
                 </ul>
                 <div className="border-t border-red-100 mt-4 pt-3 flex justify-between items-center">
                   <span className="font-bold text-gray-700 uppercase text-xs tracking-wider">Total</span>
-                  <span className="text-3xl font-black text-red-600">$49</span>
+                  <span className="text-2xl sm:text-3xl font-black text-red-600">$49</span>
                 </div>
               </div>
 
-              <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5">
-                <h4 className="font-bold text-gray-900 mb-3 text-sm uppercase tracking-wide">Your Studio</h4>
-                <div className="space-y-2 text-sm text-gray-700">
-                  <div className="flex items-start gap-2">
+              <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 sm:p-5 text-left">
+                <h4 className="font-bold text-gray-900 mb-2 sm:mb-3 text-xs sm:text-sm uppercase tracking-wide text-center lg:text-left">Your Studio</h4>
+                <div className="space-y-2 text-xs sm:text-sm text-gray-700">
+                  <div className="flex items-start gap-2 justify-center lg:justify-start">
                     <MapPin className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
                     <span>{location.address}<br/>{location.city}, {location.state} {location.zip}</span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 justify-center lg:justify-start">
                     <Phone className="w-4 h-4 text-red-600 flex-shrink-0" />
-                    <a href={`tel:${location.phone}`} className="hover:text-red-600 transition-colors">{location.phone}</a>
+                    <a href={`tel:${location.phone}`} className="hover:text-red-600 transition-colors font-semibold">{location.phone}</a>
                   </div>
                 </div>
               </div>
@@ -368,10 +368,10 @@ export default function LocationTrialSignup() {
 
             {/* RIGHT: Form ─────────────────────────────────────────────── */}
             <div className="lg:col-span-3">
-              <div className="bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-2xl p-6 sm:p-8">
-                <div className="mb-6">
-                  <h2 className="text-2xl font-bold text-gray-900 mb-1">Claim Your Trial</h2>
-                  <p className="text-sm text-gray-600">
+              <div className="bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-2xl p-4 sm:p-8">
+                <div className="mb-5 sm:mb-6 text-center lg:text-left">
+                  <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-1">Claim Your Trial</h2>
+                  <p className="text-xs sm:text-sm text-gray-600">
                     Two weeks of unlimited classes at <span className="font-semibold">{location.name}</span> for just $49.
                   </p>
                 </div>
