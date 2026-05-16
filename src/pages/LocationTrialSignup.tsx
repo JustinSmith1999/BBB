@@ -49,7 +49,7 @@ const LOCATIONS: Record<string, LocationConfig> = {
     zip: '11361',
     phone: '(646) 566-8870',
     image: '/bayside-final.webp',
-    metaPixelId: null, // TODO: paste Bayside Meta Pixel ID
+    metaPixelId: '931144729719242',
   },
   'fresh-meadows': {
     slug: 'fresh-meadows',
