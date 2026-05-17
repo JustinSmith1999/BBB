@@ -355,10 +355,36 @@ Deno.serve(async (req: Request) => {
         payment_date: new Date().toISOString(),
       };
 
-      const { data, error: dbError } = await supabase
+      // First try to UPDATE the pending row created by create-trial-checkout
+      // (matched by stripe_session_id). Falls back to INSERT if no pending
+      // row exists (handles external Stripe checkouts).
+      const { data: updated, error: updateError } = await supabase
         .from("trial_signups")
-        .insert([trialData])
+        .update({
+          payment_status: "completed",
+          payment_date: trialData.payment_date,
+          name: trialData.name || undefined,
+          email: trialData.email || undefined,
+          phone: trialData.phone || undefined,
+          address: trialData.address || undefined,
+          city: trialData.city || undefined,
+          zip_code: trialData.zip_code || undefined,
+          newsletter_opted_in: trialData.newsletter_opted_in,
+        })
+        .eq("stripe_session_id", session.id)
         .select();
+
+      let data = updated;
+      let dbError = updateError;
+
+      if (!dbError && (!data || data.length === 0)) {
+        const { data: inserted, error: insertError } = await supabase
+          .from("trial_signups")
+          .insert([trialData])
+          .select();
+        data = inserted;
+        dbError = insertError;
+      }
 
       if (dbError) {
         console.error("Database error:", dbError);

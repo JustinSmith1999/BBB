@@ -17,18 +17,20 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    const body = await req.json();
     const {
       locationId,
       locationName,
       customerEmail,
       customerName,
       customerPhone,
-      address,
-      city,
-      zipCode,
-      country,
-      newsletter
-    } = await req.json();
+      newsletter,
+    } = body;
+    // Address fields no longer collected on the form; treat as optional.
+    const address = body.address ?? null;
+    const city = body.city ?? null;
+    const zipCode = body.zipCode ?? null;
+    const country = body.country ?? "US";
 
     if (!locationId) {
       throw new Error("Location ID is required");
@@ -154,6 +156,31 @@ Deno.serve(async (req: Request) => {
         trialType: "2-week-unlimited",
       },
     });
+
+    // ─── Save pending trial_signups row so we can match on the webhook ───
+    // The stripe-webhook function will UPDATE this row to payment_status='completed'
+    // when the customer finishes paying. Gives us a record of every abandoned
+    // checkout, not just successful payments. Non-blocking — if insert fails,
+    // we still return the checkout URL so the customer can pay.
+    try {
+      const { error: signupErr } = await supabase.from("trial_signups").insert({
+        name: customerName ?? null,
+        email: customerEmail ?? null,
+        phone: customerPhone ?? null,
+        address: address,
+        city: city,
+        zip_code: zipCode,
+        country: country,
+        newsletter_opted_in: !!newsletter,
+        location_id: locationId,
+        stripe_session_id: session.id,
+        payment_status: "pending",
+      });
+      if (signupErr) console.error("pending trial_signups insert failed:", signupErr.message);
+      else console.log("pending trial_signups row saved for session", session.id);
+    } catch (e) {
+      console.error("pending trial_signups insert exception:", e);
+    }
 
     return new Response(
       JSON.stringify({
