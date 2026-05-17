@@ -138,11 +138,6 @@ export default function LocationTrialSignup() {
     fullName: '',
     email: '',
     phone: '',
-    address: '',
-    city: '',
-    zipCode: '',
-    country: 'US',
-    termsAccepted: false,
     newsletter: false,
   });
 
@@ -152,14 +147,6 @@ export default function LocationTrialSignup() {
 
   const key = (locationParam ?? '').toLowerCase();
   const location = LOCATIONS[key];
-
-  // Pre-fill city to match the gym's city to save the user a step
-  useEffect(() => {
-    if (location && !formData.city) {
-      setFormData(prev => ({ ...prev, city: location.city }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location?.slug]);
 
   // Per-gym Meta Pixel — load that gym's pixel + fire PageView on mount.
   // Cleanup removes the script when navigating away so visiting a different
@@ -187,11 +174,6 @@ export default function LocationTrialSignup() {
     e.preventDefault();
     setError('');
 
-    if (!formData.termsAccepted) {
-      setError('Please agree to the trial terms before continuing.');
-      return;
-    }
-
     setIsProcessing(true);
 
     // Meta Pixel — fire Lead the moment they submit (counts pre-checkout)
@@ -218,10 +200,6 @@ export default function LocationTrialSignup() {
           customerEmail: formData.email,
           customerName: formData.fullName,
           customerPhone: formData.phone,
-          address: formData.address,
-          city: formData.city,
-          zipCode: formData.zipCode,
-          country: formData.country,
           newsletter: formData.newsletter,
         }),
       });
@@ -418,65 +396,14 @@ export default function LocationTrialSignup() {
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Address</label>
-                    <input
-                      type="text"
-                      name="address"
-                      value={formData.address}
-                      onChange={handleChange}
-                      required
-                      autoComplete="street-address"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900"
-                    />
-                  </div>
-
-                  <div className="grid sm:grid-cols-3 gap-4">
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">City</label>
-                      <input
-                        type="text"
-                        name="city"
-                        value={formData.city}
-                        onChange={handleChange}
-                        required
-                        autoComplete="address-level2"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Zip</label>
-                      <input
-                        type="text"
-                        name="zipCode"
-                        value={formData.zipCode}
-                        onChange={handleChange}
-                        required
-                        autoComplete="postal-code"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 pt-2">
-                    <label className="flex items-start gap-2 cursor-pointer text-sm text-gray-700">
-                      <input
-                        type="checkbox"
-                        name="termsAccepted"
-                        checked={formData.termsAccepted}
-                        onChange={handleChange}
-                        required
-                        className="mt-0.5 w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
-                      />
-                      <span>I agree to the trial terms. Trial expires 14 days from purchase.</span>
-                    </label>
-                    <label className="flex items-start gap-2 cursor-pointer text-sm text-gray-700">
+                  <div className="pt-3">
+                    <label className="flex items-start gap-3 cursor-pointer text-sm text-gray-700 py-2 min-h-[44px]">
                       <input
                         type="checkbox"
                         name="newsletter"
                         checked={formData.newsletter}
                         onChange={handleChange}
-                        className="mt-0.5 w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                        className="mt-0.5 w-5 h-5 text-red-600 border-gray-300 rounded focus:ring-red-500"
                       />
                       <span>Send me class schedules and updates</span>
                     </label>

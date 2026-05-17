@@ -1,29 +1,31 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import ScrollToTop from './components/ScrollToTop';
-import Home from './pages/Home';
-import About from './pages/About';
-import FAQ from './pages/FAQ';
-import Blog from './pages/Blog';
-import Careers from './pages/Careers';
-import Franchising from './pages/Franchising';
-import Testimonials from './pages/Testimonials';
-import Contact from './pages/Contact';
-import Locations from './pages/Locations';
-import LocationDetail from './pages/LocationDetail';
-import Pricing from './pages/Pricing';
-import Classes from './pages/Classes';
-import ClassDetail from './pages/ClassDetail';
-import MyBookings from './pages/MyBookings';
-import TrialSignup from './pages/TrialSignup';
+// Eager: the LCP target for paid ad traffic.
 import LocationTrialSignup from './pages/LocationTrialSignup';
 import TrialSuccess from './pages/TrialSuccess';
-import Terms from './pages/Terms';
-import Privacy from './pages/Privacy';
-import Legal from './pages/Legal';
+// Lazy: everything else — split out of the trial-page bundle.
+const Home = lazy(() => import('./pages/Home'));
+const About = lazy(() => import('./pages/About'));
+const FAQ = lazy(() => import('./pages/FAQ'));
+const Blog = lazy(() => import('./pages/Blog'));
+const Careers = lazy(() => import('./pages/Careers'));
+const Franchising = lazy(() => import('./pages/Franchising'));
+const Testimonials = lazy(() => import('./pages/Testimonials'));
+const Contact = lazy(() => import('./pages/Contact'));
+const Locations = lazy(() => import('./pages/Locations'));
+const LocationDetail = lazy(() => import('./pages/LocationDetail'));
+const Pricing = lazy(() => import('./pages/Pricing'));
+const Classes = lazy(() => import('./pages/Classes'));
+const ClassDetail = lazy(() => import('./pages/ClassDetail'));
+const MyBookings = lazy(() => import('./pages/MyBookings'));
+const TrialSignup = lazy(() => import('./pages/TrialSignup'));
+const Terms = lazy(() => import('./pages/Terms'));
+const Privacy = lazy(() => import('./pages/Privacy'));
+const Legal = lazy(() => import('./pages/Legal'));
 
 function ScrollProgress() {
   const [width, setWidth] = useState(0);
@@ -47,6 +49,7 @@ function App() {
         <ScrollProgress />
         <ScrollToTop />
         <Header />
+        <Suspense fallback={null}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/about" element={<About />} />
@@ -69,6 +72,7 @@ function App() {
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/legal" element={<Legal />} />
         </Routes>
+        </Suspense>
         <Footer />
       </div>
     </Router>

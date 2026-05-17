@@ -17,18 +17,20 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    const body = await req.json();
     const {
       locationId,
       locationName,
       customerEmail,
       customerName,
       customerPhone,
-      address,
-      city,
-      zipCode,
-      country,
-      newsletter
-    } = await req.json();
+      newsletter,
+    } = body;
+    // Address fields no longer collected on the form; treat as optional.
+    const address = body.address ?? null;
+    const city = body.city ?? null;
+    const zipCode = body.zipCode ?? null;
+    const country = body.country ?? "US";
 
     if (!locationId) {
       throw new Error("Location ID is required");
@@ -57,6 +59,10 @@ Deno.serve(async (req: Request) => {
     // This captures every trial form submission into the BBB ERP, so abandoned
     // checkouts can be chased by win-back automation. Non-blocking — if the
     // insert fails for any reason, we still proceed to checkout.
+    //
+    // Note: leads.email has no unique constraint (Pancham imports allow dup
+    // emails across studios), so we manually upsert: try UPDATE first, fall
+    // back to INSERT if no row matched.
     try {
       const studioSlug = (location.name ?? "")
         .toLowerCase()
@@ -68,22 +74,37 @@ Deno.serve(async (req: Request) => {
         country ? `Country: ${country}` : null,
         newsletter ? "Newsletter: yes" : null,
       ].filter(Boolean);
-      const { error: leadErr } = await supabase
-        .from("leads")
-        .upsert(
-          {
-            full_name: customerName ?? null,
-            email: customerEmail ?? null,
-            phone: customerPhone ?? null,
-            source: `trial-form-${studioSlug}`,
-            stage: "pending_checkout",
-            studio_slug: studioSlug,
-            last_touch_at: new Date().toISOString(),
-            notes: noteParts.join(" · ") || null,
-          },
-          { onConflict: "email" }
-        );
-      if (leadErr) console.error("lead upsert failed:", leadErr.message);
+      const leadFields = {
+        full_name: customerName ?? null,
+        phone: customerPhone ?? null,
+        source: `trial-form-${studioSlug}`,
+        stage: "pending_checkout",
+        studio_slug: studioSlug || null,
+        last_touch_at: new Date().toISOString(),
+        notes: noteParts.join(" · ") || null,
+      };
+
+      if (customerEmail) {
+        // Try UPDATE first (handles re-submissions, Pancham contacts)
+        const { data: updated, error: updErr } = await supabase
+          .from("leads")
+          .update(leadFields)
+          .eq("email", customerEmail)
+          .select("id");
+
+        if (updErr) {
+          console.error("lead update failed:", updErr.message);
+        } else if (!updated || updated.length === 0) {
+          // No existing lead with that email — insert a new one
+          const { error: insErr } = await supabase
+            .from("leads")
+            .insert({ ...leadFields, email: customerEmail });
+          if (insErr) console.error("lead insert failed:", insErr.message);
+          else console.log("new lead inserted for trial form submission");
+        } else {
+          console.log(`lead updated (${updated.length} row) for trial form submission`);
+        }
+      }
     } catch (e) {
       console.error("lead upsert exception:", e);
     }
@@ -135,6 +156,31 @@ Deno.serve(async (req: Request) => {
         trialType: "2-week-unlimited",
       },
     });
+
+    // ─── Save pending trial_signups row so we can match on the webhook ───
+    // The stripe-webhook function will UPDATE this row to payment_status='completed'
+    // when the customer finishes paying. Gives us a record of every abandoned
+    // checkout, not just successful payments. Non-blocking — if insert fails,
+    // we still return the checkout URL so the customer can pay.
+    try {
+      const { error: signupErr } = await supabase.from("trial_signups").insert({
+        name: customerName ?? null,
+        email: customerEmail ?? null,
+        phone: customerPhone ?? null,
+        address: address,
+        city: city,
+        zip_code: zipCode,
+        country: country,
+        newsletter_opted_in: !!newsletter,
+        location_id: locationId,
+        stripe_session_id: session.id,
+        payment_status: "pending",
+      });
+      if (signupErr) console.error("pending trial_signups insert failed:", signupErr.message);
+      else console.log("pending trial_signups row saved for session", session.id);
+    } catch (e) {
+      console.error("pending trial_signups insert exception:", e);
+    }
 
     return new Response(
       JSON.stringify({
