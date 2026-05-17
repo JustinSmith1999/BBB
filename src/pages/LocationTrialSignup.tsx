@@ -415,6 +415,10 @@ export default function LocationTrialSignup() {
                     </div>
                   )}
 
+                  <p className="text-xs text-gray-600 leading-relaxed">
+                    By clicking <strong>Continue to Secure Checkout</strong>, you agree to receive transactional SMS from Better Body Bootcamp about your trial and membership at the phone number provided. Message frequency varies; msg &amp; data rates may apply. Reply HELP for help or STOP to opt out. See our <a href="/privacy" className="underline">Privacy Policy</a> and <a href="/terms" className="underline">Terms</a>.
+                  </p>
+
                   <button
                     type="submit"
                     disabled={isProcessing}
