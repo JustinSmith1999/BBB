@@ -57,6 +57,10 @@ Deno.serve(async (req: Request) => {
     // This captures every trial form submission into the BBB ERP, so abandoned
     // checkouts can be chased by win-back automation. Non-blocking — if the
     // insert fails for any reason, we still proceed to checkout.
+    //
+    // Note: leads.email has no unique constraint (Pancham imports allow dup
+    // emails across studios), so we manually upsert: try UPDATE first, fall
+    // back to INSERT if no row matched.
     try {
       const studioSlug = (location.name ?? "")
         .toLowerCase()
@@ -68,22 +72,37 @@ Deno.serve(async (req: Request) => {
         country ? `Country: ${country}` : null,
         newsletter ? "Newsletter: yes" : null,
       ].filter(Boolean);
-      const { error: leadErr } = await supabase
-        .from("leads")
-        .upsert(
-          {
-            full_name: customerName ?? null,
-            email: customerEmail ?? null,
-            phone: customerPhone ?? null,
-            source: `trial-form-${studioSlug}`,
-            stage: "pending_checkout",
-            studio_slug: studioSlug,
-            last_touch_at: new Date().toISOString(),
-            notes: noteParts.join(" · ") || null,
-          },
-          { onConflict: "email" }
-        );
-      if (leadErr) console.error("lead upsert failed:", leadErr.message);
+      const leadFields = {
+        full_name: customerName ?? null,
+        phone: customerPhone ?? null,
+        source: `trial-form-${studioSlug}`,
+        stage: "pending_checkout",
+        studio_slug: studioSlug || null,
+        last_touch_at: new Date().toISOString(),
+        notes: noteParts.join(" · ") || null,
+      };
+
+      if (customerEmail) {
+        // Try UPDATE first (handles re-submissions, Pancham contacts)
+        const { data: updated, error: updErr } = await supabase
+          .from("leads")
+          .update(leadFields)
+          .eq("email", customerEmail)
+          .select("id");
+
+        if (updErr) {
+          console.error("lead update failed:", updErr.message);
+        } else if (!updated || updated.length === 0) {
+          // No existing lead with that email — insert a new one
+          const { error: insErr } = await supabase
+            .from("leads")
+            .insert({ ...leadFields, email: customerEmail });
+          if (insErr) console.error("lead insert failed:", insErr.message);
+          else console.log("new lead inserted for trial form submission");
+        } else {
+          console.log(`lead updated (${updated.length} row) for trial form submission`);
+        }
+      }
     } catch (e) {
       console.error("lead upsert exception:", e);
     }
