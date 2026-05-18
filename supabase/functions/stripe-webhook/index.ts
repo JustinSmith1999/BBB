@@ -41,6 +41,27 @@ const TRIAL_NOTIFY_PHONES: Record<string, string[]> = {
   "astoria": [],
 };
 
+// QA MODE — while Justin vets the full notification suite (trial + comeback,
+// staff + customer, email + SMS), every outbound message redirects to these
+// addresses. Real recipients (gym inboxes, customer email, customer phone)
+// get nothing. The QA copy keeps the would-be recipient in the subject + body
+// banner + log so Justin can verify routing before flipping live.
+//
+// To go live (after approval): set both fields to null.
+const QA_OVERRIDE: { email: string | null; phone: string | null } = {
+  email: "Justin@J20solutions.com",
+  phone: "+16317086585", // Justin's cell
+};
+
+// Per-studio sender mailboxes. Resend accepts any address @betterbodybootcamp
+// .com because the parent domain is verified — no per-address setup needed.
+// Customer-facing confirmation emails come FROM this so replies are personal
+// and the mailbox stays the single source of truth per gym.
+function studioMailbox(studioSlug: string): string {
+  // bayside-foo-bar → baysidefoobar — matches the actual inboxes
+  return `${studioSlug.replace(/-/g, "")}@betterbodybootcamp.com`;
+}
+
 type Variant = "trial" | "special";
 
 // Variant config: subject lines, customer-facing copy, dollar amount, etc.
@@ -87,8 +108,8 @@ async function sendTrialEmail(studioSlug: string, variant: Variant, trial: {
   country?: string; newsletter_opted_in?: boolean;
   stripe_session_id: string; payment_date: string;
 }) {
-  const recipients = TRIAL_NOTIFY[studioSlug];
-  if (!recipients || recipients.length === 0) {
+  const realRecipients = TRIAL_NOTIFY[studioSlug];
+  if (!realRecipients || realRecipients.length === 0) {
     console.log(`No trial notify recipients for studio: ${studioSlug}`);
     return;
   }
@@ -97,6 +118,11 @@ async function sendTrialEmail(studioSlug: string, variant: Variant, trial: {
     console.error("RESEND_API_KEY not set; skipping trial notification email");
     return;
   }
+  // QA gate — route to Justin's inbox instead of the actual staff list
+  const recipients = QA_OVERRIDE.email ? [QA_OVERRIDE.email] : realRecipients;
+  const staffOverrideNotice = QA_OVERRIDE.email
+    ? `[QA REDIRECT] This staff alert would have gone to: ${realRecipients.join(", ")}`
+    : null;
   const cfg = variantConfig(variant);
   const studioName = studioSlug
     .split("-")
@@ -169,9 +195,11 @@ Stripe session: ${trial.stripe_session_id}
       body: JSON.stringify({
         from: "BBB Trials <trials@betterbodybootcamp.com>",
         to: recipients,
-        subject,
-        html,
-        text,
+        subject: staffOverrideNotice ? `[QA] ${subject}` : subject,
+        html: staffOverrideNotice
+          ? `<div style="font-family:ui-monospace,SFMono-Regular,monospace;background:#fff7e6;color:#7c4a03;padding:10px 14px;border-radius:6px;font-size:12px;margin:0 auto 16px;max-width:600px">${staffOverrideNotice}</div>${html}`
+          : html,
+        text: staffOverrideNotice ? `${staffOverrideNotice}\n\n${text}` : text,
         reply_to: trial.email || undefined,
       }),
     });
@@ -180,7 +208,12 @@ Stripe session: ${trial.stripe_session_id}
       console.error(`Resend send failed (${r.status}):`, body.slice(0, 400));
     } else {
       const body = await r.json();
-      console.log(`Trial notify sent to ${recipients.join(", ")} for ${studioSlug}:`, body.id);
+      console.log(
+        `Trial notify sent to ${recipients.join(", ")} for ${studioSlug}` +
+          (staffOverrideNotice ? ` (QA redirect — would have gone to ${realRecipients.join(", ")})` : "") +
+          `:`,
+        body.id,
+      );
     }
   } catch (e) {
     console.error("Resend send exception:", e);
@@ -212,16 +245,21 @@ async function sendTrialWelcomeSms(
     console.error("Twilio secrets missing; skipping welcome SMS");
     return;
   }
-  const to = toE164(trial.phone);
-  if (!to) {
+  const realTo = toE164(trial.phone);
+  if (!realTo && !QA_OVERRIDE.phone) {
     console.error(`Welcome SMS skipped — unparseable phone: ${trial.phone}`);
     return;
   }
+  // QA override — send to Justin's cell instead of the real customer
+  const to = QA_OVERRIDE.phone || realTo!;
+  const smsOverridePrefix = QA_OVERRIDE.phone && QA_OVERRIDE.phone !== realTo
+    ? `[QA→${realTo ?? "no#"}] `
+    : "";
   const firstName = (trial.name || "").trim().split(/\s+/)[0] || "there";
   const studioUrl = `https://betterbodybootcamp.com/schedule/${studioSlug}`;
   const cfg = variantConfig(variant);
   // Single 160-char SMS segment when possible.
-  const body = cfg.smsBody(firstName, studioName, studioUrl);
+  const body = smsOverridePrefix + cfg.smsBody(firstName, studioName, studioUrl);
 
   const auth = "Basic " + btoa(`${sid}:${token}`);
   try {
@@ -288,11 +326,19 @@ async function sendCustomerConfirmationEmail(
   const firstName = (trial.name || "").trim().split(/\s+/)[0] || "there";
   const scheduleUrl = `https://betterbodybootcamp.com/schedule/${studioSlug}`;
   const studioInfoUrl = `https://betterbodybootcamp.com/locations/${studioSlug}`;
-  const studioReplyTo = `${studioSlug.replace(/-/g, "")}@betterbodybootcamp.com`;
+  const studioMail = studioMailbox(studioSlug);
   const intro = variant === "special"
     ? `Welcome back to Better Body Bootcamp ${studioName}. Your 30-day comeback is locked in.`
     : `Welcome to Better Body Bootcamp ${studioName}. Your 2-week trial is locked in.`;
   const greeting = variant === "special" ? `Welcome back, ${firstName}` : `You're in, ${firstName}`;
+
+  // QA override — route ALL customer confirmations (trial + comeback) to
+  // Justin while we vet the flow. Trial and comeback both intercepted.
+  const realRecipient = trial.email;
+  const recipient = QA_OVERRIDE.email || realRecipient;
+  const overrideNotice = QA_OVERRIDE.email && realRecipient !== recipient
+    ? `[QA REDIRECT] This customer ${variant === "special" ? "welcome-back" : "welcome"} email would have gone to ${realRecipient}.`
+    : null;
 
   const html = `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:0;color:#111;background:#fff">
@@ -347,19 +393,29 @@ Questions? Reply to this email and it goes straight to your studio.
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: "Better Body Bootcamp <trials@betterbodybootcamp.com>",
-        to: [trial.email],
-        subject: cfg.customerSubject,
-        html,
-        text,
-        reply_to: studioReplyTo,
+        // FROM the studio's own mailbox so the customer sees a personal,
+        // gym-branded sender. Resend accepts any @betterbodybootcamp.com
+        // address because the parent domain is verified.
+        from: `Better Body Bootcamp ${studioName} <${studioMail}>`,
+        to: [recipient],
+        subject: overrideNotice ? `${cfg.customerSubject} [QA TEST]` : cfg.customerSubject,
+        html: overrideNotice
+          ? `<div style="font-family:ui-monospace,SFMono-Regular,monospace;background:#fff7e6;color:#7c4a03;padding:10px 14px;border-radius:6px;font-size:12px;margin:0 auto 16px;max-width:560px">${overrideNotice}</div>${html}`
+          : html,
+        text: overrideNotice ? `${overrideNotice}\n\n${text}` : text,
+        reply_to: studioMail,
       }),
     });
     if (!r.ok) {
       console.error(`Customer confirmation email failed (${r.status}):`, (await r.text()).slice(0, 400));
     } else {
       const body = await r.json();
-      console.log(`Customer confirmation email sent to ${trial.email}:`, body.id);
+      console.log(
+        `Customer confirmation email sent to ${recipient}` +
+          (overrideNotice ? ` (QA redirect — original: ${realRecipient})` : "") +
+          `:`,
+        body.id,
+      );
     }
   } catch (e) {
     console.error("Customer confirmation email exception:", e);
@@ -374,8 +430,14 @@ async function sendStaffSms(
   variant: Variant,
   trial: { name: string; phone: string; email: string },
 ) {
-  const phones = TRIAL_NOTIFY_PHONES[studioSlug] || [];
-  if (phones.length === 0) return; // configured per studio above
+  const realPhones = TRIAL_NOTIFY_PHONES[studioSlug] || [];
+  // QA override — bypass the per-studio map and send the staff ping to Justin
+  // so he can vet the copy. Once approved, fill in TRIAL_NOTIFY_PHONES.
+  const phones = QA_OVERRIDE.phone ? [QA_OVERRIDE.phone] : realPhones;
+  if (phones.length === 0) return;
+  const staffSmsOverridePrefix = QA_OVERRIDE.phone
+    ? `[QA] (would ping ${realPhones.join(", ") || "no#"}) `
+    : "";
   const sid = Deno.env.get("TWILIO_ACCOUNT_SID");
   const token = Deno.env.get("TWILIO_AUTH_TOKEN");
   const from = Deno.env.get("TWILIO_FROM_NUMBER");
@@ -385,7 +447,7 @@ async function sendStaffSms(
   }
   const cfg = variantConfig(variant);
   const customerLine = trial.name || trial.email || trial.phone || "(unknown)";
-  const body =
+  const body = staffSmsOverridePrefix +
     `${cfg.headerEmoji} New ${cfg.priceLabel} ${cfg.shortLabel} at ${studioName}: ` +
     `${customerLine}${trial.phone ? ` · ${trial.phone}` : ""}. ` +
     `Call today to book class 1. - BBB`;
@@ -551,7 +613,13 @@ Deno.serve(async (req: Request) => {
         .split("-")
         .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
         .join(" ");
+      const testSupabase = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      );
       try {
+        // Fire all 4 notifications. QA_OVERRIDE intercepts every one to Justin's
+        // email + cell so nothing actually reaches gyms or customers.
         await sendTrialEmail(studioSlug, testVariant, sample);
         await sendCustomerConfirmationEmail(
           studioSlug,
@@ -559,15 +627,34 @@ Deno.serve(async (req: Request) => {
           testVariant,
           { name: sample.name, email: sample.email, phone: sample.phone },
         );
+        await sendStaffSms(studioSlug, studioName, testVariant, {
+          name: sample.name, phone: sample.phone, email: sample.email,
+        });
+        await sendTrialWelcomeSms(
+          studioSlug,
+          studioName,
+          testVariant,
+          { name: sample.name, phone: sample.phone },
+          testSupabase,
+          // Fake UUID — .update() will silently no-op on no match
+          "00000000-0000-0000-0000-000000000000",
+        );
         return new Response(
           JSON.stringify({
             ok: true,
             mode: "test",
             studio: studioSlug,
             variant: testVariant,
-            staff_recipients: TRIAL_NOTIFY[studioSlug] ?? [],
-            customer_recipient: sample.email,
-            note: "Test emails queued via Resend (staff + customer). Check inboxes.",
+            qa_override: QA_OVERRIDE,
+            would_have_emailed_staff: TRIAL_NOTIFY[studioSlug] ?? [],
+            would_have_emailed_customer: sample.email,
+            would_have_texted_customer: sample.phone,
+            would_have_texted_staff: TRIAL_NOTIFY_PHONES[studioSlug] ?? [],
+            actually_sent_to: {
+              email: QA_OVERRIDE.email,
+              phone: QA_OVERRIDE.phone,
+            },
+            note: "All 4 notifications queued. QA_OVERRIDE intercepts to Justin only.",
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
