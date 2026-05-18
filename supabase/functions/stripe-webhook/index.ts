@@ -31,7 +31,57 @@ const TRIAL_NOTIFY: Record<string, string[]> = {
   ],
 };
 
-async function sendTrialEmail(studioSlug: string, trial: {
+// Per-studio cell numbers for staff SMS pings on new paid signups.
+// Empty arrays = SMS notify skipped for that studio. Drop E.164 numbers in to
+// enable (e.g. "+16315551234"). Front-desk + owner cells go here.
+const TRIAL_NOTIFY_PHONES: Record<string, string[]> = {
+  "bayside": [],
+  "fresh-meadows": [],
+  "williamsburg": [],
+  "astoria": [],
+};
+
+type Variant = "trial" | "special";
+
+// Variant config: subject lines, customer-facing copy, dollar amount, etc.
+// Both $49 trial and $129 comeback share the same checkout path — this just
+// flips the labels so the right thing reaches the right inbox/phone.
+function variantConfig(variant: Variant) {
+  if (variant === "special") {
+    return {
+      label: "Comeback Offer",
+      shortLabel: "Comeback",
+      durationLabel: "30 Days",
+      priceLabel: "$129",
+      headerEmoji: "🔥",
+      staffSubject: "🔥 New $129 Comeback Purchase",
+      customerSubject: "You're in — your 30-day comeback at Better Body Bootcamp",
+      smsIntro: "Welcome back to Better Body Bootcamp",
+      smsBody: (firstName: string, studioName: string, studioUrl: string) =>
+        `Hi ${firstName}! Welcome back to Better Body Bootcamp ${studioName}. ` +
+        `Your 30-day comeback is live — book your first class here: ${studioUrl} ` +
+        `So glad to see you again. - BBB`,
+      heroHex: "#b45309", // amber-700 (matches comeback page badge)
+    };
+  }
+  return {
+    label: "Trial",
+    shortLabel: "Trial",
+    durationLabel: "2 Weeks",
+    priceLabel: "$49",
+    headerEmoji: "🎉",
+    staffSubject: "🎉 New $49 Trial Purchase",
+    customerSubject: "You're in — your 2-week trial at Better Body Bootcamp",
+    smsIntro: "Welcome to Better Body Bootcamp",
+    smsBody: (firstName: string, studioName: string, studioUrl: string) =>
+      `Hi ${firstName}! Welcome to Better Body Bootcamp ${studioName}. ` +
+      `Your 2-week trial is live — book your first class here: ${studioUrl} ` +
+      `Reply with any questions, we're here to help. - BBB`,
+    heroHex: "#dc2626", // red-600
+  };
+}
+
+async function sendTrialEmail(studioSlug: string, variant: Variant, trial: {
   name: string; email: string; phone: string;
   address: string; city: string; zip_code: string;
   country?: string; newsletter_opted_in?: boolean;
@@ -47,11 +97,12 @@ async function sendTrialEmail(studioSlug: string, trial: {
     console.error("RESEND_API_KEY not set; skipping trial notification email");
     return;
   }
+  const cfg = variantConfig(variant);
   const studioName = studioSlug
     .split("-")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
-  const subject = `🎉 New $49 Trial Purchase · ${trial.name || "(no name)"} · ${studioName}`;
+  const subject = `${cfg.staffSubject} · ${trial.name || "(no name)"} · ${studioName}`;
   const addr = [trial.address, trial.city, trial.zip_code, trial.country].filter(Boolean).join(", ");
   const paidLocal = new Date(trial.payment_date).toLocaleString("en-US", {
     timeZone: "America/New_York",
@@ -68,8 +119,8 @@ async function sendTrialEmail(studioSlug: string, trial: {
 
   const html = `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#111">
-      <div style="background:#dc2626;color:#fff;padding:20px 24px;border-radius:10px 10px 0 0;margin:-24px -24px 0">
-        <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;opacity:0.9">New $49 Trial · ${studioName}</div>
+      <div style="background:${cfg.heroHex};color:#fff;padding:20px 24px;border-radius:10px 10px 0 0;margin:-24px -24px 0">
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;opacity:0.9">New ${cfg.priceLabel} ${cfg.label} · ${studioName}</div>
         <h2 style="margin:6px 0 0;font-size:24px;font-weight:800;letter-spacing:-0.02em">${trial.name || "(no name provided)"}</h2>
         <div style="font-size:13px;opacity:0.95;margin-top:4px">${paidLocal}</div>
       </div>
@@ -80,7 +131,8 @@ async function sendTrialEmail(studioSlug: string, trial: {
         <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Address</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0">${addr || "(not collected)"}</td></tr>
         <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Studio</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0;font-weight:600">${studioName}</td></tr>
         <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Paid</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0">${paidLocal}</td></tr>
-        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Source</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0">betterbodybootcamp.com/trial/${studioSlug}</td></tr>
+        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Source</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0">betterbodybootcamp.com/${variant === "special" ? "special" : "trial"}/${studioSlug}</td></tr>
+        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Offer</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0;font-weight:600">${cfg.priceLabel} · ${cfg.durationLabel}</td></tr>
         <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Newsletter opt-in</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0">${newsletter}</td></tr>
         <tr><td style="padding:8px 0;color:#666">Stripe session</td><td style="padding:8px 0;font-family:ui-monospace,SFMono-Regular,monospace;font-size:11px;color:#666;word-break:break-all"><a href="${stripeDashUrl}" style="color:#666;text-decoration:underline">${trial.stripe_session_id}</a></td></tr>
       </table>
@@ -93,7 +145,7 @@ async function sendTrialEmail(studioSlug: string, trial: {
       </div>
     </div>
   `;
-  const text = `🎉 NEW $49 TRIAL · ${studioName}
+  const text = `${cfg.headerEmoji} NEW ${cfg.priceLabel} ${cfg.label.toUpperCase()} · ${studioName}
 
 ${trial.name || "(no name)"}
 Email: ${trial.email || "—"}
@@ -102,7 +154,8 @@ Address: ${addr || "(not collected)"}
 Newsletter: ${newsletter}
 
 Paid: ${paidLocal}
-Source: betterbodybootcamp.com/trial/${studioSlug}
+Source: betterbodybootcamp.com/${variant === "special" ? "special" : "trial"}/${studioSlug}
+Offer: ${cfg.priceLabel} · ${cfg.durationLabel}
 Stripe session: ${trial.stripe_session_id}
 
 📞 Call ${trial.phone || "the customer"} today to book their first class.`;
@@ -147,6 +200,7 @@ function toE164(raw: string | null | undefined): string | null {
 async function sendTrialWelcomeSms(
   studioSlug: string,
   studioName: string,
+  variant: Variant,
   trial: { name: string; phone: string },
   supabase: any,
   trialSignupId: string,
@@ -164,12 +218,10 @@ async function sendTrialWelcomeSms(
     return;
   }
   const firstName = (trial.name || "").trim().split(/\s+/)[0] || "there";
-  const studioUrl = `https://betterbodybootcamp.com/locations/${studioSlug}`;
+  const studioUrl = `https://betterbodybootcamp.com/schedule/${studioSlug}`;
+  const cfg = variantConfig(variant);
   // Single 160-char SMS segment when possible.
-  const body =
-    `Hi ${firstName}! Welcome to Better Body Bootcamp ${studioName}. ` +
-    `Your 2-week trial is live — book your first class here: ${studioUrl} ` +
-    `Reply with any questions, we're here to help. - BBB`;
+  const body = cfg.smsBody(firstName, studioName, studioUrl);
 
   const auth = "Basic " + btoa(`${sid}:${token}`);
   try {
@@ -211,6 +263,157 @@ async function sendTrialWelcomeSms(
       .from("trial_signups")
       .update({ welcome_sms_error: msg.slice(0, 500) })
       .eq("id", trialSignupId);
+  }
+}
+
+// Send a branded confirmation email to the customer who just paid. Stripe
+// already sends a receipt, but this is the BBB-voiced "you're in, here's
+// what's next" email — booking link, what to bring, who to text.
+async function sendCustomerConfirmationEmail(
+  studioSlug: string,
+  studioName: string,
+  variant: Variant,
+  trial: { name: string; email: string; phone: string },
+) {
+  if (!trial.email) {
+    console.log("Customer confirmation email skipped — no email on record");
+    return;
+  }
+  const apiKey = Deno.env.get("RESEND_API_KEY");
+  if (!apiKey) {
+    console.error("RESEND_API_KEY not set; skipping customer confirmation email");
+    return;
+  }
+  const cfg = variantConfig(variant);
+  const firstName = (trial.name || "").trim().split(/\s+/)[0] || "there";
+  const scheduleUrl = `https://betterbodybootcamp.com/schedule/${studioSlug}`;
+  const studioInfoUrl = `https://betterbodybootcamp.com/locations/${studioSlug}`;
+  const studioReplyTo = `${studioSlug.replace(/-/g, "")}@betterbodybootcamp.com`;
+  const intro = variant === "special"
+    ? `Welcome back to Better Body Bootcamp ${studioName}. Your 30-day comeback is locked in.`
+    : `Welcome to Better Body Bootcamp ${studioName}. Your 2-week trial is locked in.`;
+  const greeting = variant === "special" ? `Welcome back, ${firstName}` : `You're in, ${firstName}`;
+
+  const html = `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:0;color:#111;background:#fff">
+      <div style="background:${cfg.heroHex};color:#fff;padding:28px 28px 24px;text-align:center">
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;opacity:0.85;margin-bottom:8px">Better Body Bootcamp · ${studioName}</div>
+        <h1 style="margin:0;font-size:28px;font-weight:800;letter-spacing:-0.02em;line-height:1.1">${greeting}.</h1>
+      </div>
+      <div style="padding:28px">
+        <p style="margin:0 0 18px;font-size:16px;line-height:1.55;color:#222">${intro}</p>
+        <p style="margin:0 0 22px;font-size:15px;line-height:1.6;color:#444">You'll get the most out of this if you book your <strong>first class today</strong>. The schedule updates live — pick a time that fits and we'll see you on the floor.</p>
+        <div style="text-align:center;margin:26px 0 28px">
+          <a href="${scheduleUrl}" style="background:${cfg.heroHex};color:#fff;text-decoration:none;font-weight:700;padding:14px 28px;border-radius:999px;display:inline-block;font-size:15px;letter-spacing:0.01em">Book My First Class →</a>
+        </div>
+        <div style="background:#fafafa;border:1px solid #eee;border-radius:12px;padding:18px 20px;margin-bottom:22px">
+          <div style="font-size:12px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px">What you've got</div>
+          <table style="width:100%;border-collapse:collapse;font-size:14px">
+            <tr><td style="padding:4px 0;color:#666;width:140px">Offer</td><td style="padding:4px 0;font-weight:600">${cfg.priceLabel} · ${cfg.durationLabel}</td></tr>
+            <tr><td style="padding:4px 0;color:#666">Studio</td><td style="padding:4px 0;font-weight:600">${studioName}</td></tr>
+            <tr><td style="padding:4px 0;color:#666">Access</td><td style="padding:4px 0">Unlimited classes for the full window</td></tr>
+          </table>
+        </div>
+        <div style="font-size:14px;color:#444;line-height:1.55">
+          <p style="margin:0 0 10px"><strong>First class tips:</strong> show up 10 minutes early, wear sneakers, bring water. Coach will get you set up.</p>
+          <p style="margin:0 0 10px">Questions? Just reply to this email — it goes straight to your studio.</p>
+        </div>
+        <div style="border-top:1px solid #eee;margin-top:24px;padding-top:18px;font-size:12px;color:#888;text-align:center">
+          <a href="${studioInfoUrl}" style="color:#888;text-decoration:underline">Studio info & directions</a>
+          &nbsp;·&nbsp; <a href="${scheduleUrl}" style="color:#888;text-decoration:underline">Class schedule</a>
+        </div>
+      </div>
+    </div>
+  `;
+  const text = `${greeting}.
+
+${intro}
+
+Book your first class today — schedule updates live:
+${scheduleUrl}
+
+What you've got:
+- Offer: ${cfg.priceLabel} · ${cfg.durationLabel}
+- Studio: ${studioName}
+- Access: Unlimited classes for the full window
+
+Tips: show up 10 minutes early, wear sneakers, bring water.
+
+Questions? Reply to this email and it goes straight to your studio.
+
+— Better Body Bootcamp`;
+  try {
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: "Better Body Bootcamp <trials@betterbodybootcamp.com>",
+        to: [trial.email],
+        subject: cfg.customerSubject,
+        html,
+        text,
+        reply_to: studioReplyTo,
+      }),
+    });
+    if (!r.ok) {
+      console.error(`Customer confirmation email failed (${r.status}):`, (await r.text()).slice(0, 400));
+    } else {
+      const body = await r.json();
+      console.log(`Customer confirmation email sent to ${trial.email}:`, body.id);
+    }
+  } catch (e) {
+    console.error("Customer confirmation email exception:", e);
+  }
+}
+
+// Ping front-desk / owner cells with a one-liner so they don't have to babysit
+// inbox. No-ops cleanly when TRIAL_NOTIFY_PHONES[studio] is empty.
+async function sendStaffSms(
+  studioSlug: string,
+  studioName: string,
+  variant: Variant,
+  trial: { name: string; phone: string; email: string },
+) {
+  const phones = TRIAL_NOTIFY_PHONES[studioSlug] || [];
+  if (phones.length === 0) return; // configured per studio above
+  const sid = Deno.env.get("TWILIO_ACCOUNT_SID");
+  const token = Deno.env.get("TWILIO_AUTH_TOKEN");
+  const from = Deno.env.get("TWILIO_FROM_NUMBER");
+  if (!sid || !token || !from) {
+    console.error("Twilio secrets missing; skipping staff SMS");
+    return;
+  }
+  const cfg = variantConfig(variant);
+  const customerLine = trial.name || trial.email || trial.phone || "(unknown)";
+  const body =
+    `${cfg.headerEmoji} New ${cfg.priceLabel} ${cfg.shortLabel} at ${studioName}: ` +
+    `${customerLine}${trial.phone ? ` · ${trial.phone}` : ""}. ` +
+    `Call today to book class 1. - BBB`;
+  const auth = "Basic " + btoa(`${sid}:${token}`);
+  for (const to of phones) {
+    const e164 = toE164(to);
+    if (!e164) {
+      console.error(`Staff SMS skipped — unparseable phone: ${to}`);
+      continue;
+    }
+    try {
+      const r = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,
+        {
+          method: "POST",
+          headers: { Authorization: auth, "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ From: from, To: e164, Body: body }).toString(),
+        },
+      );
+      const resp = await r.json();
+      if (!r.ok) {
+        console.error(`Staff SMS failed for ${e164}: ${resp?.message || `HTTP ${r.status}`}`);
+      } else {
+        console.log(`Staff SMS sent to ${e164} (sid=${resp?.sid})`);
+      }
+    } catch (e) {
+      console.error("Staff SMS exception:", e);
+    }
   }
 }
 
@@ -329,6 +532,9 @@ Deno.serve(async (req: Request) => {
         );
       }
       const studioSlug = String(parsedTest.test_trial_email).toLowerCase();
+      // Optional: { variant: 'trial' | 'special' } — defaults to 'trial' for
+      // back-compat. Use 'special' to preview the $129 comeback emails.
+      const testVariant: Variant = parsedTest.variant === "special" ? "special" : "trial";
       const sample = {
         name: "Test - Justin",
         email: "Justin@j20solutions.com",
@@ -341,15 +547,27 @@ Deno.serve(async (req: Request) => {
         stripe_session_id: "cs_test_SAMPLE_" + Date.now(),
         payment_date: new Date().toISOString(),
       };
+      const studioName = studioSlug
+        .split("-")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
       try {
-        await sendTrialEmail(studioSlug, sample);
+        await sendTrialEmail(studioSlug, testVariant, sample);
+        await sendCustomerConfirmationEmail(
+          studioSlug,
+          studioName,
+          testVariant,
+          { name: sample.name, email: sample.email, phone: sample.phone },
+        );
         return new Response(
           JSON.stringify({
             ok: true,
             mode: "test",
             studio: studioSlug,
-            recipients: TRIAL_NOTIFY[studioSlug] ?? [],
-            note: "Test email queued via Resend. Check the inboxes listed above.",
+            variant: testVariant,
+            staff_recipients: TRIAL_NOTIFY[studioSlug] ?? [],
+            customer_recipient: sample.email,
+            note: "Test emails queued via Resend (staff + customer). Check inboxes.",
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
@@ -458,6 +676,10 @@ Deno.serve(async (req: Request) => {
       const session = event.data.object as Stripe.Checkout.Session;
       const metadata = session.metadata || {};
 
+      // Variant flows through Checkout metadata. 'special' = $129 comeback,
+      // everything else (including missing) defaults to the $49 trial path.
+      const variant: Variant = metadata.priceVariant === "special" ? "special" : "trial";
+
       const trialData = {
         name: metadata.customerName || "",
         email: session.customer_email || metadata.email || "",
@@ -551,26 +773,52 @@ Deno.serve(async (req: Request) => {
         console.error("lead convert exception:", e);
       }
 
-      // ─── Fire off staff notification email via Resend ────────────────────
-      // Routes to per-studio recipients defined in TRIAL_NOTIFY at top of file.
+      const studioName = (location?.name as string) ||
+        studioSlug
+          .split("-")
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(" ");
+
+      // ─── Staff email via Resend (variant-aware copy + subject) ───────────
       try {
-        await sendTrialEmail(studioSlug, trialData);
+        await sendTrialEmail(studioSlug, variant, trialData);
       } catch (e) {
         console.error("trial notify email exception:", e);
       }
 
-      // ─── Welcome SMS to the new trial member via Twilio ──────────────────
+      // ─── Customer confirmation email via Resend ──────────────────────────
+      // Branded "you're in / welcome back" with booking CTA and tips. Stripe's
+      // receipt is plain — this is the BBB-voiced one.
+      try {
+        await sendCustomerConfirmationEmail(
+          studioSlug,
+          studioName,
+          variant,
+          { name: trialData.name, email: trialData.email, phone: trialData.phone },
+        );
+      } catch (e) {
+        console.error("customer confirmation email exception:", e);
+      }
+
+      // ─── Staff SMS pings via Twilio (no-op if no numbers configured) ─────
+      try {
+        await sendStaffSms(studioSlug, studioName, variant, {
+          name: trialData.name,
+          phone: trialData.phone,
+          email: trialData.email,
+        });
+      } catch (e) {
+        console.error("staff SMS exception:", e);
+      }
+
+      // ─── Welcome SMS to the new customer via Twilio (variant-aware) ──────
       // Friendly intro + per-studio booking link. Logs delivery on the row.
       if (data && data[0]) {
         try {
-          const studioName = (location?.name as string) ||
-            studioSlug
-              .split("-")
-              .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-              .join(" ");
           await sendTrialWelcomeSms(
             studioSlug,
             studioName,
+            variant,
             { name: trialData.name, phone: trialData.phone },
             supabase,
             data[0].id,
