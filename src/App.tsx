@@ -23,6 +23,8 @@ const Classes = lazy(() => import('./pages/Classes'));
 const ClassDetail = lazy(() => import('./pages/ClassDetail'));
 const MyBookings = lazy(() => import('./pages/MyBookings'));
 const TrialSignup = lazy(() => import('./pages/TrialSignup'));
+const LocationSpecialSignup = lazy(() => import('./pages/LocationSpecialSignup'));
+const LocationSchedule = lazy(() => import('./pages/LocationSchedule'));
 const Terms = lazy(() => import('./pages/Terms'));
 const Privacy = lazy(() => import('./pages/Privacy'));
 const Legal = lazy(() => import('./pages/Legal'));
@@ -67,6 +69,8 @@ function App() {
           <Route path="/bookings" element={<MyBookings />} />
           <Route path="/trial" element={<TrialSignup />} />
           <Route path="/trial/:location" element={<LocationTrialSignup />} />
+          <Route path="/special/:location" element={<LocationSpecialSignup />} />
+          <Route path="/schedule/:location" element={<LocationSchedule />} />
           <Route path="/trial-success" element={<TrialSuccess />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/privacy" element={<Privacy />} />
