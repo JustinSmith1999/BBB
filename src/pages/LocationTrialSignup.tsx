@@ -238,7 +238,9 @@ export default function LocationTrialSignup() {
     />
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
       {/* HERO ─────────────────────────────────────────────────────────────── */}
-      <div className="relative bg-gradient-to-br from-red-600 via-red-700 to-red-800 text-white pt-28 pb-12 sm:pt-32 sm:pb-16 lg:pt-36 lg:pb-20 overflow-hidden">
+      {/* Mobile-tight hero: shrunk type + tighter padding so the form's first
+          field clears the 390x844 fold. Desktop look unchanged. */}
+      <div className="relative bg-gradient-to-br from-red-600 via-red-700 to-red-800 text-white pt-20 pb-6 sm:pt-32 sm:pb-16 lg:pt-36 lg:pb-20 overflow-hidden">
         <div className="absolute inset-0 bg-black/10"></div>
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-20 left-10 w-72 h-72 bg-white rounded-full blur-3xl"></div>
@@ -246,18 +248,18 @@ export default function LocationTrialSignup() {
         </div>
 
         <div className="max-w-5xl mx-auto px-3 sm:px-6 lg:px-8 text-center relative z-10">
-          <span className="inline-block px-3 py-1 sm:px-4 sm:py-1.5 bg-white/15 backdrop-blur-sm rounded-full text-[10px] sm:text-xs font-bold tracking-[0.2em] uppercase border border-white/30 mb-8 sm:mb-10 whitespace-nowrap">
+          <span className="inline-block px-2.5 py-0.5 sm:px-4 sm:py-1.5 bg-white/15 backdrop-blur-sm rounded-full text-[10px] sm:text-xs font-bold tracking-[0.2em] uppercase border border-white/30 mb-3 sm:mb-10 whitespace-nowrap">
             {location.badge}
           </span>
-          <h1 className="font-black mb-4 sm:mb-6 leading-none tracking-tight">
-            <span className="block text-4xl sm:text-6xl md:text-7xl lg:text-8xl">TWO WEEKS</span>
-            <span className="block text-5xl sm:text-7xl md:text-8xl lg:text-[9rem] mt-2 sm:mt-3">FOR $49</span>
+          <h1 className="font-black mb-2 sm:mb-6 leading-none tracking-tight">
+            <span className="block text-2xl sm:text-6xl md:text-7xl lg:text-8xl">TWO WEEKS</span>
+            <span className="block text-3xl sm:text-7xl md:text-8xl lg:text-[9rem] mt-0.5 sm:mt-3">FOR $49</span>
           </h1>
-          <p className="text-sm sm:text-lg md:text-xl lg:text-2xl font-medium leading-snug sm:leading-relaxed max-w-md sm:max-w-3xl mx-auto mb-6 sm:mb-8 px-2">
+          <p className="text-xs sm:text-lg md:text-xl lg:text-2xl font-medium leading-snug sm:leading-relaxed max-w-md sm:max-w-3xl mx-auto mb-3 sm:mb-8 px-2">
             Unlimited classes at <span className="whitespace-nowrap">Better Body Bootcamp {location.name}</span>. Real training. Real results.
           </p>
 
-          <div className="flex flex-nowrap justify-center items-center gap-1.5 sm:gap-4 lg:gap-8 mt-6 sm:mt-10 px-1">
+          <div className="hidden sm:flex flex-nowrap justify-center items-center gap-1.5 sm:gap-4 lg:gap-8 mt-6 sm:mt-10 px-1">
             <div className="flex items-center justify-center gap-1 sm:gap-2 bg-white/10 backdrop-blur-sm px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg border border-white/20 flex-1 sm:flex-initial">
               <Clock className="w-3.5 h-3.5 sm:w-5 sm:h-5 flex-shrink-0" />
               <span className="font-semibold text-[10px] sm:text-base whitespace-nowrap">14 Days</span>
@@ -281,7 +283,9 @@ export default function LocationTrialSignup() {
           <div className="grid lg:grid-cols-5 gap-6 sm:gap-8 lg:gap-12">
 
             {/* LEFT: Why + What's Included + Studio Card */}
-            <div className="lg:col-span-2 space-y-5 sm:space-y-6">
+            {/* order-2 on mobile so the FORM lands above this block (form is order-1).
+                Desktop (lg) flips back to natural source order via lg:order-none. */}
+            <div className="lg:col-span-2 space-y-5 sm:space-y-6 order-2 lg:order-none">
               <div>
                 <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-4 sm:mb-6 text-gray-900 text-center lg:text-left">Why Better Body?</h2>
                 <div className="space-y-3 sm:space-y-4 max-w-xs sm:max-w-none mx-auto">
@@ -346,8 +350,10 @@ export default function LocationTrialSignup() {
             </div>
 
             {/* RIGHT: Form ─────────────────────────────────────────────── */}
-            <div className="lg:col-span-3">
-              <div className="bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-2xl p-4 sm:p-8">
+            {/* order-1 on mobile so the form sits at the TOP of the card,
+                directly under the shrunk hero. Sticky bottom CTA scrolls here. */}
+            <div className="lg:col-span-3 order-1 lg:order-none" id="trial-form">
+              <div className="bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-2xl p-4 sm:p-8 scroll-mt-24">
                 <div className="mb-5 sm:mb-6 text-center lg:text-left">
                   <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-1">Claim Your Trial</h2>
                   <p className="text-xs sm:text-sm text-gray-600">
@@ -442,6 +448,29 @@ export default function LocationTrialSignup() {
           </div>
         </div>
       </div>
+      {/* Bottom spacer so the sticky mobile CTA never covers form content */}
+      <div className="md:hidden h-20" aria-hidden="true"></div>
+    </div>
+
+    {/* STICKY MOBILE BOTTOM CTA ──────────────────────────────────────────
+        Mobile-only red bar with a single button that scrolls to the form.
+        Hidden on tablet+ (md:hidden). Sits above all content (z-50). */}
+    <div className="md:hidden fixed inset-x-0 bottom-0 z-50 bg-red-600 shadow-[0_-4px_20px_rgba(0,0,0,0.25)] border-t border-red-700/40 pb-[env(safe-area-inset-bottom)]">
+      <button
+        type="button"
+        onClick={() => {
+          const el = document.getElementById('trial-form');
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            const firstInput = el.querySelector<HTMLInputElement>('input[name="fullName"]');
+            if (firstInput) setTimeout(() => firstInput.focus({ preventScroll: true }), 450);
+          }
+        }}
+        className="w-full h-16 flex items-center justify-center gap-2 text-white font-black text-base uppercase tracking-wider active:bg-red-700 transition-colors"
+      >
+        Start My Trial · $49
+        <ArrowRight className="w-5 h-5" />
+      </button>
     </div>
     </>
   );
