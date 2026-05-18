@@ -27,15 +27,15 @@ UPDATE locations
 SET stripe_special_price_id = 'price_1TYOPMI3UZVjGNrB8XRW1ICc'
 WHERE lower(replace(name, ' ', '-')) = 'fresh-meadows';
 
--- Astoria LLC — paste price id when ready
--- UPDATE locations
--- SET stripe_special_price_id = 'price_…'
--- WHERE lower(replace(name, ' ', '-')) = 'astoria';
+-- Astoria LLC — Stripe account ends with BWwuqvKmt1
+UPDATE locations
+SET stripe_special_price_id = 'price_1TYOppBWwuqvKmt12sgVS0MY'
+WHERE lower(replace(name, ' ', '-')) = 'astoria';
 
--- Williamsburg LLC — paste price id when ready
--- UPDATE locations
--- SET stripe_special_price_id = 'price_…'
--- WHERE lower(replace(name, ' ', '-')) = 'williamsburg';
+-- Williamsburg LLC — Stripe account ends with LjlX8j0xc8
+UPDATE locations
+SET stripe_special_price_id = 'price_1TYOqJLjlX8j0xc8zJohmTin'
+WHERE lower(replace(name, ' ', '-')) = 'williamsburg';
 
 -- Sanity check — confirm the 4 studios + their special price id
 SELECT name, stripe_special_price_id
