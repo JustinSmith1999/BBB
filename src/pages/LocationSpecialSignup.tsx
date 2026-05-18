@@ -232,7 +232,7 @@ export default function LocationSpecialSignup() {
             </div>
             <div className="flex items-center justify-center gap-1 sm:gap-2 bg-white/10 backdrop-blur-sm px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg border border-white/20 flex-1 sm:flex-initial">
               <Zap className="w-3.5 h-3.5 sm:w-5 sm:h-5 flex-shrink-0" />
-              <span className="font-semibold text-[10px] sm:text-base whitespace-nowrap">Locked-In Rate</span>
+              <span className="font-semibold text-[10px] sm:text-base whitespace-nowrap">No Contract</span>
             </div>
           </div>
         </div>
@@ -259,8 +259,8 @@ export default function LocationSpecialSignup() {
                   <div className="flex items-start gap-3">
                     <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0 mt-0.5 sm:mt-1" />
                     <div>
-                      <h3 className="font-bold text-gray-900 mb-0.5 sm:mb-1 text-sm sm:text-base">Locked-in pricing</h3>
-                      <p className="text-gray-600 text-xs sm:text-sm">$129 for 30 days — half what new walk-ins pay.</p>
+                      <h3 className="font-bold text-gray-900 mb-0.5 sm:mb-1 text-sm sm:text-base">Half the walk-in rate</h3>
+                      <p className="text-gray-600 text-xs sm:text-sm">$129 for 30 days — about half what new walk-ins pay.</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
