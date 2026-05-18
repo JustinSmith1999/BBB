@@ -238,9 +238,11 @@ export default function LocationTrialSignup() {
     />
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
       {/* HERO ─────────────────────────────────────────────────────────────── */}
-      {/* Mobile-tight hero: shrunk type + tighter padding so the form's first
-          field clears the 390x844 fold. Desktop look unchanged. */}
-      <div className="relative bg-gradient-to-br from-red-600 via-red-700 to-red-800 text-white pt-20 pb-6 sm:pt-32 sm:pb-16 lg:pt-36 lg:pb-20 overflow-hidden">
+      {/* Mobile-balanced hero: enough top padding to clear the header marquee,
+          enough breathing room around the headline so it doesn't feel crushed,
+          and the form's first field still lands above the fold on 390x844
+          because the card now overlaps the hero by -mt-10. */}
+      <div className="relative bg-gradient-to-br from-red-600 via-red-700 to-red-800 text-white pt-32 pb-16 sm:pt-32 sm:pb-16 lg:pt-36 lg:pb-20 overflow-hidden">
         <div className="absolute inset-0 bg-black/10"></div>
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-20 left-10 w-72 h-72 bg-white rounded-full blur-3xl"></div>
@@ -248,14 +250,14 @@ export default function LocationTrialSignup() {
         </div>
 
         <div className="max-w-5xl mx-auto px-3 sm:px-6 lg:px-8 text-center relative z-10">
-          <span className="inline-block px-2.5 py-0.5 sm:px-4 sm:py-1.5 bg-white/15 backdrop-blur-sm rounded-full text-[10px] sm:text-xs font-bold tracking-[0.2em] uppercase border border-white/30 mb-3 sm:mb-10 whitespace-nowrap">
+          <span className="inline-block px-3 py-1 sm:px-4 sm:py-1.5 bg-white/15 backdrop-blur-sm rounded-full text-[10px] sm:text-xs font-bold tracking-[0.2em] uppercase border border-white/30 mb-5 sm:mb-10 whitespace-nowrap">
             {location.badge}
           </span>
-          <h1 className="font-black mb-2 sm:mb-6 leading-none tracking-tight">
-            <span className="block text-2xl sm:text-6xl md:text-7xl lg:text-8xl">TWO WEEKS</span>
-            <span className="block text-3xl sm:text-7xl md:text-8xl lg:text-[9rem] mt-0.5 sm:mt-3">FOR $49</span>
+          <h1 className="font-black mb-3 sm:mb-6 leading-[0.95] tracking-tight">
+            <span className="block text-3xl sm:text-6xl md:text-7xl lg:text-8xl">TWO WEEKS</span>
+            <span className="block text-4xl sm:text-7xl md:text-8xl lg:text-[9rem] mt-1 sm:mt-3">FOR $49</span>
           </h1>
-          <p className="text-xs sm:text-lg md:text-xl lg:text-2xl font-medium leading-snug sm:leading-relaxed max-w-md sm:max-w-3xl mx-auto mb-3 sm:mb-8 px-2">
+          <p className="text-sm sm:text-lg md:text-xl lg:text-2xl font-medium leading-snug sm:leading-relaxed max-w-md sm:max-w-3xl mx-auto mb-2 sm:mb-8 px-2">
             Unlimited classes at <span className="whitespace-nowrap">Better Body Bootcamp {location.name}</span>. Real training. Real results.
           </p>
 
@@ -277,7 +279,10 @@ export default function LocationTrialSignup() {
       </div>
 
       {/* MAIN CARD ────────────────────────────────────────────────────────── */}
-      <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 -mt-4 sm:-mt-8 relative z-20">
+      {/* Bigger negative-margin overlap on mobile so the form bleeds up into
+          the hero — gives the form first-input a real chance above the fold
+          without crushing the hero typography. */}
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 -mt-12 sm:-mt-8 relative z-20">
         <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl p-4 sm:p-10 lg:p-12 mb-8 sm:mb-12">
 
           <div className="grid lg:grid-cols-5 gap-6 sm:gap-8 lg:gap-12">
@@ -448,8 +453,9 @@ export default function LocationTrialSignup() {
           </div>
         </div>
       </div>
-      {/* Bottom spacer so the sticky mobile CTA never covers form content */}
-      <div className="md:hidden h-20" aria-hidden="true"></div>
+      {/* Bottom spacer so the sticky mobile CTA never covers form content.
+          h-24 = 96px gives clearance for 64px button + safe-area + breathing. */}
+      <div className="md:hidden h-24" aria-hidden="true"></div>
     </div>
 
     {/* STICKY MOBILE BOTTOM CTA ──────────────────────────────────────────
