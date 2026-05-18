@@ -109,6 +109,40 @@ Deno.serve(async (req: Request) => {
       console.error("lead upsert exception:", e);
     }
 
+    // ─── Fix #9: Insert pending trial_signups row BEFORE the Stripe call ─
+    // Earlier this happened AFTER Stripe — if the DB write failed the customer
+    // could pay and we'd have no pending row for the webhook to match on. Now
+    // we write first (without session_id), then PATCH with the session ID once
+    // Stripe returns. If the Stripe call fails we leave a pending row tagged
+    // for retry / cleanup.
+    let pendingRowId: string | null = null;
+    try {
+      const { data: pending, error: signupErr } = await supabase
+        .from("trial_signups")
+        .insert({
+          name: customerName ?? null,
+          email: customerEmail ?? null,
+          phone: customerPhone ?? null,
+          address: address,
+          city: city,
+          zip_code: zipCode,
+          country: country,
+          newsletter_opted_in: !!newsletter,
+          location_id: locationId,
+          payment_status: "pending",
+        })
+        .select("id")
+        .single();
+      if (signupErr) {
+        console.error("pre-Stripe trial_signups insert failed:", signupErr.message);
+      } else if (pending) {
+        pendingRowId = pending.id;
+        console.log("pre-Stripe pending row saved:", pendingRowId);
+      }
+    } catch (e) {
+      console.error("pre-Stripe trial_signups insert exception:", e);
+    }
+
     const stripe = new Stripe(location.stripe_secret_key, {
       apiVersion: "2024-12-18.acacia",
     });
@@ -131,6 +165,12 @@ Deno.serve(async (req: Request) => {
       },
     });
 
+    // Fix Justin batch 2 #3: defensive null guard so cancel_url never crashes
+    // if locationName is missing from the request body.
+    const cancelSlug = (locationName ?? location.name ?? "")
+      .toLowerCase()
+      .replace(/\s+/g, "-");
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: [
@@ -141,45 +181,51 @@ Deno.serve(async (req: Request) => {
       ],
       mode: "payment",
       success_url: `${req.headers.get("origin")}/trial-success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${req.headers.get("origin")}/locations/${locationName.toLowerCase().replace(/\s+/g, '-')}`,
+      cancel_url: `${req.headers.get("origin")}/locations/${cancelSlug}`,
       customer: customer.id,
       metadata: {
         locationId,
-        locationName,
+        locationName: locationName ?? location.name ?? "",
         customerName,
         customerPhone,
+        // Fix #8: include email in metadata so the webhook can fall back to it
+        // when session.customer_email is null (often the case).
+        email: customerEmail ?? "",
         address,
         city,
         zipCode,
         country,
         newsletter: newsletter ? "true" : "false",
         trialType: "2-week-unlimited",
+        trialSignupId: pendingRowId ?? "",
       },
     });
 
-    // ─── Save pending trial_signups row so we can match on the webhook ───
-    // The stripe-webhook function will UPDATE this row to payment_status='completed'
-    // when the customer finishes paying. Gives us a record of every abandoned
-    // checkout, not just successful payments. Non-blocking — if insert fails,
-    // we still return the checkout URL so the customer can pay.
-    try {
-      const { error: signupErr } = await supabase.from("trial_signups").insert({
-        name: customerName ?? null,
-        email: customerEmail ?? null,
-        phone: customerPhone ?? null,
-        address: address,
-        city: city,
-        zip_code: zipCode,
-        country: country,
-        newsletter_opted_in: !!newsletter,
-        location_id: locationId,
-        stripe_session_id: session.id,
-        payment_status: "pending",
-      });
-      if (signupErr) console.error("pending trial_signups insert failed:", signupErr.message);
-      else console.log("pending trial_signups row saved for session", session.id);
-    } catch (e) {
-      console.error("pending trial_signups insert exception:", e);
+    // ─── Patch the pending row with the Stripe session id so the webhook can
+    // match on it. If the pre-insert failed above, fall back to a fresh insert
+    // here so we never lose a paid trial.
+    if (pendingRowId) {
+      const { error: updErr } = await supabase
+        .from("trial_signups")
+        .update({ stripe_session_id: session.id })
+        .eq("id", pendingRowId);
+      if (updErr) console.error("trial_signups session_id patch failed:", updErr.message);
+    } else {
+      try {
+        const { error: fallbackErr } = await supabase.from("trial_signups").insert({
+          name: customerName ?? null,
+          email: customerEmail ?? null,
+          phone: customerPhone ?? null,
+          address, city, zip_code: zipCode, country,
+          newsletter_opted_in: !!newsletter,
+          location_id: locationId,
+          stripe_session_id: session.id,
+          payment_status: "pending",
+        });
+        if (fallbackErr) console.error("trial_signups fallback insert failed:", fallbackErr.message);
+      } catch (e) {
+        console.error("trial_signups fallback insert exception:", e);
+      }
     }
 
     return new Response(

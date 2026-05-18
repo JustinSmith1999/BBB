@@ -77,7 +77,23 @@ async function fetchCallsForAssistant(
     return { calls: [], status: r.status, error: txt.slice(0, 300) };
   }
   const data = await r.json();
-  return { calls: Array.isArray(data) ? data : [], status: 200 };
+  // Fix #15: Vapi has shipped both bare-array and {data: [...]} shapes over
+  // time. Handle both and log loudly when the shape changes so we catch
+  // future envelope shifts before they silently zero-out our dashboards.
+  let calls: any[] = [];
+  if (Array.isArray(data)) {
+    calls = data;
+  } else if (Array.isArray((data as any)?.data)) {
+    calls = (data as any).data;
+  } else if (Array.isArray((data as any)?.results)) {
+    calls = (data as any).results;
+  } else {
+    console.warn(
+      `Vapi response unexpected shape for assistant ${assistantId}; sample:`,
+      JSON.stringify(data).slice(0, 300),
+    );
+  }
+  return { calls, status: 200 };
 }
 
 serve(async (req) => {

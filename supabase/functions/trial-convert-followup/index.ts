@@ -41,6 +41,22 @@ function firstName(full: string): string {
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
 
+  // Fix #12: Auth gate. Reject if the caller doesn't present either:
+  //   (a) the FUNCTION_SHARED_SECRET in `x-bbb-secret` header, OR
+  //   (b) the project SUPABASE_SERVICE_ROLE_KEY in `Authorization: Bearer ...`
+  // This prevents anyone on the internet from calling buy_tollfree (charges
+  // real money) or firing production SMS to customers.
+  const SHARED_SECRET = Deno.env.get('FUNCTION_SHARED_SECRET') ?? '';
+  const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const presentedSecret = req.headers.get('x-bbb-secret') ?? '';
+  const presentedBearer = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
+  const isAuthorized =
+    (SHARED_SECRET && presentedSecret === SHARED_SECRET) ||
+    (SERVICE_ROLE && presentedBearer === SERVICE_ROLE);
+  if (!isAuthorized) {
+    return json({ ok: false, error: 'unauthorized — provide x-bbb-secret header or service-role bearer' }, 401);
+  }
+
   const body: {
     dry_run?: boolean;
     min_visits?: number;
@@ -61,6 +77,114 @@ serve(async (req) => {
     return json({ ok: false, error: 'Twilio secrets not set' }, 500);
   }
   const auth0 = 'Basic ' + btoa(`${sid}:${token}`);
+
+  // ─── Update TF number's SmsUrl + StatusCallback to point at our webhooks
+  // POST { "set_webhooks": true, "phone": "+18772860293" }
+  if ((body as any).set_webhooks) {
+    const targetPhone = (body as any).phone || '+18772860293';
+    const lookupR = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${sid}/IncomingPhoneNumbers.json?PhoneNumber=${encodeURIComponent(targetPhone)}`,
+      { headers: { Authorization: auth0 } },
+    );
+    const lookup = await lookupR.json();
+    const numSid = lookup?.incoming_phone_numbers?.[0]?.sid;
+    if (!numSid) {
+      return json({ ok: false, error: `phone ${targetPhone} not found in account` }, 404);
+    }
+    const projectBase = 'https://uracuwugpxqjfgtuobal.supabase.co/functions/v1';
+    const params = new URLSearchParams({
+      SmsUrl: `${projectBase}/twilio-inbound-sms`,
+      SmsMethod: 'POST',
+      StatusCallback: `${projectBase}/twilio-status-webhook`,
+      StatusCallbackMethod: 'POST',
+    });
+    const updR = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${sid}/IncomingPhoneNumbers/${numSid}.json`,
+      {
+        method: 'POST',
+        headers: { Authorization: auth0, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+      },
+    );
+    const updB = await updR.json();
+    return json({
+      ok: updR.ok,
+      phone: updB?.phone_number,
+      sms_url: updB?.sms_url,
+      status_callback: updB?.status_callback,
+      error: updR.ok ? null : (updB?.message || `HTTP ${updR.status}`),
+    }, updR.ok ? 200 : 500);
+  }
+
+  // ─── Submit toll-free verification to carriers via Twilio API ─────────
+  // POST { "submit_tf_verification": true, "phone": "+18772860293" }
+  if ((body as any).submit_tf_verification) {
+    const targetPhone = (body as any).phone || '+18772860293';
+    const listR = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${sid}/IncomingPhoneNumbers.json?PhoneNumber=${encodeURIComponent(targetPhone)}`,
+      { headers: { Authorization: auth0 } }
+    );
+    const listB = await listR.json();
+    const numberSid = listB?.incoming_phone_numbers?.[0]?.sid;
+    if (!numberSid) {
+      return json({ ok: false, step: 'lookup_sid', error: `phone ${targetPhone} not found in account`, raw: listB }, 404);
+    }
+    const params = new URLSearchParams();
+    params.set('BusinessName', 'Bayside BB LLC');
+    params.set('BusinessWebsite', 'https://betterbodybootcamp.com');
+    params.set('NotificationEmail', 'Justin@j20solutions.com');
+    params.append('UseCaseCategories', 'CUSTOMER_CARE');
+    params.append('UseCaseCategories', 'ACCOUNT_NOTIFICATIONS');
+    params.set('UseCaseSummary',
+      'Transactional SMS to fitness studio members who paid for a $49 two-week trial on betterbodybootcamp.com/trial/{studio}. ' +
+      'Two message types: (1) a welcome SMS with a booking link sent within seconds of Stripe payment confirmation, and ' +
+      '(2) a follow-up SMS after the member has checked into 2 classes, asking if they want to convert to a monthly membership. ' +
+      'All recipients consent by checking an explicit SMS opt-in checkbox on the paid trial form before submitting.'
+    );
+    params.set('ProductionMessageSample',
+      'Hi Justin! Welcome to Better Body Bootcamp Williamsburg. Your 2-week trial is live — book your first class here: https://betterbodybootcamp.com/locations/williamsburg Reply with any questions, we\'re here to help. - BBB'
+    );
+    params.set('OptInType', 'WEB_FORM');
+    params.append('OptInImageUrls', 'https://betterbodybootcamp.com/trial/williamsburg');
+    params.append('OptInImageUrls', 'https://betterbodybootcamp.com/trial/bayside');
+    params.set('MessageVolume', '100');
+    params.set('TollfreePhoneNumberSid', numberSid);
+    params.set('BusinessStreetAddress', '34-47 Bell Blvd');
+    params.set('BusinessCity', 'Bayside');
+    params.set('BusinessStateProvinceRegion', 'NY');
+    params.set('BusinessPostalCode', '11361');
+    params.set('BusinessCountry', 'US');
+    params.set('BusinessContactFirstName', 'Justin');
+    params.set('BusinessContactLastName', 'Smith');
+    params.set('BusinessContactEmail', 'Justin@j20solutions.com');
+    params.set('BusinessContactPhone', '+16317086585');
+    params.set('BusinessType', 'PRIVATE_PROFIT');
+    params.set('BusinessRegistrationNumber', '39-2476325');
+    params.set('BusinessRegistrationAuthority', 'EIN');
+    params.set('BusinessRegistrationCountry', 'US');
+    params.set('BusinessIndustry', 'FITNESS');
+    params.set('AdditionalInformation',
+      'BBB is a fitness studio chain (4 NYC locations: Astoria, Bayside, Fresh Meadows, Williamsburg). ' +
+      'Bayside BB LLC (EIN 39-2476325) is the registered legal entity for this Twilio account. ' +
+      'SMS is transactional only — sent after paid Stripe purchase confirms consent. No marketing or promotional broadcasts.'
+    );
+
+    const vR = await fetch('https://messaging.twilio.com/v1/Tollfree/Verifications', {
+      method: 'POST',
+      headers: { Authorization: auth0, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const vB = await vR.json();
+    return json({
+      ok: vR.ok,
+      step: 'submit_verification',
+      tollfree_phone_sid: numberSid,
+      verification_sid: vB?.sid ?? null,
+      status: vB?.status ?? null,
+      twilio_error: vR.ok ? null : (vB?.message || vB?.detail || `HTTP ${vR.status}`),
+      raw: vR.ok ? undefined : vB,
+    }, vR.ok ? 200 : 500);
+  }
 
   // ─── Buy a toll-free number (search + purchase in one call) ───────────
   // POST { "buy_tollfree": true }  (optional: { area_code: "877" })
@@ -278,6 +402,8 @@ serve(async (req) => {
           .from('trial_signups')
           .update({
             convert_sms_sent_at: new Date().toISOString(),
+            convert_sms_sid: resBody?.sid ?? null,
+            convert_sms_last_status: resBody?.status ?? 'queued',
             convert_sms_error: null,
             visit_count_at_followup: c.visit_count,
           })

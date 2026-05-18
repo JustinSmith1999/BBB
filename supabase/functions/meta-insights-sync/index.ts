@@ -100,23 +100,28 @@ async function fetchInsights(
 
   const attempts: Array<{ kind: string; rows: number; status: number; sample?: unknown }> = [];
 
+  // Fix #11: propagate non-200 from ALL attempts so a token expiration
+  // (401/403) surfaces as an actual error instead of "no data". Previously
+  // only attempt 1 threw; attempts 2 + 3 swallowed errors silently.
   // Attempt 1: explicit time_range, per-day
   let q = `fields=${FIELDS}&time_increment=1&time_range=${encodeURIComponent(timeRange)}&level=account`;
   let a = await fetchInsightsAttempt(baseUrl, adAccountId, accessToken, q);
   attempts.push({ kind: `time_range_${windowDays}d_per_day`, rows: a.rows.length, status: a.status });
-  if (a.status >= 400) throw new Error(`Meta ${adAccountId}: HTTP ${a.status} ${JSON.stringify((a.raw as { error?: unknown })?.error ?? a.raw).slice(0, 400)}`);
+  if (a.status >= 400) throw new Error(`Meta ${adAccountId} attempt 1: HTTP ${a.status} ${JSON.stringify((a.raw as { error?: unknown })?.error ?? a.raw).slice(0, 400)}`);
   if (a.rows.length > 0) return { rows: a.rows, attempts };
 
   // Attempt 2: maximum date preset, per-day
   q = `fields=${FIELDS}&time_increment=1&date_preset=maximum&level=account`;
   a = await fetchInsightsAttempt(baseUrl, adAccountId, accessToken, q);
   attempts.push({ kind: 'maximum_per_day', rows: a.rows.length, status: a.status });
+  if (a.status >= 400) throw new Error(`Meta ${adAccountId} attempt 2: HTTP ${a.status} ${JSON.stringify((a.raw as { error?: unknown })?.error ?? a.raw).slice(0, 400)}`);
   if (a.rows.length > 0) return { rows: a.rows, attempts };
 
   // Attempt 3: today's aggregate
   q = `fields=${FIELDS}&date_preset=today&level=account`;
   a = await fetchInsightsAttempt(baseUrl, adAccountId, accessToken, q);
   attempts.push({ kind: 'today_aggregate', rows: a.rows.length, status: a.status, sample: a.raw });
+  if (a.status >= 400) throw new Error(`Meta ${adAccountId} attempt 3: HTTP ${a.status} ${JSON.stringify((a.raw as { error?: unknown })?.error ?? a.raw).slice(0, 400)}`);
   if (a.rows.length > 0) return { rows: a.rows, attempts };
 
   return { rows: [], attempts };
