@@ -278,10 +278,9 @@ export default function LocationTrialSignup() {
       </div>
 
       {/* MAIN CARD ────────────────────────────────────────────────────────── */}
-      {/* Bigger negative-margin overlap on mobile so the form bleeds up into
-          the hero — gives the form first-input a real chance above the fold
-          without crushing the hero typography. */}
-      <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 -mt-12 sm:-mt-8 relative z-20">
+      {/* No overlap on mobile so the hero subtitle is fully visible. Desktop
+          keeps the -mt-8 lift for the existing layered look. */}
+      <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 mt-0 sm:-mt-8 relative z-20">
         <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl p-4 sm:p-10 lg:p-12 mb-8 sm:mb-12">
 
           <div className="grid lg:grid-cols-5 gap-6 sm:gap-8 lg:gap-12">
