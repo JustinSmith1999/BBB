@@ -31,6 +31,11 @@ Deno.serve(async (req: Request) => {
     const city = body.city ?? null;
     const zipCode = body.zipCode ?? null;
     const country = body.country ?? "US";
+    // priceVariant: 'trial' (default, $49 / 2 weeks) | 'special' ($129 / 30-day
+    // comeback offer). The /special/[slug] page sends 'special'; everything
+    // else stays on the trial price for back-compat.
+    const priceVariant: "trial" | "special" =
+      body.priceVariant === "special" ? "special" : "trial";
 
     if (!locationId) {
       throw new Error("Location ID is required");
@@ -43,7 +48,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: location, error: locationError } = await supabase
       .from("locations")
-      .select("stripe_secret_key, stripe_publishable_key, stripe_price_id, name")
+      .select("stripe_secret_key, stripe_publishable_key, stripe_price_id, stripe_special_price_id, name")
       .eq("id", locationId)
       .single();
 
@@ -51,8 +56,23 @@ Deno.serve(async (req: Request) => {
       throw new Error("Location not found");
     }
 
-    if (!location.stripe_secret_key || !location.stripe_price_id) {
+    if (!location.stripe_secret_key) {
       throw new Error("Stripe credentials not configured for this location");
+    }
+
+    // Pick the right Stripe Price for this checkout. Same Stripe account either
+    // way — the $129 win-back is a separate Price under the same gym LLC.
+    const chosenPriceId =
+      priceVariant === "special"
+        ? location.stripe_special_price_id
+        : location.stripe_price_id;
+
+    if (!chosenPriceId) {
+      throw new Error(
+        priceVariant === "special"
+          ? "Comeback ($129) Stripe price not configured for this location"
+          : "Trial ($49) Stripe price not configured for this location"
+      );
     }
 
     // ─── Save lead to leads table BEFORE Stripe redirect ───────────────────
@@ -171,17 +191,24 @@ Deno.serve(async (req: Request) => {
       .toLowerCase()
       .replace(/\s+/g, "-");
 
+    // Cancel back to the page they came from. /special funnels return to the
+    // comeback page; /trial funnels return to the location page.
+    const cancelPath =
+      priceVariant === "special"
+        ? `/special/${cancelSlug}`
+        : `/locations/${cancelSlug}`;
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: [
         {
-          price: location.stripe_price_id,
+          price: chosenPriceId,
           quantity: 1,
         },
       ],
       mode: "payment",
       success_url: `${req.headers.get("origin")}/trial-success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${req.headers.get("origin")}/locations/${cancelSlug}`,
+      cancel_url: `${req.headers.get("origin")}${cancelPath}`,
       customer: customer.id,
       metadata: {
         locationId,
@@ -196,7 +223,8 @@ Deno.serve(async (req: Request) => {
         zipCode,
         country,
         newsletter: newsletter ? "true" : "false",
-        trialType: "2-week-unlimited",
+        priceVariant,
+        trialType: priceVariant === "special" ? "30-day-comeback-129" : "2-week-unlimited",
         trialSignupId: pendingRowId ?? "",
       },
     });
