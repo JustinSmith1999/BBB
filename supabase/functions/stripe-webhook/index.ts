@@ -8,17 +8,33 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, stripe-signature",
 };
 
-// Per-studio routing for paid-trial staff notifications
+// Per-studio routing for paid-trial staff notifications.
+// Owners + the per-studio shared mailbox so any front-desk staff sees it too.
 const TRIAL_NOTIFY: Record<string, string[]> = {
-  "bayside": ["carlos@betterbodybootcamp.com"],
-  "fresh-meadows": ["carlos@betterbodybootcamp.com"],
-  "williamsburg": ["steve@betterbodybootcamp.com", "chris@betterbodybootcamp.com"],
-  "astoria": ["steve@betterbodybootcamp.com", "chris@betterbodybootcamp.com"],
+  "bayside": [
+    "carlos@betterbodybootcamp.com",
+    "bayside@betterbodybootcamp.com",
+  ],
+  "fresh-meadows": [
+    "carlos@betterbodybootcamp.com",
+    "freshmeadows@betterbodybootcamp.com",
+  ],
+  "williamsburg": [
+    "steve@betterbodybootcamp.com",
+    "chris@betterbodybootcamp.com",
+    "williamsburg@betterbodybootcamp.com",
+  ],
+  "astoria": [
+    "steve@betterbodybootcamp.com",
+    "chris@betterbodybootcamp.com",
+    "astoria@betterbodybootcamp.com",
+  ],
 };
 
 async function sendTrialEmail(studioSlug: string, trial: {
   name: string; email: string; phone: string;
   address: string; city: string; zip_code: string;
+  country?: string; newsletter_opted_in?: boolean;
   stripe_session_id: string; payment_date: string;
 }) {
   const recipients = TRIAL_NOTIFY[studioSlug];
@@ -35,23 +51,61 @@ async function sendTrialEmail(studioSlug: string, trial: {
     .split("-")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
-  const subject = `New $49 Trial Purchase · ${trial.name} · ${studioName}`;
-  const addr = [trial.address, trial.city, trial.zip_code].filter(Boolean).join(", ");
+  const subject = `🎉 New $49 Trial Purchase · ${trial.name || "(no name)"} · ${studioName}`;
+  const addr = [trial.address, trial.city, trial.zip_code, trial.country].filter(Boolean).join(", ");
+  const paidLocal = new Date(trial.payment_date).toLocaleString("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+  const stripeDashUrl = `https://dashboard.stripe.com/payments?text=${encodeURIComponent(trial.stripe_session_id)}`;
+  const leadDashUrl = `https://bbbmarketing.netlify.app/?studio=${studioSlug}`;
+  const newsletter = trial.newsletter_opted_in ? "Yes ✓" : "No";
+
   const html = `
-    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#111">
-      <h2 style="margin:0 0 4px;font-size:20px;letter-spacing:-0.01em">New $49 Trial Purchase</h2>
-      <div style="color:#666;font-size:13px;margin-bottom:20px">${studioName} · ${new Date(trial.payment_date).toLocaleString("en-US",{timeZone:"America/New_York"})}</div>
-      <table style="width:100%;border-collapse:collapse;font-size:14px">
-        <tr><td style="padding:6px 0;color:#666;width:110px">Name</td><td style="padding:6px 0;font-weight:600">${trial.name || "—"}</td></tr>
-        <tr><td style="padding:6px 0;color:#666">Email</td><td style="padding:6px 0"><a href="mailto:${trial.email}" style="color:#0066cc;text-decoration:none">${trial.email}</a></td></tr>
-        <tr><td style="padding:6px 0;color:#666">Phone</td><td style="padding:6px 0"><a href="tel:${trial.phone}" style="color:#0066cc;text-decoration:none">${trial.phone || "—"}</a></td></tr>
-        <tr><td style="padding:6px 0;color:#666">Address</td><td style="padding:6px 0">${addr || "—"}</td></tr>
-        <tr><td style="padding:6px 0;color:#666">Stripe</td><td style="padding:6px 0;font-family:ui-monospace,monospace;font-size:12px;color:#666">${trial.stripe_session_id}</td></tr>
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#111">
+      <div style="background:#dc2626;color:#fff;padding:20px 24px;border-radius:10px 10px 0 0;margin:-24px -24px 0">
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;opacity:0.9">New $49 Trial · ${studioName}</div>
+        <h2 style="margin:6px 0 0;font-size:24px;font-weight:800;letter-spacing:-0.02em">${trial.name || "(no name provided)"}</h2>
+        <div style="font-size:13px;opacity:0.95;margin-top:4px">${paidLocal}</div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:20px">
+        <tr><td style="padding:8px 0;color:#666;width:140px;border-bottom:1px solid #f0f0f0">Name</td><td style="padding:8px 0;font-weight:600;border-bottom:1px solid #f0f0f0">${trial.name || "—"}</td></tr>
+        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Email</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0"><a href="mailto:${trial.email}" style="color:#dc2626;text-decoration:none;font-weight:600">${trial.email || "—"}</a></td></tr>
+        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Phone</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0"><a href="tel:${trial.phone}" style="color:#dc2626;text-decoration:none;font-weight:600">${trial.phone || "—"}</a></td></tr>
+        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Address</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0">${addr || "(not collected)"}</td></tr>
+        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Studio</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0;font-weight:600">${studioName}</td></tr>
+        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Paid</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0">${paidLocal}</td></tr>
+        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Source</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0">betterbodybootcamp.com/trial/${studioSlug}</td></tr>
+        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Newsletter opt-in</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0">${newsletter}</td></tr>
+        <tr><td style="padding:8px 0;color:#666">Stripe session</td><td style="padding:8px 0;font-family:ui-monospace,SFMono-Regular,monospace;font-size:11px;color:#666;word-break:break-all"><a href="${stripeDashUrl}" style="color:#666;text-decoration:underline">${trial.stripe_session_id}</a></td></tr>
       </table>
-      <p style="font-size:13px;color:#666;margin:24px 0 0">Reach out today to book their first class.</p>
+      <div style="margin-top:24px;padding:16px;background:#fef3c7;border-radius:8px;border-left:4px solid #d97706">
+        <div style="font-size:13px;color:#92400e;font-weight:700;margin-bottom:4px">📞 NEXT STEP</div>
+        <div style="font-size:14px;color:#111;line-height:1.5">Call <strong>${trial.name || "the customer"}</strong> at <a href="tel:${trial.phone}" style="color:#dc2626;text-decoration:none;font-weight:600">${trial.phone || ""}</a> today to book their first class. First-class shows are the #1 predictor of trial → monthly conversion.</div>
+      </div>
+      <div style="margin-top:20px;font-size:12px;color:#999;text-align:center;border-top:1px solid #eee;padding-top:16px">
+        BBB Trial Automation · <a href="${leadDashUrl}" style="color:#999">View in dashboard</a>
+      </div>
     </div>
   `;
-  const text = `New $49 Trial Purchase · ${studioName}\n\n${trial.name}\n${trial.email}\n${trial.phone}\n${addr}\n\nPaid: ${trial.payment_date}\nStripe: ${trial.stripe_session_id}`;
+  const text = `🎉 NEW $49 TRIAL · ${studioName}
+
+${trial.name || "(no name)"}
+Email: ${trial.email || "—"}
+Phone: ${trial.phone || "—"}
+Address: ${addr || "(not collected)"}
+Newsletter: ${newsletter}
+
+Paid: ${paidLocal}
+Source: betterbodybootcamp.com/trial/${studioSlug}
+Stripe session: ${trial.stripe_session_id}
+
+📞 Call ${trial.phone || "the customer"} today to book their first class.`;
   try {
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -144,6 +198,8 @@ async function sendTrialWelcomeSms(
         .from("trial_signups")
         .update({
           welcome_sms_sent_at: new Date().toISOString(),
+          welcome_sms_sid: respBody?.sid ?? null,
+          welcome_sms_last_status: respBody?.status ?? "queued",
           welcome_sms_error: null,
         })
         .eq("id", trialSignupId);
@@ -258,6 +314,53 @@ Deno.serve(async (req: Request) => {
     const signature = req.headers.get("stripe-signature");
     const body = await req.text();
 
+    // ─── Test mode — fire a sample trial-purchase email without Stripe ────
+    // Auth: must present SUPABASE_SERVICE_ROLE_KEY as bearer.
+    // POST { "test_trial_email": "astoria" | "bayside" | "fresh-meadows" | "williamsburg" }
+    let parsedTest: any = null;
+    try { parsedTest = JSON.parse(body); } catch {}
+    if (parsedTest?.test_trial_email) {
+      const presentedBearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+      const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+      if (!serviceRole || presentedBearer !== serviceRole) {
+        return new Response(
+          JSON.stringify({ ok: false, error: "unauthorized — provide service-role bearer for test mode" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const studioSlug = String(parsedTest.test_trial_email).toLowerCase();
+      const sample = {
+        name: "Test - Justin",
+        email: "Justin@j20solutions.com",
+        phone: "(631) 708-6585",
+        address: "123 Test Avenue",
+        city: "New York",
+        zip_code: "10001",
+        country: "US",
+        newsletter_opted_in: true,
+        stripe_session_id: "cs_test_SAMPLE_" + Date.now(),
+        payment_date: new Date().toISOString(),
+      };
+      try {
+        await sendTrialEmail(studioSlug, sample);
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            mode: "test",
+            studio: studioSlug,
+            recipients: TRIAL_NOTIFY[studioSlug] ?? [],
+            note: "Test email queued via Resend. Check the inboxes listed above.",
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      } catch (e) {
+        return new Response(
+          JSON.stringify({ ok: false, mode: "test", studio: studioSlug, error: (e as Error).message }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     let event: Stripe.Event;
     let locationId: string | undefined;
 
@@ -283,7 +386,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: location, error: locationError } = await supabase
       .from("locations")
-      .select("stripe_secret_key, stripe_webhook_secret, gohighlevel_webhook_url, gohighlevel_api_key")
+      .select("stripe_secret_key, stripe_webhook_secret, gohighlevel_webhook_url, gohighlevel_api_key, name")
       .eq("id", locationId)
       .maybeSingle();
 
@@ -313,25 +416,40 @@ Deno.serve(async (req: Request) => {
       apiVersion: "2024-12-18.acacia",
     });
 
-    if (location.stripe_webhook_secret && signature) {
-      try {
-        event = stripe.webhooks.constructEvent(
-          body,
-          signature,
-          location.stripe_webhook_secret
-        );
-      } catch (err) {
-        console.error("Webhook signature verification failed:", err.message);
-        return new Response(
-          JSON.stringify({ received: true, note: "Invalid signature" }),
-          {
-            status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
-      }
-    } else {
-      event = parsedBody;
+    // ─── STRICT signature verification (Fix #1) ─────────────────────────
+    // Previously this fell through to parsedBody when either the secret or the
+    // signature header was missing, allowing forged checkout.session.completed
+    // events to trigger emails/SMS/lead conversions. Now we reject loudly.
+    if (!location.stripe_webhook_secret) {
+      console.error("BLOCKED: location.stripe_webhook_secret is NULL for locationId", locationId);
+      return new Response(
+        JSON.stringify({
+          received: false,
+          error: "stripe_webhook_secret not configured for this location — refusing to process unsigned event",
+          locationId,
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (!signature) {
+      console.error("BLOCKED: missing stripe-signature header for locationId", locationId);
+      return new Response(
+        JSON.stringify({ received: false, error: "missing stripe-signature header" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    try {
+      event = stripe.webhooks.constructEvent(
+        body,
+        signature,
+        location.stripe_webhook_secret,
+      );
+    } catch (err) {
+      console.error("BLOCKED: webhook signature verification failed for locationId", locationId, (err as Error).message);
+      return new Response(
+        JSON.stringify({ received: false, error: "invalid signature" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     console.log("Received Stripe event:", event.type, "for location:", locationId);
@@ -415,16 +533,18 @@ Deno.serve(async (req: Request) => {
           .select("name")
           .eq("id", metadata.locationId)
           .maybeSingle();
-        studioSlug = (locRow?.name ?? "").toLowerCase().replace(/\s+/g, "-");
-        if (trialData.email) {
+        studioSlug = (location?.name ?? locRow?.name ?? "").toLowerCase().replace(/\s+/g, "-");
+        if (trialData.email && studioSlug) {
+          // Fix #6: scope by studio_slug so multi-studio leads don't cross-flip
           const { error: leadErr } = await supabase
             .from("leads")
             .update({
               stage: "converted",
-              studio_slug: studioSlug || null,
+              studio_slug: studioSlug,
               last_touch_at: new Date().toISOString(),
             })
-            .eq("email", trialData.email);
+            .eq("email", trialData.email)
+            .eq("studio_slug", studioSlug);
           if (leadErr) console.error("lead convert update failed:", leadErr.message);
         }
       } catch (e) {
@@ -462,20 +582,29 @@ Deno.serve(async (req: Request) => {
 
       if (data && data[0] && location.gohighlevel_webhook_url) {
         const trialSignupId = data[0].id;
-
-        (async () => {
+        // Fix #10: wrap in EdgeRuntime.waitUntil so the runtime doesn't tear
+        // down the function before the async work completes.
+        const ghlTask = (async () => {
           try {
             await sendToGoHighLevel(
               location.gohighlevel_webhook_url,
               location.gohighlevel_api_key,
               trialData,
               trialSignupId,
-              supabase
+              supabase,
             );
           } catch (ghlError) {
             console.error("GoHighLevel webhook error (non-blocking):", ghlError);
           }
         })();
+        // @ts-ignore — EdgeRuntime is provided by Supabase edge runtime
+        if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
+          // @ts-ignore
+          EdgeRuntime.waitUntil(ghlTask);
+        } else {
+          // Local dev fallback — await directly so dev tests don't lose the task
+          await ghlTask;
+        }
       }
     }
 
