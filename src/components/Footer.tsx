@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -9,6 +9,10 @@ export default function Footer() {
   const [joined, setJoined] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  // Hide the newsletter signup on /trial/* — its second email input was
+  // competing with the trial form and confusing visitors who landed from ads.
+  const location = useLocation();
+  const isTrialRoute = location.pathname.startsWith('/trial');
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,43 +59,47 @@ export default function Footer() {
             <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)', lineHeight: '1.6', maxWidth: '28ch' }}>
               New York's premier group fitness bootcamp since 2011.
             </p>
-            <p className="eyebrow mb-3">JOIN THE LIST</p>
-            {joined ? (
-              <p className="text-sm" style={{ color: 'var(--brand-red)' }}>You're on the list.</p>
-            ) : (
+            {!isTrialRoute && (
               <>
-                <form onSubmit={handleJoin} className="flex gap-2">
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={e => setEmail(e.target.value)}
-                    placeholder="your@email.com"
-                    required
-                    disabled={submitting}
-                    className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg outline-none disabled:opacity-60"
-                    style={{
-                      backgroundColor: 'var(--bg-elevated)',
-                      border: '1px solid var(--divider)',
-                      color: 'var(--text-primary)',
-                    }}
-                  />
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="text-sm font-bold px-4 py-2 rounded-lg transition-colors duration-200 disabled:opacity-60 disabled:cursor-wait"
-                    style={{
-                      backgroundColor: 'var(--brand-red)',
-                      color: 'var(--text-primary)',
-                      whiteSpace: 'nowrap',
-                    }}
-                    onMouseEnter={e => { if (!submitting) e.currentTarget.style.backgroundColor = 'var(--brand-red-hover)'; }}
-                    onMouseLeave={e => { if (!submitting) e.currentTarget.style.backgroundColor = 'var(--brand-red)'; }}
-                  >
-                    {submitting ? '...' : 'Join'}
-                  </button>
-                </form>
-                {errorMsg && (
-                  <p className="text-xs mt-2" style={{ color: '#fca5a5' }}>{errorMsg}</p>
+                <p className="eyebrow mb-3">JOIN THE LIST</p>
+                {joined ? (
+                  <p className="text-sm" style={{ color: 'var(--brand-red)' }}>You're on the list.</p>
+                ) : (
+                  <>
+                    <form onSubmit={handleJoin} className="flex gap-2">
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        placeholder="your@email.com"
+                        required
+                        disabled={submitting}
+                        className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg outline-none disabled:opacity-60"
+                        style={{
+                          backgroundColor: 'var(--bg-elevated)',
+                          border: '1px solid var(--divider)',
+                          color: 'var(--text-primary)',
+                        }}
+                      />
+                      <button
+                        type="submit"
+                        disabled={submitting}
+                        className="text-sm font-bold px-4 py-2 rounded-lg transition-colors duration-200 disabled:opacity-60 disabled:cursor-wait"
+                        style={{
+                          backgroundColor: 'var(--brand-red)',
+                          color: 'var(--text-primary)',
+                          whiteSpace: 'nowrap',
+                        }}
+                        onMouseEnter={e => { if (!submitting) e.currentTarget.style.backgroundColor = 'var(--brand-red-hover)'; }}
+                        onMouseLeave={e => { if (!submitting) e.currentTarget.style.backgroundColor = 'var(--brand-red)'; }}
+                      >
+                        {submitting ? '...' : 'Join'}
+                      </button>
+                    </form>
+                    {errorMsg && (
+                      <p className="text-xs mt-2" style={{ color: '#fca5a5' }}>{errorMsg}</p>
+                    )}
+                  </>
                 )}
               </>
             )}
