@@ -169,7 +169,7 @@ export default function LocationResignSignup() {
 
             <p className="text-base sm:text-xl text-zinc-300 max-w-2xl mx-auto mb-8 leading-relaxed">
               Your spot at <span className="font-semibold text-white">{location.name}</span> is still here.
-              First month <span className="text-red-400 font-semibold">${OFFER_PRICE}</span> — half the walk-in rate.
+              First month <span className="text-red-400 font-semibold">${OFFER_PRICE}</span>.
               Standard pricing kicks in month 2. Cancel anytime in-studio.
             </p>
 
@@ -222,7 +222,7 @@ export default function LocationResignSignup() {
                 <div className="space-y-3 sm:space-y-4">
                   {[
                     { h: 'Same studio, stronger program', p: "Coaches you'll recognize. Programming that's been dialed in since you left." },
-                    { h: 'Half the walk-in rate', p: '$99 covers your first month. Standard rate kicks in month 2 — cancel anytime in-studio.' },
+                    { h: '$99 first month', p: 'Covers your first 30 days back. Standard rate kicks in month 2 — cancel anytime in-studio.' },
                     { h: 'No long contract', p: 'Auto-renews monthly. You decide when to stop. No cancellation fee, ever.' },
                     { h: 'Real progress this time', p: '30 days is enough to feel results. Two weeks isn\'t — we did the math.' },
                   ].map((b, i) => (
@@ -249,7 +249,7 @@ export default function LocationResignSignup() {
                     <div className="border-t border-white/15 pt-3 flex justify-between items-baseline">
                       <div>
                         <div className="font-bold text-white/90 uppercase text-xs tracking-wider">Month 1</div>
-                        <div className="text-[10px] text-zinc-400 mt-0.5 line-through">$199 walk-in</div>
+                        <div className="text-[10px] text-zinc-400 mt-0.5">Standard rate kicks in month 2</div>
                       </div>
                       <span className="text-3xl sm:text-4xl font-black text-red-500 leading-none">${OFFER_PRICE}</span>
                     </div>
