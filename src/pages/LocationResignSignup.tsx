@@ -4,75 +4,20 @@ import { ArrowRight, CheckCircle, Clock, Users, Zap, MapPin, Phone, Lock, Star }
 import SEOHead from '../components/SEOHead';
 
 // ─── PER-GYM CONFIG ─────────────────────────────────────────────────────────
-// $99 first-month win-back for FORMER members (Expired/Terminated/Suspended
-// 12+ months ago, no recent visits). Uses Stripe SUBSCRIPTION with a one-time
-// first-month coupon — not a Payment Link / one-time charge.
-//
-// Same red/black BBB brand as /trial and /special so the per-location surface
-// feels like one coherent system.
-// ─────────────────────────────────────────────────────────────────────────────
 type LocationConfig = {
-  slug: string;
-  locationId: string;
-  name: string;
-  badge: string;
-  address: string;
-  city: string;
-  state: string;
-  zip: string;
-  phone: string;
-  metaPixelId: string | null;
-  heroImage: string;       // /public/{slug}-final.webp
+  slug: string; locationId: string; name: string; badge: string;
+  address: string; city: string; state: string; zip: string;
+  phone: string; metaPixelId: string | null; heroImage: string;
 };
 
 const LOCATIONS: Record<string, LocationConfig> = {
-  'astoria': {
-    slug: 'astoria',
-    locationId: 'dcf94b47-dcc8-4176-96e9-f0cdd0fc6b45',
-    name: 'Astoria',
-    badge: 'ASTORIA · QUEENS',
-    address: '31-18 Steinway Street',
-    city: 'Astoria', state: 'NY', zip: '11103',
-    phone: '(718) 704-9954',
-    metaPixelId: '1291566006435758',
-    heroImage: '/astoria-final.webp',
-  },
-  'bayside': {
-    slug: 'bayside',
-    locationId: '5c0e8383-dd2f-4f8f-bfea-5cc477cec4c7',
-    name: 'Bayside',
-    badge: 'BAYSIDE · QUEENS',
-    address: '34-47 Bell Boulevard',
-    city: 'Bayside', state: 'NY', zip: '11361',
-    phone: '(646) 566-8870',
-    metaPixelId: '931144729719242',
-    heroImage: '/bayside-final.webp',
-  },
-  'fresh-meadows': {
-    slug: 'fresh-meadows',
-    locationId: '6bbbe077-bcc6-4d9d-a10b-7605c1484752',
-    name: 'Fresh Meadows',
-    badge: 'FRESH MEADOWS · QUEENS',
-    address: '76-46 164th Street',
-    city: 'Fresh Meadows', state: 'NY', zip: '11366',
-    phone: '(646) 566-8207',
-    metaPixelId: '979328851475276',
-    heroImage: '/freshmeadows-final.webp',
-  },
-  'williamsburg': {
-    slug: 'williamsburg',
-    locationId: '80536b45-df0e-42d1-880c-e9301372e1cf',
-    name: 'Williamsburg',
-    badge: 'WILLIAMSBURG · BROOKLYN',
-    address: '487 Driggs Ave',
-    city: 'Brooklyn', state: 'NY', zip: '11211',
-    phone: '(718) 683-1864',
-    metaPixelId: '2160299368182872',
-    heroImage: '/williamsburg-final.webp',
-  },
+  'astoria':       { slug: 'astoria',       locationId: 'dcf94b47-dcc8-4176-96e9-f0cdd0fc6b45', name: 'Astoria',       badge: 'ASTORIA · QUEENS',         address: '31-18 Steinway Street',  city: 'Astoria',       state: 'NY', zip: '11103', phone: '(718) 704-9954', metaPixelId: '1291566006435758', heroImage: '/astoria-final.webp' },
+  'bayside':       { slug: 'bayside',       locationId: '5c0e8383-dd2f-4f8f-bfea-5cc477cec4c7', name: 'Bayside',       badge: 'BAYSIDE · QUEENS',         address: '34-47 Bell Boulevard',   city: 'Bayside',       state: 'NY', zip: '11361', phone: '(646) 566-8870', metaPixelId: '931144729719242',  heroImage: '/bayside-final.webp' },
+  'fresh-meadows': { slug: 'fresh-meadows', locationId: '6bbbe077-bcc6-4d9d-a10b-7605c1484752', name: 'Fresh Meadows', badge: 'FRESH MEADOWS · QUEENS',   address: '76-46 164th Street',     city: 'Fresh Meadows', state: 'NY', zip: '11366', phone: '(646) 566-8207', metaPixelId: '979328851475276',  heroImage: '/freshmeadows-final.webp' },
+  'williamsburg':  { slug: 'williamsburg',  locationId: '80536b45-df0e-42d1-880c-e9301372e1cf', name: 'Williamsburg',  badge: 'WILLIAMSBURG · BROOKLYN',  address: '487 Driggs Ave',         city: 'Brooklyn',      state: 'NY', zip: '11211', phone: '(718) 683-1864', metaPixelId: '2160299368182872', heroImage: '/williamsburg-final.webp' },
 };
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_URL     = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 const OFFER_PRICE = 99;
 const OFFER_DURATION = '30 Days';
@@ -99,10 +44,7 @@ export default function LocationResignSignup() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!form.name.trim() || !form.email.trim() || !form.phone.trim()) {
-      setError('Please complete name, email, and phone.');
-      return;
-    }
+    if (!form.name.trim() || !form.email.trim() || !form.phone.trim()) { setError('Please complete name, email, and phone.'); return; }
     setSubmitting(true);
     try {
       // @ts-ignore
@@ -143,60 +85,81 @@ export default function LocationResignSignup() {
 
       <div className="min-h-screen bg-black text-white">
 
-        {/* ── HERO ─────────────────────────────────────────────────────────── */}
-        <section className="relative overflow-hidden pt-28 sm:pt-32 pb-12 sm:pb-16">
-          {/* Studio photo as a dark, low-opacity backdrop */}
+        {/* ── HERO (2-col on desktop, stacked on mobile) ───────────────────────── */}
+        <section className="relative overflow-hidden pt-24 sm:pt-28">
           <div className="absolute inset-0 z-0">
-            <img
-              src={location.heroImage}
-              alt={`${location.name} studio`}
-              className="w-full h-full object-cover opacity-30"
-              loading="eager"
-            />
-            <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/80 to-black" />
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(220,38,38,0.18),transparent_60%)]" />
+            <div className="absolute inset-0 bg-gradient-to-b from-black via-zinc-950 to-black" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_30%,rgba(220,38,38,0.22),transparent_55%)]" />
           </div>
 
-          <div className="relative z-10 container mx-auto px-4 sm:px-6 text-center">
-            <span className="inline-block bg-red-600/20 border border-red-500/40 text-red-300 text-[10px] sm:text-xs font-extrabold tracking-[0.22em] px-4 py-2 rounded-full mb-6 backdrop-blur-sm">
-              ❤ WELCOME BACK · {location.badge}
-            </span>
+          <div className="relative z-10 max-w-7xl mx-auto px-5 sm:px-8 lg:px-12 pb-14 sm:pb-16">
+            <div className="grid lg:grid-cols-12 gap-8 lg:gap-12 items-center">
 
-            <h1 className="text-[clamp(2.75rem,9vw,7rem)] font-black leading-[0.92] tracking-[-0.02em] mb-4">
-              30 DAYS BACK<br />
-              <span className="text-red-600">FOR ${OFFER_PRICE}.</span>
-            </h1>
+              {/* LEFT — copy + CTA */}
+              <div className="lg:col-span-7 text-center lg:text-left">
+                <span className="inline-flex items-center gap-2 bg-red-600/15 border border-red-500/40 text-red-300 text-[10px] sm:text-[11px] font-extrabold tracking-[0.22em] px-3.5 py-1.5 rounded-full mb-6 backdrop-blur-sm">
+                  ❤ WELCOME BACK · {location.badge}
+                </span>
 
-            <p className="text-base sm:text-xl text-zinc-300 max-w-2xl mx-auto mb-8 leading-relaxed">
-              Your spot at <span className="font-semibold text-white">{location.name}</span> is still here.
-              First month <span className="text-red-400 font-semibold">${OFFER_PRICE}</span>.
-              Standard pricing kicks in month 2. Cancel anytime in-studio.
-            </p>
+                <h1 className="font-black leading-[0.95] tracking-[-0.025em] mb-5 text-[clamp(2.5rem,5.5vw,5rem)]">
+                  30 Days Back<br />
+                  <span className="text-red-600">For ${OFFER_PRICE}.</span>
+                </h1>
 
-            <div className="flex flex-wrap justify-center gap-2 sm:gap-3 mb-8">
-              <span className="inline-flex items-center gap-2 bg-white/[0.06] backdrop-blur-sm border border-white/15 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold">
-                <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500" /> {OFFER_DURATION}
-              </span>
-              <span className="inline-flex items-center gap-2 bg-white/[0.06] backdrop-blur-sm border border-white/15 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold">
-                <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500" /> Unlimited Classes
-              </span>
-              <span className="inline-flex items-center gap-2 bg-white/[0.06] backdrop-blur-sm border border-white/15 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold">
-                <Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-500" /> No Long Contract
-              </span>
+                <p className="text-base sm:text-lg lg:text-xl text-zinc-300 max-w-xl mb-7 leading-relaxed mx-auto lg:mx-0">
+                  Your spot at <span className="font-semibold text-white">{location.name}</span> is still here.
+                  First month <span className="text-red-400 font-semibold">${OFFER_PRICE}</span>.
+                  Standard pricing kicks in month 2. Cancel anytime in-studio.
+                </p>
+
+                <div className="flex flex-wrap justify-center lg:justify-start gap-2 sm:gap-2.5 mb-7">
+                  <span className="inline-flex items-center gap-1.5 bg-white/[0.06] backdrop-blur-sm border border-white/15 px-3 py-1.5 rounded-lg text-xs font-semibold">
+                    <Clock className="w-3.5 h-3.5 text-red-500" /> {OFFER_DURATION}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 bg-white/[0.06] backdrop-blur-sm border border-white/15 px-3 py-1.5 rounded-lg text-xs font-semibold">
+                    <Users className="w-3.5 h-3.5 text-red-500" /> Unlimited Classes
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 bg-white/[0.06] backdrop-blur-sm border border-white/15 px-3 py-1.5 rounded-lg text-xs font-semibold">
+                    <Zap className="w-3.5 h-3.5 text-red-500" /> No Long Contract
+                  </span>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 items-center lg:items-start justify-center lg:justify-start">
+                  <a href="#resign-form"
+                     className="inline-flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-extrabold tracking-wide px-6 py-3 rounded-full text-sm sm:text-base transition-all shadow-lg shadow-red-900/30 hover:scale-[1.02] w-full sm:w-auto">
+                    CLAIM YOUR SPOT · ${OFFER_PRICE}
+                    <ArrowRight className="w-4 h-4" />
+                  </a>
+                  <a href={`tel:${tel}`}
+                     className="inline-flex items-center gap-2 text-zinc-300 hover:text-white font-semibold text-sm">
+                    <Phone className="w-4 h-4 text-red-500" /> {location.phone}
+                  </a>
+                </div>
+              </div>
+
+              {/* RIGHT — studio photo (desktop only, hidden on mobile) */}
+              <div className="hidden lg:block lg:col-span-5">
+                <div className="relative aspect-[4/5] rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-red-950/40">
+                  <img src={location.heroImage}
+                       alt={`Better Body Bootcamp ${location.name} studio`}
+                       className="absolute inset-0 w-full h-full object-cover"
+                       loading="eager" />
+                  <div className="absolute inset-0 bg-gradient-to-tr from-black/60 via-transparent to-red-900/20" />
+                  <div className="absolute bottom-5 left-5 right-5">
+                    <div className="text-[10px] font-extrabold tracking-[0.22em] text-red-400 mb-1">YOUR STUDIO</div>
+                    <div className="text-xl font-bold text-white leading-tight">{location.name}</div>
+                    <div className="text-xs text-white/70 mt-1">{location.address}</div>
+                  </div>
+                </div>
+              </div>
             </div>
-
-            <a href="#resign-form"
-               className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-bold px-6 py-3 rounded-full text-sm sm:text-base transition-all shadow-lg shadow-red-900/30 hover:scale-[1.02]">
-              CLAIM YOUR SPOT FOR ${OFFER_PRICE}
-              <ArrowRight className="w-4 h-4" />
-            </a>
           </div>
 
-          {/* Marquee — matches the brand language at the top of /trial pages */}
-          <div className="relative z-10 mt-12 sm:mt-16 -mx-4 overflow-hidden border-y border-red-900/40 bg-red-950/30 py-2.5">
+          {/* Marquee — slim on desktop */}
+          <div className="relative z-10 overflow-hidden border-y border-red-900/40 bg-red-950/20 py-2">
             <div className="flex whitespace-nowrap animate-marquee">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <span key={i} className="text-red-500 font-extrabold text-xs sm:text-sm tracking-[0.3em] mx-6">
+              {Array.from({ length: 10 }).map((_, i) => (
+                <span key={i} className="text-red-500 font-extrabold text-[11px] tracking-[0.32em] mx-5">
                   COME BACK FOR ${OFFER_PRICE} · {location.badge} · 30 DAYS UNLIMITED ·
                 </span>
               ))}
@@ -204,43 +167,44 @@ export default function LocationResignSignup() {
           </div>
         </section>
 
-        {/* ── MAIN CARD ────────────────────────────────────────────────────── */}
-        <section className="relative z-20 max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 -mt-2 sm:-mt-6 mb-8 sm:mb-16">
-          <div className="bg-white text-zinc-900 rounded-2xl sm:rounded-3xl shadow-[0_30px_80px_-20px_rgba(220,38,38,0.45)] p-4 sm:p-10 lg:p-12">
+        {/* ── MAIN CARD ────────────────────────────────────────────────────────── */}
+        <section className="relative z-20 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 -mt-2 sm:-mt-6 mb-12 sm:mb-20">
+          <div className="bg-white text-zinc-900 rounded-2xl sm:rounded-3xl shadow-[0_30px_80px_-20px_rgba(220,38,38,0.45)] p-5 sm:p-10 lg:p-12">
 
-            <div className="grid lg:grid-cols-5 gap-6 sm:gap-12">
+            <div className="grid lg:grid-cols-12 gap-8 lg:gap-12">
 
-              {/* LEFT — why come back */}
-              <div className="lg:col-span-2 space-y-5 sm:space-y-6 order-2 lg:order-none">
+              {/* LEFT — why come back (5 of 12 cols on desktop) */}
+              <div className="lg:col-span-5 space-y-6 order-2 lg:order-none">
                 <div>
-                  <div className="text-[10px] font-bold tracking-[0.18em] text-red-600 mb-2">WHY COME BACK</div>
-                  <h2 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-tight text-zinc-900">
-                    The studio you remember.<br className="hidden sm:inline" /> Sharper.
+                  <div className="text-[10px] font-extrabold tracking-[0.18em] text-red-600 mb-2">WHY COME BACK</div>
+                  <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-zinc-900 leading-[1.1]">
+                    The studio you remember.<br />
+                    Sharper.
                   </h2>
                 </div>
 
-                <div className="space-y-3 sm:space-y-4">
+                <div className="space-y-3.5">
                   {[
                     { h: 'Same studio, stronger program', p: "Coaches you'll recognize. Programming that's been dialed in since you left." },
-                    { h: '$99 first month', p: 'Covers your first 30 days back. Standard rate kicks in month 2 — cancel anytime in-studio.' },
-                    { h: 'No long contract', p: 'Auto-renews monthly. You decide when to stop. No cancellation fee, ever.' },
-                    { h: 'Real progress this time', p: '30 days is enough to feel results. Two weeks isn\'t — we did the math.' },
+                    { h: '$99 first month',               p: 'Covers your first 30 days back. Standard rate kicks in month 2 — cancel anytime in-studio.' },
+                    { h: 'No long contract',              p: 'Auto-renews monthly. You decide when to stop. No cancellation fee, ever.' },
+                    { h: 'Real progress this time',       p: "30 days is enough to feel results. Two weeks isn't — we did the math." },
                   ].map((b, i) => (
                     <div key={i} className="flex items-start gap-3">
-                      <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0 mt-0.5" />
+                      <CheckCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                       <div>
-                        <h3 className="font-bold text-zinc-900 mb-0.5 text-sm sm:text-base">{b.h}</h3>
-                        <p className="text-zinc-600 text-xs sm:text-sm leading-relaxed">{b.p}</p>
+                        <h3 className="font-bold text-zinc-900 text-sm sm:text-base leading-tight">{b.h}</h3>
+                        <p className="text-zinc-600 text-xs sm:text-sm leading-relaxed mt-0.5">{b.p}</p>
                       </div>
                     </div>
                   ))}
                 </div>
 
                 <div className="bg-zinc-900 text-white rounded-2xl p-5 sm:p-6 relative overflow-hidden">
-                  <div className="absolute -right-8 -top-8 w-32 h-32 bg-red-600/20 rounded-full blur-3xl" />
+                  <div className="absolute -right-10 -top-10 w-32 h-32 bg-red-600/20 rounded-full blur-3xl pointer-events-none" />
                   <div className="relative">
-                    <div className="text-[10px] font-bold tracking-[0.18em] text-red-400 mb-2">YOUR 30 DAYS BACK</div>
-                    <ul className="space-y-1.5 sm:space-y-2 text-zinc-200 text-xs sm:text-sm mb-4">
+                    <div className="text-[10px] font-extrabold tracking-[0.18em] text-red-400 mb-3">YOUR 30 DAYS BACK</div>
+                    <ul className="space-y-2 text-zinc-200 text-sm mb-4">
                       <li className="flex items-start gap-2"><Star className="w-3.5 h-3.5 text-red-500 mt-0.5 flex-shrink-0 fill-red-500" /> Unlimited classes for 30 days</li>
                       <li className="flex items-start gap-2"><Star className="w-3.5 h-3.5 text-red-500 mt-0.5 flex-shrink-0 fill-red-500" /> Fitness reassessment with a coach</li>
                       <li className="flex items-start gap-2"><Star className="w-3.5 h-3.5 text-red-500 mt-0.5 flex-shrink-0 fill-red-500" /> Goal reset session</li>
@@ -257,11 +221,11 @@ export default function LocationResignSignup() {
                 </div>
               </div>
 
-              {/* RIGHT — form */}
-              <div className="lg:col-span-3 order-1 lg:order-none">
-                <form onSubmit={submit} id="resign-form" className="scroll-mt-24">
+              {/* RIGHT — form (7 of 12 cols on desktop, full width with constrained max) */}
+              <div className="lg:col-span-7 order-1 lg:order-none">
+                <form onSubmit={submit} id="resign-form" className="scroll-mt-24 max-w-xl lg:max-w-none">
                   <div className="mb-6">
-                    <div className="text-[10px] font-bold tracking-[0.18em] text-red-600 mb-2">CLAIM YOUR SPOT</div>
+                    <div className="text-[10px] font-extrabold tracking-[0.18em] text-red-600 mb-2">CLAIM YOUR SPOT</div>
                     <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-zinc-900 mb-1.5">
                       Come back for ${OFFER_PRICE}.
                     </h2>
@@ -306,28 +270,25 @@ export default function LocationResignSignup() {
                   {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-4 text-sm font-medium">{error}</div>}
 
                   <button type="submit" disabled={submitting}
-                    className="group w-full bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-extrabold tracking-wide py-4 px-6 rounded-full text-base sm:text-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-red-900/30 hover:scale-[1.01]">
-                    {submitting
-                      ? 'REDIRECTING…'
-                      : <>CONTINUE TO SECURE CHECKOUT · ${OFFER_PRICE} <ArrowRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" /></>}
+                    className="group w-full bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-extrabold tracking-wide py-4 px-6 rounded-full text-base sm:text-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-red-900/30 hover:scale-[1.005]">
+                    {submitting ? 'REDIRECTING…' : <>CONTINUE TO SECURE CHECKOUT · ${OFFER_PRICE} <ArrowRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" /></>}
                   </button>
 
                   <p className="text-[11px] text-zinc-500 mt-3 inline-flex items-center gap-1.5 justify-center w-full">
                     <Lock className="w-3 h-3" /> Payment processed securely via Stripe
                   </p>
-                </form>
 
-                {/* Studio footer block */}
-                <div className="mt-8 pt-6 border-t border-zinc-100 flex flex-wrap items-center justify-between gap-3 text-sm text-zinc-600">
-                  <span className="inline-flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-red-500" />
-                    <span>{location.address}, {location.city}, {location.state} {location.zip}</span>
-                  </span>
-                  <a href={`tel:${tel}`} className="inline-flex items-center gap-2 font-semibold hover:text-red-700">
-                    <Phone className="w-4 h-4 text-red-500" />
-                    {location.phone}
-                  </a>
-                </div>
+                  <div className="mt-7 pt-6 border-t border-zinc-100 flex flex-wrap items-center justify-between gap-3 text-xs sm:text-sm text-zinc-600">
+                    <span className="inline-flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-red-500" />
+                      <span>{location.address}, {location.city}, {location.state} {location.zip}</span>
+                    </span>
+                    <a href={`tel:${tel}`} className="inline-flex items-center gap-2 font-semibold hover:text-red-700">
+                      <Phone className="w-4 h-4 text-red-500" />
+                      {location.phone}
+                    </a>
+                  </div>
+                </form>
               </div>
             </div>
           </div>
@@ -335,16 +296,9 @@ export default function LocationResignSignup() {
 
       </div>
 
-      {/* marquee keyframes — single shared definition is fine even if duplicated by other pages */}
       <style>{`
-        @keyframes marquee {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
-        }
-        .animate-marquee {
-          animation: marquee 30s linear infinite;
-          width: 200%;
-        }
+        @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+        .animate-marquee { animation: marquee 35s linear infinite; width: 200%; }
       `}</style>
     </>
   );
