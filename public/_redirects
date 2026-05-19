@@ -3,5 +3,9 @@
 /dashboard               https://bbbmarketing.netlify.app/             200!
 /dashboard/*             https://bbbmarketing.netlify.app/:splat       200!
 
+# /homebase reverse-proxies to the front-desk Kanban portal.
+/homebase                https://bbbmarketing.netlify.app/frontdesk.html  200!
+/homebase/*              https://bbbmarketing.netlify.app/:splat        200!
+
 # SPA fallback for client-side React Router.
 /*                       /index.html                                    200
