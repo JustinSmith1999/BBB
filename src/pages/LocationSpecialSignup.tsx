@@ -259,8 +259,8 @@ export default function LocationSpecialSignup() {
                   <div className="flex items-start gap-3">
                     <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0 mt-0.5 sm:mt-1" />
                     <div>
-                      <h3 className="font-bold text-gray-900 mb-0.5 sm:mb-1 text-sm sm:text-base">Half the walk-in rate</h3>
-                      <p className="text-gray-600 text-xs sm:text-sm">$129 for 30 days — about half what new walk-ins pay.</p>
+                      <h3 className="font-bold text-gray-900 mb-0.5 sm:mb-1 text-sm sm:text-base">$129 first month</h3>
+                      <p className="text-gray-600 text-xs sm:text-sm">$129 covers 30 days of unlimited classes.</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
@@ -291,8 +291,7 @@ export default function LocationSpecialSignup() {
                 <div className="border-t border-amber-200 mt-4 pt-3 flex justify-between items-baseline">
                   <div>
                     <div className="font-bold text-gray-700 uppercase text-xs tracking-wider">Today</div>
-                    <div className="text-[10px] text-gray-500 mt-0.5 line-through">$249 walk-in</div>
-                  </div>
+                    <div className="text-[10px] text-gray-500 mt-0.5">30 days of unlimited classes</div></div>
                   <span className="text-2xl sm:text-3xl font-black text-red-600">${OFFER_PRICE}</span>
                 </div>
               </div>
