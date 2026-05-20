@@ -297,26 +297,15 @@ export default function LocationDetailPage() {
     return configs[locationName];
   };
 
+  // Always route to the on-site per-studio trial page. (Previously this
+  // returned old thebetterbodybc.com pass URLs — the legacy funnel.)
   const getTrialUrl = (locationName: string) => {
-    if (locationName === 'Williamsburg') {
-      return 'https://thebetterbodybc.com/2-week-pass-49-williamsburg';
-    }
-    if (locationName === 'Astoria') {
-      return 'https://thebetterbodybc.com/2-week-pass-49-astoria';
-    }
-    if (locationName === 'Bayside') {
-      return 'https://thebetterbodybc.com/website-2-week-pass-bayside-49';
-    }
-    if (locationName === 'Fresh Meadows') {
-      return 'https://thebetterbodybc.com/website-2-week-pass-fresh-meadows-49';
-    }
     const slug = locationName.toLowerCase().replace(/ /g, '-');
     return `/trial/${slug}`;
   };
 
-  const isExternalTrialUrl = (locationName: string) => {
-    return locationName === 'Williamsburg' || locationName === 'Astoria' || locationName === 'Bayside' || locationName === 'Fresh Meadows';
-  };
+  // Trial URLs are always internal app routes now — never external.
+  const isExternalTrialUrl = (_locationName: string) => false;
 
   const renderWidget = () => {
     const config = getWidgetConfig(location.name);
