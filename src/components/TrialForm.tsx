@@ -8,13 +8,6 @@ const locationImages: Record<string, string> = {
   'Williamsburg': '/williamsburg-final.webp',
 };
 
-const locationUrls: Record<string, string> = {
-  'Williamsburg': 'https://thebetterbodybc.com/2-week-pass-49-williamsburg',
-  'Astoria': 'https://thebetterbodybc.com/2-week-pass-49-astoria',
-  'Bayside': 'https://thebetterbodybc.com/website-2-week-pass-bayside-49',
-  'Fresh Meadows': 'https://thebetterbodybc.com/website-2-week-pass-fresh-meadows-49',
-};
-
 export default function TrialForm() {
   const [locations, setLocations] = useState<Location[]>([]);
 
@@ -27,13 +20,10 @@ export default function TrialForm() {
       .then(({ data }) => setLocations(data || []));
   }, []);
 
-  const handleLocationClick = (name: string, slug: string) => {
-    const url = locationUrls[name];
-    if (url) {
-      window.location.href = url;
-    } else {
-      window.location.href = `/trial/${slug}`;
-    }
+  const handleLocationClick = (slug: string) => {
+    // Always route to the on-site per-studio trial page. (Previously this
+    // jumped to old thebetterbodybc.com pass URLs — the legacy funnel.)
+    window.location.href = `/trial/${slug}`;
   };
 
   return (
@@ -83,7 +73,7 @@ export default function TrialForm() {
                   border: '1px solid var(--divider)',
                   padding: '24px',
                 }}
-                onClick={() => handleLocationClick(location.name, slug)}
+                onClick={() => handleLocationClick(slug)}
                 onMouseEnter={e => {
                   (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--brand-red)';
                   (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)';
