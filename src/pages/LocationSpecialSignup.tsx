@@ -116,7 +116,8 @@ export default function LocationSpecialSignup() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string>('');
   const [formData, setFormData] = useState({
-    fullName: '',
+    firstName: '',
+    lastName: '',
     email: '',
     phone: '',
     newsletter: false,
@@ -141,6 +142,17 @@ export default function LocationSpecialSignup() {
     e.preventDefault();
     setError('');
 
+    // Client-side guard — fast feedback before we hit the server.
+    const first = formData.firstName.trim();
+    const last  = formData.lastName.trim();
+    const mail  = formData.email.trim();
+    const tel   = formData.phone.trim();
+    if (!first || first.length < 2)      { setError('Please enter your first name.'); return; }
+    if (!last  || last.length  < 2)      { setError('Please enter your last name.'); return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mail)) { setError('Please enter a valid email address.'); return; }
+    const digits = tel.replace(/\D/g, '');
+    if (digits.length < 10 || digits.length > 11) { setError('Please enter a valid US phone number.'); return; }
+
     // Meta Pixel — Lead event on form submit
     if (location.metaPixelId && window.fbq) {
       window.fbq('track', 'Lead', {
@@ -163,9 +175,11 @@ export default function LocationSpecialSignup() {
         body: JSON.stringify({
           locationId: location.locationId,
           locationName: location.name,
-          customerEmail: formData.email,
-          customerName: formData.fullName,
-          customerPhone: formData.phone,
+          customerEmail: formData.email.trim(),
+          customerFirstName: formData.firstName.trim(),
+          customerLastName: formData.lastName.trim(),
+          customerName: `${formData.firstName.trim()} ${formData.lastName.trim()}`.trim(),
+          customerPhone: formData.phone.trim(),
           newsletter: formData.newsletter,
           priceVariant: 'special', // tells edge fn to use stripe_special_price_id
         }),
@@ -321,23 +335,39 @@ export default function LocationSpecialSignup() {
                   </p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Full Name</label>
-                    <input
-                      type="text"
-                      name="fullName"
-                      value={formData.fullName}
-                      onChange={handleChange}
-                      required
-                      autoComplete="name"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900"
-                    />
+                <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">First Name *</label>
+                      <input
+                        type="text"
+                        name="firstName"
+                        value={formData.firstName}
+                        onChange={handleChange}
+                        required
+                        minLength={2}
+                        autoComplete="given-name"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Last Name *</label>
+                      <input
+                        type="text"
+                        name="lastName"
+                        value={formData.lastName}
+                        onChange={handleChange}
+                        required
+                        minLength={2}
+                        autoComplete="family-name"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900"
+                      />
+                    </div>
                   </div>
 
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Email</label>
+                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Email *</label>
                       <input
                         type="email"
                         name="email"
@@ -345,20 +375,24 @@ export default function LocationSpecialSignup() {
                         onChange={handleChange}
                         required
                         autoComplete="email"
+                        placeholder="you@email.com"
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Phone</label>
+                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Mobile Phone *</label>
                       <input
                         type="tel"
                         name="phone"
                         value={formData.phone}
                         onChange={handleChange}
                         required
+                        inputMode="tel"
                         autoComplete="tel"
+                        placeholder="(212) 555-0100"
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900"
                       />
+                      <p className="text-[10px] text-gray-500 mt-1">We text class confirmations — must be a real US mobile.</p>
                     </div>
                   </div>
 

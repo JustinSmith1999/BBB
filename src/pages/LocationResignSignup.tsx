@@ -29,7 +29,7 @@ export default function LocationResignSignup() {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: '', email: '', phone: '', newsletter: false });
+  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '', newsletter: false });
 
   useEffect(() => {
     if (!location?.metaPixelId) return;
@@ -44,7 +44,15 @@ export default function LocationResignSignup() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!form.name.trim() || !form.email.trim() || !form.phone.trim()) { setError('Please complete name, email, and phone.'); return; }
+    const first = form.firstName.trim();
+    const last  = form.lastName.trim();
+    const mail  = form.email.trim();
+    const tel   = form.phone.trim();
+    if (!first || first.length < 2)      { setError('Please enter your first name.'); return; }
+    if (!last  || last.length  < 2)      { setError('Please enter your last name.'); return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mail)) { setError('Please enter a valid email address.'); return; }
+    const digits = tel.replace(/\D/g, '');
+    if (digits.length < 10 || digits.length > 11) { setError('Please enter a valid US phone number.'); return; }
     setSubmitting(true);
     try {
       // @ts-ignore
@@ -56,7 +64,9 @@ export default function LocationResignSignup() {
           locationId: location.locationId,
           locationName: location.name,
           customerEmail: form.email.trim(),
-          customerName: form.name.trim(),
+          customerFirstName: form.firstName.trim(),
+          customerLastName: form.lastName.trim(),
+          customerName: `${form.firstName.trim()} ${form.lastName.trim()}`.trim(),
           customerPhone: form.phone.trim(),
           newsletter: form.newsletter,
           priceVariant: 'resign',
@@ -234,20 +244,34 @@ export default function LocationResignSignup() {
                     </p>
                   </div>
 
-                  <label className="block text-[11px] font-extrabold text-zinc-700 mb-1.5 tracking-[0.1em]">FULL NAME</label>
-                  <input type="text" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
-                    className="w-full px-4 py-3 border border-zinc-200 rounded-xl mb-4 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 focus:outline-none transition-all" />
-
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                     <div>
-                      <label className="block text-[11px] font-extrabold text-zinc-700 mb-1.5 tracking-[0.1em]">EMAIL</label>
-                      <input type="email" required value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
+                      <label className="block text-[11px] font-extrabold text-zinc-700 mb-1.5 tracking-[0.1em]">FIRST NAME *</label>
+                      <input type="text" required minLength={2} autoComplete="given-name"
+                        value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })}
                         className="w-full px-4 py-3 border border-zinc-200 rounded-xl focus:border-red-500 focus:ring-2 focus:ring-red-500/20 focus:outline-none transition-all" />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-extrabold text-zinc-700 mb-1.5 tracking-[0.1em]">PHONE</label>
-                      <input type="tel" required value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })}
+                      <label className="block text-[11px] font-extrabold text-zinc-700 mb-1.5 tracking-[0.1em]">LAST NAME *</label>
+                      <input type="text" required minLength={2} autoComplete="family-name"
+                        value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })}
                         className="w-full px-4 py-3 border border-zinc-200 rounded-xl focus:border-red-500 focus:ring-2 focus:ring-red-500/20 focus:outline-none transition-all" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-[11px] font-extrabold text-zinc-700 mb-1.5 tracking-[0.1em]">EMAIL *</label>
+                      <input type="email" required autoComplete="email" placeholder="you@email.com"
+                        value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
+                        className="w-full px-4 py-3 border border-zinc-200 rounded-xl focus:border-red-500 focus:ring-2 focus:ring-red-500/20 focus:outline-none transition-all" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-extrabold text-zinc-700 mb-1.5 tracking-[0.1em]">MOBILE PHONE *</label>
+                      <input type="tel" required inputMode="tel" autoComplete="tel" placeholder="(212) 555-0100"
+                        value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })}
+                        className="w-full px-4 py-3 border border-zinc-200 rounded-xl focus:border-red-500 focus:ring-2 focus:ring-red-500/20 focus:outline-none transition-all" />
+                      <p className="text-[10px] text-zinc-500 mt-1">Real US mobile — class confirmations are texted.</p>
                     </div>
                   </div>
 
