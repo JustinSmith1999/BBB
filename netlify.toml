@@ -58,6 +58,28 @@
   to     = "/trial/williamsburg?utm_source=instagram&utm_medium=social&utm_campaign=trial&utm_content=bio"
   status = 302
 
+# Email-campaign links — Bayside + Fresh Meadows. Tagged utm_source=email.
+[[redirects]]
+  from   = "/email/bayside"
+  to     = "/trial/bayside?utm_source=email&utm_medium=email&utm_campaign=trial"
+  status = 302
+
+[[redirects]]
+  from   = "/email/fresh-meadows"
+  to     = "/trial/fresh-meadows?utm_source=email&utm_medium=email&utm_campaign=trial"
+  status = 302
+
+# Printed-flyer links — Bayside + Fresh Meadows. Tagged utm_source=flyer.
+[[redirects]]
+  from   = "/flyer/bayside"
+  to     = "/trial/bayside?utm_source=flyer&utm_medium=print&utm_campaign=trial"
+  status = 302
+
+[[redirects]]
+  from   = "/flyer/fresh-meadows"
+  to     = "/trial/fresh-meadows?utm_source=flyer&utm_medium=print&utm_campaign=trial"
+  status = 302
+
 # SPA fallback for everything else — React Router handles client-side routing.
 [[redirects]]
   from   = "/*"
