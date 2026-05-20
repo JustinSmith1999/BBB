@@ -141,7 +141,7 @@ export default function Hero() {
               e.currentTarget.style.transform = 'none';
             }}
           >
-            START YOUR FREE TRIAL
+            START YOUR 2-WEEK TRIAL
           </a>
 
           {/* Secondary */}

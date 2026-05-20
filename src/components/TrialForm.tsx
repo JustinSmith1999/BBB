@@ -112,7 +112,7 @@ export default function TrialForm() {
                     color: 'var(--brand-red)',
                   }}
                 >
-                  Start Free Trial <span className="transition-transform duration-200 group-hover:translate-x-1">→</span>
+                  Start Your 2-Week Trial <span className="transition-transform duration-200 group-hover:translate-x-1">→</span>
                 </span>
               </div>
             );
