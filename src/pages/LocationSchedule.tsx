@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { useParams, Navigate, Link } from 'react-router-dom';
 import { MapPin, Phone, Calendar, ArrowRight, Clock } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
@@ -68,22 +67,6 @@ const LOCATIONS: Record<string, LocationConfig> = {
   },
 };
 
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      'healcode-widget': React.DetailedHTMLProps<
-        React.HTMLAttributes<HTMLElement> & {
-          'data-type'?: string;
-          'data-widget-partner'?: string;
-          'data-widget-id'?: string;
-          'data-widget-version'?: string;
-        },
-        HTMLElement
-      >;
-    }
-  }
-}
-
 const HEALCODE_SRC = 'https://widgets.mindbodyonline.com/javascripts/healcode.js';
 
 export default function LocationSchedule() {
@@ -91,51 +74,26 @@ export default function LocationSchedule() {
   const slug = (slugParam ?? '').toLowerCase();
   const config = LOCATIONS[slug];
 
-  const [scriptLoaded, setScriptLoaded] = useState(false);
-  const [widgetKey, setWidgetKey] = useState(0);
-
-  useEffect(() => {
-    if (!config) return;
-
-    const existing = document.querySelector<HTMLScriptElement>(`script[src="${HEALCODE_SRC}"]`);
-    if (existing) {
-      // If the script is already on the page (e.g. user came from /classes),
-      // force a re-render of the widget so MindBody picks up the new widget id.
-      setScriptLoaded(false);
-      const t = setTimeout(() => {
-        setWidgetKey((k) => k + 1);
-        setScriptLoaded(true);
-      }, 100);
-      return () => clearTimeout(t);
-    }
-
-    const s = document.createElement('script');
-    s.type = 'text/javascript';
-    s.src = HEALCODE_SRC;
-    s.async = true;
-    s.onload = () => {
-      // Give Healcode a beat to attach its custom element registry.
-      setTimeout(() => {
-        setWidgetKey((k) => k + 1);
-        setScriptLoaded(true);
-      }, 800);
-    };
-    s.onerror = () => setScriptLoaded(true); // surface the fallback message
-    document.head.appendChild(s);
-
-    return () => {
-      // Keep the script around — MindBody re-uses it across pages. We just
-      // clear our local loaded flag.
-    };
-  }, [config]);
-
   if (!config) {
     return <Navigate to="/classes" replace />;
   }
 
   const trialHref = `/trial/${config.slug}`;
   const locationHref = `/locations/${config.slug}`;
-  const widgetHtml = `<healcode-widget data-type="schedules" data-widget-partner="object" data-widget-id="${config.widgetId}" data-widget-version="1"></healcode-widget>`;
+
+  // The MindBody schedule runs inside its own self-contained iframe. healcode.js
+  // loads fresh in the iframe document on every visit, so SPA navigation and
+  // React re-renders can't break it the way an in-page widget can.
+  const scheduleSrcDoc =
+    `<!doctype html><html><head><meta charset="utf-8">` +
+    `<base target="_blank">` +
+    `<style>html,body{margin:0;padding:0;background:#fff;` +
+    `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}</style>` +
+    `</head><body>` +
+    `<healcode-widget data-type="schedules" data-widget-partner="object" ` +
+    `data-widget-id="${config.widgetId}" data-widget-version="1"></healcode-widget>` +
+    `<script src="${HEALCODE_SRC}" type="text/javascript"><\/script>` +
+    `</body></html>`;
 
   return (
     <>
@@ -213,16 +171,13 @@ export default function LocationSchedule() {
                 </Link>
               </div>
 
-              {scriptLoaded ? (
-                <div key={widgetKey} className="mindbody-schedule-wrap min-h-[400px]">
-                  <div dangerouslySetInnerHTML={{ __html: widgetHtml }} />
-                </div>
-              ) : (
-                <div className="text-center py-16">
-                  <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-red-600 mb-4"></div>
-                  <p className="text-gray-600 text-sm">Loading {config.name} class schedule…</p>
-                </div>
-              )}
+              <iframe
+                title={`${config.name} class schedule`}
+                srcDoc={scheduleSrcDoc}
+                loading="lazy"
+                className="w-full rounded-xl border border-gray-100 bg-white"
+                style={{ height: '1400px', minHeight: '600px' }}
+              />
 
               {/* Help / fallback */}
               <div className="mt-6 pt-6 border-t border-gray-100 text-xs text-gray-500 flex items-center justify-between flex-wrap gap-2">

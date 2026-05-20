@@ -21,8 +21,7 @@ export default function TrialForm() {
   }, []);
 
   const handleLocationClick = (slug: string) => {
-    // Always route to the on-site per-studio trial page. (Previously this
-    // jumped to old thebetterbodybc.com pass URLs — the legacy funnel.)
+    // Always route to the on-site per-studio trial page.
     window.location.href = `/trial/${slug}`;
   };
 

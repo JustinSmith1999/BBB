@@ -297,8 +297,7 @@ export default function LocationDetailPage() {
     return configs[locationName];
   };
 
-  // Always route to the on-site per-studio trial page. (Previously this
-  // returned old thebetterbodybc.com pass URLs — the legacy funnel.)
+  // Always route to the on-site per-studio trial page.
   const getTrialUrl = (locationName: string) => {
     const slug = locationName.toLowerCase().replace(/ /g, '-');
     return `/trial/${slug}`;
@@ -375,15 +374,15 @@ export default function LocationDetailPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto w-full">
-              <a
-                href={location.schedule_url || '#'}
+              <Link
+                to={`/schedule/${locationSlug}`}
                 className="group relative bg-white hover:bg-gray-50 rounded-xl p-5 transition-all duration-300 shadow-xl hover:shadow-2xl hover:-translate-y-1"
               >
                 <div className="flex items-center justify-center space-x-3">
                   <Calendar className="w-6 h-6 text-red-600 group-hover:scale-110 transition-transform" />
                   <span className="text-base md:text-lg font-black text-black">VIEW SCHEDULE</span>
                 </div>
-              </a>
+              </Link>
 
               {isExternalTrialUrl(location.name) ? (
                 <a
@@ -481,23 +480,13 @@ export default function LocationDetailPage() {
                   </div>
 
                   <div className="text-center">
-                    {getWidgetConfig(location.name) ? (
-                      <button
-                        onClick={() => setShowScheduleModal(true)}
-                        className="inline-flex items-center space-x-2 text-red-600 hover:text-red-700 font-bold text-lg transition-colors"
-                      >
-                        <span>View Full Weekly Schedule</span>
-                        <Calendar className="w-5 h-5" />
-                      </button>
-                    ) : (
-                      <a
-                        href={location.schedule_url || '#'}
-                        className="inline-flex items-center space-x-2 text-red-600 hover:text-red-700 font-bold text-lg transition-colors"
-                      >
-                        <span>View Full Weekly Schedule</span>
-                        <Calendar className="w-5 h-5" />
-                      </a>
-                    )}
+                    <Link
+                      to={`/schedule/${locationSlug}`}
+                      className="inline-flex items-center space-x-2 text-red-600 hover:text-red-700 font-bold text-lg transition-colors"
+                    >
+                      <span>View Full Weekly Schedule</span>
+                      <Calendar className="w-5 h-5" />
+                    </Link>
                   </div>
                 </>
               )}
