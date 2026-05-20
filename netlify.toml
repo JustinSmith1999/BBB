@@ -36,6 +36,28 @@
   status = 200
   force  = true
 
+# Short, branded Instagram links. betterbodybootcamp.com/ig/<studio> →
+# the studio trial page, carrying Instagram UTM tags into the funnel.
+[[redirects]]
+  from   = "/ig/astoria"
+  to     = "/trial/astoria?utm_source=instagram&utm_medium=social&utm_campaign=trial&utm_content=bio"
+  status = 302
+
+[[redirects]]
+  from   = "/ig/bayside"
+  to     = "/trial/bayside?utm_source=instagram&utm_medium=social&utm_campaign=trial&utm_content=bio"
+  status = 302
+
+[[redirects]]
+  from   = "/ig/fresh-meadows"
+  to     = "/trial/fresh-meadows?utm_source=instagram&utm_medium=social&utm_campaign=trial&utm_content=bio"
+  status = 302
+
+[[redirects]]
+  from   = "/ig/williamsburg"
+  to     = "/trial/williamsburg?utm_source=instagram&utm_medium=social&utm_campaign=trial&utm_content=bio"
+  status = 302
+
 # SPA fallback for everything else — React Router handles client-side routing.
 [[redirects]]
   from   = "/*"
