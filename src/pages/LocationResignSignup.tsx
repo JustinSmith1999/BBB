@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Navigate } from 'react-router-dom';
 import { ArrowRight, CheckCircle, Clock, Users, Zap, MapPin, Phone, Lock, Star } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
+import { getUtmParams } from '../lib/utm';
 
 // ─── PER-GYM CONFIG ─────────────────────────────────────────────────────────
 type LocationConfig = {
@@ -69,6 +70,7 @@ export default function LocationResignSignup() {
           customerName: `${form.firstName.trim()} ${form.lastName.trim()}`.trim(),
           customerPhone: form.phone.trim(),
           newsletter: form.newsletter,
+          ...getUtmParams(),
           priceVariant: 'resign',
         }),
       });

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Navigate } from 'react-router-dom';
 import { ArrowRight, CheckCircle, Clock, Users, Zap, MapPin, Phone, Lock } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
+import { getUtmParams } from '../lib/utm';
 
 // ─── PER-GYM CONFIG ─────────────────────────────────────────────────────────
 // $129 win-back offer page. Same gym infrastructure as /trial/* but charges
@@ -181,6 +182,7 @@ export default function LocationSpecialSignup() {
           customerName: `${formData.firstName.trim()} ${formData.lastName.trim()}`.trim(),
           customerPhone: formData.phone.trim(),
           newsletter: formData.newsletter,
+          ...getUtmParams(),
           priceVariant: 'special', // tells edge fn to use stripe_special_price_id
         }),
       });
