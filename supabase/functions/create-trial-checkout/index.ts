@@ -143,6 +143,16 @@ Deno.serve(async (req: Request) => {
     const city = body.city ?? null;
     const zipCode = body.zipCode ?? null;
     const country = body.country ?? "US";
+
+    // UTM tags from the landing URL (e.g. /ig/bayside → utm_source=instagram).
+    // Stored on the trial_signups row so the dashboard can attribute signups
+    // to the marketing link they came from.
+    const utm = {
+      utm_source:   (body.utmSource   ?? null) || null,
+      utm_medium:   (body.utmMedium   ?? null) || null,
+      utm_campaign: (body.utmCampaign ?? null) || null,
+      utm_content:  (body.utmContent  ?? null) || null,
+    };
     // priceVariant: 'trial' (default, $49 / 2 weeks) | 'special' ($129 / 30-day
     // comeback offer) | 'resign' ($99 first month subscription win-back).
     const priceVariant: "trial" | "special" | "resign" =
@@ -263,6 +273,7 @@ Deno.serve(async (req: Request) => {
           newsletter_opted_in: !!newsletter,
           location_id: locationId,
           payment_status: "pending",
+          ...utm,
         })
         .select("id")
         .single();
@@ -339,6 +350,11 @@ Deno.serve(async (req: Request) => {
         priceVariant,
         trialType: priceVariant === "special" ? "30-day-comeback-129" : "2-week-unlimited",
         trialSignupId: pendingRowId ?? "",
+        // UTM tags passed through so the webhook's fallback insert can keep them.
+        utm_source: utm.utm_source ?? "",
+        utm_medium: utm.utm_medium ?? "",
+        utm_campaign: utm.utm_campaign ?? "",
+        utm_content: utm.utm_content ?? "",
       },
     });
 
@@ -362,6 +378,7 @@ Deno.serve(async (req: Request) => {
           location_id: locationId,
           stripe_session_id: session.id,
           payment_status: "pending",
+          ...utm,
         });
         if (fallbackErr) console.error("trial_signups fallback insert failed:", fallbackErr.message);
       } catch (e) {

@@ -186,6 +186,35 @@ async function sendEmail(to: string, name: string, studio: typeof LOCATION_TO_ST
   return await res.json();
 }
 
+// ─── Identity helpers — used to dedupe across duplicate signups ───────────
+const normEmail = (e: string | null | undefined) => (e ?? "").trim().toLowerCase();
+const normPhone = (p: string | null | undefined) => (p ?? "").replace(/\D/g, "");
+
+// Mark every pending, not-yet-emailed signup row for this person (matched by
+// exact phone, then exact email) as emailed. Ensures a person who submitted
+// the trial form more than once only ever receives ONE abandoned-cart email —
+// even if their duplicate rows age in on separate cron runs.
+async function markPersonHandled(
+  supabase: ReturnType<typeof createClient>,
+  row: { email: string | null; phone: string | null },
+) {
+  const ts = new Date().toISOString();
+  if (row.phone) {
+    await supabase.from("trial_signups")
+      .update({ abandoned_email_sent_at: ts })
+      .eq("payment_status", "pending")
+      .is("abandoned_email_sent_at", null)
+      .eq("phone", row.phone);
+  }
+  if (row.email) {
+    await supabase.from("trial_signups")
+      .update({ abandoned_email_sent_at: ts })
+      .eq("payment_status", "pending")
+      .is("abandoned_email_sent_at", null)
+      .eq("email", row.email);
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -197,10 +226,8 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Fix #5: Find pending signups older than 1 hour that haven't been emailed
-    // yet. Previously bounded to <24h which silently dropped valid carts
-    // whenever the cron skipped a run. New cap is 14 days to avoid emailing
-    // ancient ghost rows; rows older than that are effectively cold.
+    // Pending abandoned carts: 1h–14d old, not yet emailed. Oldest first, so if
+    // someone filled the form more than once we act on their first attempt.
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -211,7 +238,8 @@ Deno.serve(async (req: Request) => {
       .lt("created_at", oneHourAgo)         // older than 1 hour
       .gt("created_at", fourteenDaysAgo)    // but newer than 14 days (cold-cart cap)
       .is("abandoned_email_sent_at", null)  // not yet emailed
-      .limit(50);
+      .order("created_at", { ascending: true })
+      .limit(100);
 
     if (queryErr) {
       console.error("Query error:", queryErr);
@@ -221,10 +249,51 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Everyone who has EVER completed a payment — by email and by phone. An
+    // abandoned-cart email must never go to someone who already paid, even if
+    // they have a separate pending row from filling the trial form twice.
+    const { data: paidRows, error: paidErr } = await supabase
+      .from("trial_signups")
+      .select("email, phone")
+      .eq("payment_status", "completed");
+
+    if (paidErr) {
+      console.error("Paid-lookup error:", paidErr);
+      return new Response(
+        JSON.stringify({ ok: false, error: paidErr.message }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const paidEmails = new Set((paidRows ?? []).map(r => normEmail(r.email)).filter(Boolean));
+    const paidPhones = new Set((paidRows ?? []).map(r => normPhone(r.phone)).filter(Boolean));
+
+    // Who we've emailed in THIS run — so a person who submitted the form
+    // multiple times only ever receives one email.
+    const sentEmails = new Set<string>();
+    const sentPhones = new Set<string>();
+
     const results: Array<{ id: string; email: string; ok: boolean; err?: string }> = [];
 
     for (const row of candidates ?? []) {
+      const email = normEmail(row.email);
+      const phone = normPhone(row.phone);
       const studio = LOCATION_TO_STUDIO[row.location_id ?? ""];
+
+      // Already a paying customer — never email them.
+      if ((email && paidEmails.has(email)) || (phone && paidPhones.has(phone))) {
+        results.push({ id: row.id, email: row.email ?? "", ok: false, err: "skipped: already paid" });
+        continue;
+      }
+
+      // Same person already emailed in this run (duplicate signup). Mark the
+      // duplicate row handled so a later run can't email it either.
+      if ((email && sentEmails.has(email)) || (phone && sentPhones.has(phone))) {
+        await markPersonHandled(supabase, row);
+        results.push({ id: row.id, email: row.email ?? "", ok: false, err: "skipped: duplicate signup" });
+        continue;
+      }
+
       if (!studio || !row.email) {
         results.push({
           id: row.id,
@@ -237,12 +306,11 @@ Deno.serve(async (req: Request) => {
 
       try {
         await sendEmail(row.email, row.name ?? "", studio);
-
-        await supabase
-          .from("trial_signups")
-          .update({ abandoned_email_sent_at: new Date().toISOString() })
-          .eq("id", row.id);
-
+        if (email) sentEmails.add(email);
+        if (phone) sentPhones.add(phone);
+        // Mark this row AND every other pending row from the same person, so a
+        // duplicate signup can never trigger a second email on a later run.
+        await markPersonHandled(supabase, row);
         results.push({ id: row.id, email: row.email, ok: true });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -256,7 +324,8 @@ Deno.serve(async (req: Request) => {
         ok: true,
         processed: results.length,
         sent: results.filter(r => r.ok).length,
-        failed: results.filter(r => !r.ok).length,
+        skipped: results.filter(r => !r.ok && (r.err ?? "").startsWith("skipped")).length,
+        failed: results.filter(r => !r.ok && !(r.err ?? "").startsWith("skipped")).length,
         details: results,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

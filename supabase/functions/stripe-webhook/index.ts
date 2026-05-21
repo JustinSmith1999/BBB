@@ -82,7 +82,7 @@ function variantConfig(variant: Variant) {
         `Hi ${firstName}! Welcome back to Better Body Bootcamp ${studioName}. ` +
         `Your 30-day comeback is live — book your first class here: ${studioUrl} ` +
         `So glad to see you again. - BBB`,
-      heroHex: "#b45309", // amber-700 (matches comeback page badge)
+      heroHex: "#dc2626", // red-600 (match BBB brand across all variants)
     };
   }
   return {
@@ -100,6 +100,91 @@ function variantConfig(variant: Variant) {
       `Reply with any questions, we're here to help. - BBB`,
     heroHex: "#dc2626", // red-600
   };
+}
+
+// ─── Meta Conversions API — server-side Purchase event ──────────────────────
+// The browser pixel only ever fires PageView, Lead and InitiateCheckout — it
+// never fires Purchase. So Meta records zero conversions, and the dashboard's
+// CPP / Funnel% / "Paid Trials" all read zero for every studio. This sends the
+// Purchase event server-side the moment Stripe confirms payment: more reliable
+// than a browser pixel (can't be ad-blocked, can't be missed on redirect).
+
+async function sha256Hex(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+// Meta requires PII normalized (trim + lowercase) then SHA-256 hashed.
+async function hashPII(raw: string | undefined | null): Promise<string | null> {
+  const v = (raw ?? "").trim().toLowerCase();
+  return v ? await sha256Hex(v) : null;
+}
+
+async function sendMetaPurchaseEvent(
+  supabase: ReturnType<typeof createClient>,
+  studioSlug: string,
+  variant: Variant,
+  customer: { name: string; email: string; phone: string },
+  stripeSessionId: string,
+  valueUsd: number,
+): Promise<void> {
+  // Pixel ID + access token live on the studio's meta_accounts row — the same
+  // credentials meta-insights-sync uses to read insights.
+  const { data: acct, error } = await supabase
+    .from("meta_accounts")
+    .select("pixel_id, access_token, api_version")
+    .eq("studio_slug", studioSlug)
+    .maybeSingle();
+  if (error || !acct?.pixel_id || !acct?.access_token) {
+    console.log(`Meta CAPI skipped for ${studioSlug}: no pixel_id / access_token on file`);
+    return;
+  }
+
+  // Normalize + hash PII per the CAPI spec. Phone = digits only, no '+'.
+  const parts = (customer.name || "").trim().split(/\s+/);
+  const firstName = parts[0] || "";
+  const lastName = parts.slice(1).join(" ");
+  const phoneDigits = (customer.phone || "").replace(/\D/g, "");
+
+  const userData: Record<string, string[]> = {};
+  const em = await hashPII(customer.email);  if (em) userData.em = [em];
+  const ph = await hashPII(phoneDigits);     if (ph) userData.ph = [ph];
+  const fn = await hashPII(firstName);       if (fn) userData.fn = [fn];
+  const ln = await hashPII(lastName);        if (ln) userData.ln = [ln];
+
+  const apiVersion = acct.api_version || "v19.0";
+  const body = {
+    data: [{
+      event_name: "Purchase",
+      event_time: Math.floor(Date.now() / 1000),
+      // Stable event_id so a Stripe webhook retry can't double-count, and so
+      // Meta can dedupe against any future browser-side Purchase event.
+      event_id: `trial_${stripeSessionId}`,
+      action_source: "website",
+      event_source_url: `https://betterbodybootcamp.com/${variant === "special" ? "special" : "trial"}/${studioSlug}`,
+      user_data: userData,
+      custom_data: {
+        currency: "USD",
+        value: valueUsd,
+        content_name: variant === "special" ? "30-Day Comeback" : "2-Week Trial",
+      },
+    }],
+    // access_token in the body (not the URL) so it never lands in a request log.
+    access_token: acct.access_token,
+  };
+
+  const res = await fetch(
+    `https://graph.facebook.com/${apiVersion}/${acct.pixel_id}/events`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+  const respText = await res.text();
+  if (!res.ok) {
+    console.error(`Meta CAPI Purchase FAILED for ${studioSlug}: HTTP ${res.status} ${respText.slice(0, 300)}`);
+  } else {
+    console.log(`Meta CAPI Purchase sent for ${studioSlug} ($${valueUsd}): ${respText.slice(0, 200)}`);
+  }
 }
 
 async function sendTrialEmail(studioSlug: string, variant: Variant, trial: {
@@ -617,6 +702,205 @@ Deno.serve(async (req: Request) => {
         Deno.env.get("SUPABASE_URL") ?? "",
         Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
       );
+      // Direct Twilio probe — bypass our abstraction so we see the raw error
+      // (TF not verified, 10DLC unregistered, bad From number, etc.)
+      async function probeTwilio(): Promise<Record<string, unknown>> {
+        const sid = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "";
+        const token = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
+        const from = Deno.env.get("TWILIO_FROM_NUMBER") ?? "";
+        const to = QA_OVERRIDE.phone ?? "+16317086585";
+        const result: Record<string, unknown> = {
+          twilio_sid_present: !!sid,
+          twilio_sid_prefix: sid.slice(0, 6),
+          twilio_token_present: !!token,
+          twilio_from: from || "(unset)",
+          to,
+        };
+        if (!sid || !token || !from) {
+          result.error = "Missing one of: TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM_NUMBER";
+          return result;
+        }
+        try {
+          const r = await fetch(
+            `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: "Basic " + btoa(`${sid}:${token}`),
+                "Content-Type": "application/x-www-form-urlencoded",
+              },
+              body: new URLSearchParams({
+                From: from,
+                To: to,
+                Body: `[QA probe ${testVariant}] BBB SMS test from stripe-webhook. If you got this, Twilio path is healthy.`,
+              }).toString(),
+            },
+          );
+          const json = await r.json().catch(() => ({}));
+          result.http_status = r.status;
+          result.queued_response = {
+            sid: (json as any)?.sid ?? null,
+            status: (json as any)?.status ?? null,
+            error_code: (json as any)?.error_code ?? null,
+            error_message: (json as any)?.error_message ?? null,
+          };
+          const sid_msg = (json as any)?.sid;
+          if (sid_msg) {
+            // Wait 6s for Twilio to actually attempt delivery, then GET the
+            // message back to read the FINAL status + delivery error (30032
+            // = TF unverified, 30034 = 10DLC unregistered, etc.)
+            await new Promise((res) => setTimeout(res, 6000));
+            try {
+              const f = await fetch(
+                `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages/${sid_msg}.json`,
+                { headers: { Authorization: "Basic " + btoa(`${sid}:${token}`) } },
+              );
+              const followup = await f.json().catch(() => ({}));
+              result.delivery_check = {
+                http_status: f.status,
+                status: (followup as any)?.status ?? null,
+                error_code: (followup as any)?.error_code ?? null,
+                error_message: (followup as any)?.error_message ?? null,
+                date_sent: (followup as any)?.date_sent ?? null,
+                date_updated: (followup as any)?.date_updated ?? null,
+                price: (followup as any)?.price ?? null,
+              };
+            } catch (e) {
+              result.delivery_check_exception = (e as Error).message;
+            }
+          }
+        } catch (e) {
+          result.fetch_exception = (e as Error).message;
+        }
+        // Inspect what's already on the account so we know what to build.
+        try {
+          const cpr = await fetch(
+            "https://trusthub.twilio.com/v1/CustomerProfiles",
+            { headers: { Authorization: "Basic " + btoa(`${sid}:${token}`) } },
+          );
+          const cpjson = await cpr.json().catch(() => ({}));
+          const profiles = ((cpjson as any)?.results ?? []);
+          result.customer_profiles = await Promise.all(profiles.map(async (p: any) => {
+            const out: any = {
+              sid: p.sid,
+              friendly_name: p.friendly_name,
+              status: p.status,
+              policy_sid: p.policy_sid,
+            };
+            // For each profile, fetch its entity assignments + bound items
+            // so we can see what business info (EIN, address, rep) is on file.
+            try {
+              const ea = await fetch(
+                `https://trusthub.twilio.com/v1/CustomerProfiles/${p.sid}/EntityAssignments`,
+                { headers: { Authorization: "Basic " + btoa(`${sid}:${token}`) } },
+              );
+              const eajson = await ea.json().catch(() => ({}));
+              const assignments = (eajson as any)?.results ?? [];
+              out.entity_assignments = await Promise.all(assignments.map(async (a: any) => {
+                const item: any = { sid: a.sid, object_sid: a.object_sid };
+                // Fetch the bound item (could be EndUser or SupportingDocument)
+                if (a.object_sid?.startsWith("IT")) {
+                  try {
+                    const eu = await fetch(
+                      `https://trusthub.twilio.com/v1/EndUsers/${a.object_sid}`,
+                      { headers: { Authorization: "Basic " + btoa(`${sid}:${token}`) } },
+                    );
+                    const euj = await eu.json().catch(() => ({}));
+                    item.type = "EndUser";
+                    item.friendly_name = (euj as any)?.friendly_name;
+                    item.end_user_type = (euj as any)?.type;
+                    item.attributes = (euj as any)?.attributes;
+                  } catch (_) {}
+                } else if (a.object_sid?.startsWith("RD")) {
+                  try {
+                    const sd = await fetch(
+                      `https://trusthub.twilio.com/v1/SupportingDocuments/${a.object_sid}`,
+                      { headers: { Authorization: "Basic " + btoa(`${sid}:${token}`) } },
+                    );
+                    const sdj = await sd.json().catch(() => ({}));
+                    item.type = "SupportingDocument";
+                    item.friendly_name = (sdj as any)?.friendly_name;
+                    item.doc_type = (sdj as any)?.type;
+                    item.attributes = (sdj as any)?.attributes;
+                    item.status = (sdj as any)?.status;
+                  } catch (_) {}
+                }
+                return item;
+              }));
+            } catch (e) {
+              out.entity_assignments_error = (e as Error).message;
+            }
+            return out;
+          }));
+        } catch (e) {
+          result.customer_profiles_exception = (e as Error).message;
+        }
+        try {
+          const br = await fetch(
+            "https://messaging.twilio.com/v1/a2p/BrandRegistrations",
+            { headers: { Authorization: "Basic " + btoa(`${sid}:${token}`) } },
+          );
+          const bjson = await br.json().catch(() => ({}));
+          result.a2p_brand_registrations = ((bjson as any)?.results ?? []).map((b: any) => ({
+            sid: b.sid,
+            status: b.status,
+            brand_score: b.brand_score,
+            customer_profile_bundle_sid: b.customer_profile_bundle_sid,
+            a2p_profile_bundle_sid: b.a2p_profile_bundle_sid,
+            brand_type: b.brand_type,
+            failure_reason: b.failure_reason,
+            date_created: b.date_created,
+          }));
+        } catch (e) {
+          result.a2p_brand_exception = (e as Error).message;
+        }
+        try {
+          const sr = await fetch(
+            "https://messaging.twilio.com/v1/Services",
+            { headers: { Authorization: "Basic " + btoa(`${sid}:${token}`) } },
+          );
+          const sjson = await sr.json().catch(() => ({}));
+          result.messaging_services = ((sjson as any)?.services ?? []).map((s: any) => ({
+            sid: s.sid,
+            friendly_name: s.friendly_name,
+            use_case: s.use_case,
+          }));
+        } catch (e) {
+          result.messaging_services_exception = (e as Error).message;
+        }
+        // ALSO fetch the Toll-Free verification status for this account so we
+        // can see exactly where the submission is in Twilio's queue (and read
+        // the rejection reason if it was rejected).
+        try {
+          const tfr = await fetch(
+            "https://messaging.twilio.com/v1/Tollfree/Verifications",
+            { headers: { Authorization: "Basic " + btoa(`${sid}:${token}`) } },
+          );
+          const tfjson = await tfr.json().catch(() => ({}));
+          const verifications = (tfjson as any)?.verifications ?? [];
+          result.tf_verification_status = {
+            http_status: tfr.status,
+            count: verifications.length,
+            list: verifications.map((v: any) => ({
+              sid: v.sid,
+              status: v.status,                 // PENDING_REVIEW / IN_REVIEW / TWILIO_APPROVED / TWILIO_REJECTED
+              business_name: v.business_name,
+              tollfree_phone_number_sid: v.tollfree_phone_number_sid,
+              rejection_reason: v.rejection_reason,
+              date_created: v.date_created,
+              date_updated: v.date_updated,
+              external_reference_id: v.external_reference_id,
+              use_case_categories: v.use_case_categories,
+              opt_in_type: v.opt_in_type,
+              message_volume: v.message_volume,
+            })),
+          };
+        } catch (e) {
+          result.tf_verification_exception = (e as Error).message;
+        }
+        return result;
+      }
+
       try {
         // Fire all 4 notifications. QA_OVERRIDE intercepts every one to Justin's
         // email + cell so nothing actually reaches gyms or customers.
@@ -639,6 +923,7 @@ Deno.serve(async (req: Request) => {
           // Fake UUID — .update() will silently no-op on no match
           "00000000-0000-0000-0000-000000000000",
         );
+        const twilioDiag = await probeTwilio();
         return new Response(
           JSON.stringify({
             ok: true,
@@ -654,7 +939,8 @@ Deno.serve(async (req: Request) => {
               email: QA_OVERRIDE.email,
               phone: QA_OVERRIDE.phone,
             },
-            note: "All 4 notifications queued. QA_OVERRIDE intercepts to Justin only.",
+            twilio_probe: twilioDiag,
+            note: "Emails + SMS fired. twilio_probe shows raw Twilio API response so we can see why SMS may be silently dropping.",
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
@@ -780,6 +1066,12 @@ Deno.serve(async (req: Request) => {
         stripe_session_id: session.id,
         payment_status: "completed",
         payment_date: new Date().toISOString(),
+        // UTM tags — used only by the fallback INSERT below. The normal path
+        // UPDATEs the pending row, which already carries UTMs from checkout.
+        utm_source: metadata.utm_source || null,
+        utm_medium: metadata.utm_medium || null,
+        utm_campaign: metadata.utm_campaign || null,
+        utm_content: metadata.utm_content || null,
       };
 
       // First try to UPDATE the pending row created by create-trial-checkout
@@ -885,6 +1177,25 @@ Deno.serve(async (req: Request) => {
         );
       } catch (e) {
         console.error("customer confirmation email exception:", e);
+      }
+
+      // ─── Meta Conversions API — server-side Purchase event ───────────────
+      // Reports the conversion to Meta so the dashboard's CPP / Funnel% / Paid
+      // Trials stop reading zero. Uses the real amount Stripe charged.
+      try {
+        const purchaseValue = session.amount_total
+          ? session.amount_total / 100
+          : (variant === "special" ? 129 : 49);
+        await sendMetaPurchaseEvent(
+          supabase,
+          studioSlug,
+          variant,
+          { name: trialData.name, email: trialData.email, phone: trialData.phone },
+          session.id,
+          purchaseValue,
+        );
+      } catch (e) {
+        console.error("Meta CAPI purchase exception:", e);
       }
 
       // ─── Staff SMS pings via Twilio (no-op if no numbers configured) ─────

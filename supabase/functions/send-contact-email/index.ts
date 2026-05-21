@@ -18,7 +18,18 @@ Deno.serve(async (req: Request) => {
     const { name, email, phone, location, locationEmail, message } = await req.json();
 
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-    const TO_EMAIL = locationEmail || "info@betterbodybootcamp.com";
+
+    // Route the message to the selected studio's own mailbox — astoria@,
+    // bayside@, freshmeadows@, williamsburg@ — derived from the studio name so
+    // it never depends on the locations.contact_email column being set right.
+    const studioMailbox = (studioName: string): string | null => {
+      const key = (studioName || "").toLowerCase().replace(/[^a-z]/g, "");
+      const known = ["astoria", "bayside", "freshmeadows", "williamsburg"];
+      return known.includes(key) ? `${key}@betterbodybootcamp.com` : null;
+    };
+    // Studio mailbox first; locationEmail then info@ only as fallbacks
+    // (e.g. when the visitor didn't pick a studio).
+    const TO_EMAIL = studioMailbox(location) || locationEmail || "info@betterbodybootcamp.com";
 
     console.log("Sending email to:", TO_EMAIL);
     console.log("From:", name, email);
