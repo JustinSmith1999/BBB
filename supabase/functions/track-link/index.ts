@@ -22,10 +22,14 @@ const LINKS: Record<
   "ig-bayside":         { studio: "bayside",       source: "instagram", medium: "social", content: "bio" },
   "ig-fresh-meadows":   { studio: "fresh-meadows", source: "instagram", medium: "social", content: "bio" },
   "ig-williamsburg":    { studio: "williamsburg",  source: "instagram", medium: "social", content: "bio" },
+  "email-astoria":        { studio: "astoria",       source: "email", medium: "email" },
   "email-bayside":        { studio: "bayside",       source: "email", medium: "email" },
   "email-fresh-meadows":  { studio: "fresh-meadows", source: "email", medium: "email" },
+  "email-williamsburg":   { studio: "williamsburg",  source: "email", medium: "email" },
+  "flyer-astoria":        { studio: "astoria",       source: "flyer", medium: "print" },
   "flyer-bayside":        { studio: "bayside",       source: "flyer", medium: "print" },
   "flyer-fresh-meadows":  { studio: "fresh-meadows", source: "flyer", medium: "print" },
+  "flyer-williamsburg":   { studio: "williamsburg",  source: "flyer", medium: "print" },
 };
 
 // Link-preview crawlers (iMessage, Slack, WhatsApp, Facebook, etc.) hit the URL

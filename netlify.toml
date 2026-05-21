@@ -61,7 +61,12 @@
   to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=ig-williamsburg"
   status = 302
 
-# Email-campaign links — Bayside + Fresh Meadows. Tagged utm_source=email.
+# Email-campaign links — all studios. Tagged utm_source=email.
+[[redirects]]
+  from   = "/email/astoria"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=email-astoria"
+  status = 302
+
 [[redirects]]
   from   = "/email/bayside"
   to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=email-bayside"
@@ -72,7 +77,17 @@
   to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=email-fresh-meadows"
   status = 302
 
-# Printed-flyer links — Bayside + Fresh Meadows. Tagged utm_source=flyer.
+[[redirects]]
+  from   = "/email/williamsburg"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=email-williamsburg"
+  status = 302
+
+# Printed-flyer links — all studios. Tagged utm_source=flyer.
+[[redirects]]
+  from   = "/flyer/astoria"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=flyer-astoria"
+  status = 302
+
 [[redirects]]
   from   = "/flyer/bayside"
   to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=flyer-bayside"
@@ -81,6 +96,11 @@
 [[redirects]]
   from   = "/flyer/fresh-meadows"
   to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=flyer-fresh-meadows"
+  status = 302
+
+[[redirects]]
+  from   = "/flyer/williamsburg"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=flyer-williamsburg"
   status = 302
 
 # SPA fallback for everything else — React Router handles client-side routing.

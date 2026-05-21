@@ -15,10 +15,14 @@
 /ig/bayside        https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=ig-bayside              302
 /ig/fresh-meadows  https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=ig-fresh-meadows        302
 /ig/williamsburg   https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=ig-williamsburg         302
+/email/astoria        https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=email-astoria              302
 /email/bayside        https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=email-bayside              302
 /email/fresh-meadows  https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=email-fresh-meadows        302
+/email/williamsburg   https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=email-williamsburg         302
+/flyer/astoria        https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=flyer-astoria              302
 /flyer/bayside        https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=flyer-bayside              302
 /flyer/fresh-meadows  https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=flyer-fresh-meadows        302
+/flyer/williamsburg   https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=flyer-williamsburg         302
 
 # SPA fallback for client-side React Router.
 /*                       /index.html                                    200
