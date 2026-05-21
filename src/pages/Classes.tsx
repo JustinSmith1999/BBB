@@ -1,84 +1,17 @@
 import { useState, useEffect } from 'react';
-import { MapPin, Calendar } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 import { supabase, Location } from '../lib/supabase';
 import { Link } from 'react-router-dom';
 import SEOHead from '../components/SEOHead';
-
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      'healcode-widget': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement> & {
-        'data-type'?: string;
-        'data-widget-partner'?: string;
-        'data-widget-id'?: string;
-        'data-widget-version'?: string;
-      }, HTMLElement>;
-    }
-  }
-}
 
 export default function Classes() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLocation, setSelectedLocation] = useState<string>('');
-  const [mindbodyScriptLoaded, setMindbodyScriptLoaded] = useState(false);
-  const [widgetKey, setWidgetKey] = useState(0);
 
   useEffect(() => {
     fetchLocations();
   }, []);
-
-  useEffect(() => {
-    if (!selectedLocation) return;
-
-    const location = locations.find(loc => loc.id === selectedLocation);
-    if (!location) return;
-
-    const hasHealcodeWidget = ['Williamsburg', 'Fresh Meadows', 'Bayside', 'Astoria'].includes(location.name);
-
-    if (!hasHealcodeWidget) {
-      setMindbodyScriptLoaded(true);
-      return;
-    }
-
-    const scriptSrc = 'https://widgets.mindbodyonline.com/javascripts/healcode.js';
-
-    const existingScript = document.querySelector(`script[src="${scriptSrc}"]`);
-
-    if (existingScript) {
-      setMindbodyScriptLoaded(false);
-      setTimeout(() => {
-        setWidgetKey(prev => prev + 1);
-        setMindbodyScriptLoaded(true);
-      }, 100);
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.type = 'text/javascript';
-    script.src = scriptSrc;
-    script.async = true;
-
-    script.onload = () => {
-      setTimeout(() => {
-        setWidgetKey(prev => prev + 1);
-        setMindbodyScriptLoaded(true);
-      }, 1000);
-    };
-
-    script.onerror = () => {
-      setMindbodyScriptLoaded(true);
-    };
-
-    document.head.appendChild(script);
-
-    return () => {
-      const scriptToRemove = document.querySelector(`script[src="${scriptSrc}"]`);
-      if (scriptToRemove && document.head.contains(scriptToRemove)) {
-        document.head.removeChild(scriptToRemove);
-      }
-    };
-  }, [selectedLocation, locations]);
 
   const fetchLocations = async () => {
     try {
@@ -125,8 +58,27 @@ export default function Classes() {
       );
     }
 
-    const widgetHtml = `<healcode-widget data-type="schedules" data-widget-partner="object" data-widget-id="${config.id}" data-widget-version="1"></healcode-widget>`;
-    return <div dangerouslySetInnerHTML={{ __html: widgetHtml }} />;
+    // Self-contained iframe — healcode.js loads fresh in the iframe document
+    // every visit, immune to SPA navigation / re-render races.
+    const srcDoc =
+      `<!doctype html><html><head><meta charset="utf-8"><base target="_blank">` +
+      `<style>html,body{margin:0;padding:0;background:#fff;` +
+      `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}</style>` +
+      `</head><body>` +
+      `<healcode-widget data-type="schedules" data-widget-partner="object" ` +
+      `data-widget-id="${config.id}" data-widget-version="1"></healcode-widget>` +
+      `<script src="https://widgets.mindbodyonline.com/javascripts/healcode.js" type="text/javascript"><\/script>` +
+      `</body></html>`;
+    return (
+      <iframe
+        key={config.id}
+        title={`${locationName} class schedule`}
+        srcDoc={srcDoc}
+        loading="lazy"
+        className="w-full rounded-xl border border-gray-100 bg-white"
+        style={{ height: '1400px', minHeight: '600px' }}
+      />
+    );
   };
 
   const selectedLocationData = locations.find(loc => loc.id === selectedLocation);
@@ -204,16 +156,9 @@ export default function Classes() {
                   </Link>
                 </div>
 
-                {mindbodyScriptLoaded ? (
-                  <div key={widgetKey} className="mt-6">
-                    {renderWidget(selectedLocationData.name)}
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mb-4"></div>
-                    <p className="text-gray-600">Loading class schedule...</p>
-                  </div>
-                )}
+                <div className="mt-6">
+                  {renderWidget(selectedLocationData.name)}
+                </div>
               </div>
             )}
           </>
