@@ -9,14 +9,16 @@
 
 # Tracked marketing links — must come BEFORE the /* SPA catch-all below,
 # or the catch-all swallows them and the redirect never fires.
-/ig/astoria        /trial/astoria?utm_source=instagram&utm_medium=social&utm_campaign=trial&utm_content=bio              302
-/ig/bayside        /trial/bayside?utm_source=instagram&utm_medium=social&utm_campaign=trial&utm_content=bio              302
-/ig/fresh-meadows  /trial/fresh-meadows?utm_source=instagram&utm_medium=social&utm_campaign=trial&utm_content=bio        302
-/ig/williamsburg   /trial/williamsburg?utm_source=instagram&utm_medium=social&utm_campaign=trial&utm_content=bio        302
-/email/bayside        /trial/bayside?utm_source=email&utm_medium=email&utm_campaign=trial                302
-/email/fresh-meadows  /trial/fresh-meadows?utm_source=email&utm_medium=email&utm_campaign=trial          302
-/flyer/bayside        /trial/bayside?utm_source=flyer&utm_medium=print&utm_campaign=trial                302
-/flyer/fresh-meadows  /trial/fresh-meadows?utm_source=flyer&utm_medium=print&utm_campaign=trial          302
+# These route through the track-link edge function, which logs the click in
+# link_clicks and then 302s on to /trial/<studio> with the UTM params.
+/ig/astoria        https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=ig-astoria              302
+/ig/bayside        https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=ig-bayside              302
+/ig/fresh-meadows  https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=ig-fresh-meadows        302
+/ig/williamsburg   https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=ig-williamsburg         302
+/email/bayside        https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=email-bayside              302
+/email/fresh-meadows  https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=email-fresh-meadows        302
+/flyer/bayside        https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=flyer-bayside              302
+/flyer/fresh-meadows  https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=flyer-fresh-meadows        302
 
 # SPA fallback for client-side React Router.
 /*                       /index.html                                    200

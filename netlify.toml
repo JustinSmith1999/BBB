@@ -36,48 +36,51 @@
   status = 200
   force  = true
 
-# Short, branded Instagram links. betterbodybootcamp.com/ig/<studio> →
-# the studio trial page, carrying Instagram UTM tags into the funnel.
+# Tracked marketing links. betterbodybootcamp.com/ig|email|flyer/<studio> →
+# the track-link edge function, which logs the click in link_clicks and then
+# 302s on to /trial/<studio> with the UTM params.
+# NOTE: netlify.toml redirects are evaluated BEFORE public/_redirects, so the
+# tracked-link rules must live here — keep this list and _redirects in sync.
 [[redirects]]
   from   = "/ig/astoria"
-  to     = "/trial/astoria?utm_source=instagram&utm_medium=social&utm_campaign=trial&utm_content=bio"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=ig-astoria"
   status = 302
 
 [[redirects]]
   from   = "/ig/bayside"
-  to     = "/trial/bayside?utm_source=instagram&utm_medium=social&utm_campaign=trial&utm_content=bio"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=ig-bayside"
   status = 302
 
 [[redirects]]
   from   = "/ig/fresh-meadows"
-  to     = "/trial/fresh-meadows?utm_source=instagram&utm_medium=social&utm_campaign=trial&utm_content=bio"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=ig-fresh-meadows"
   status = 302
 
 [[redirects]]
   from   = "/ig/williamsburg"
-  to     = "/trial/williamsburg?utm_source=instagram&utm_medium=social&utm_campaign=trial&utm_content=bio"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=ig-williamsburg"
   status = 302
 
 # Email-campaign links — Bayside + Fresh Meadows. Tagged utm_source=email.
 [[redirects]]
   from   = "/email/bayside"
-  to     = "/trial/bayside?utm_source=email&utm_medium=email&utm_campaign=trial"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=email-bayside"
   status = 302
 
 [[redirects]]
   from   = "/email/fresh-meadows"
-  to     = "/trial/fresh-meadows?utm_source=email&utm_medium=email&utm_campaign=trial"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=email-fresh-meadows"
   status = 302
 
 # Printed-flyer links — Bayside + Fresh Meadows. Tagged utm_source=flyer.
 [[redirects]]
   from   = "/flyer/bayside"
-  to     = "/trial/bayside?utm_source=flyer&utm_medium=print&utm_campaign=trial"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=flyer-bayside"
   status = 302
 
 [[redirects]]
   from   = "/flyer/fresh-meadows"
-  to     = "/trial/fresh-meadows?utm_source=flyer&utm_medium=print&utm_campaign=trial"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=flyer-fresh-meadows"
   status = 302
 
 # SPA fallback for everything else — React Router handles client-side routing.
