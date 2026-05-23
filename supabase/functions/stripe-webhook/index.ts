@@ -129,6 +129,8 @@ async function sendMetaPurchaseEvent(
   customer: { name: string; email: string; phone: string },
   stripeSessionId: string,
   valueUsd: number,
+  fbp: string,
+  fbc: string,
 ): Promise<void> {
   // Pixel ID + access token live on the studio's meta_accounts row — the same
   // credentials meta-insights-sync uses to read insights.
@@ -148,11 +150,15 @@ async function sendMetaPurchaseEvent(
   const lastName = parts.slice(1).join(" ");
   const phoneDigits = (customer.phone || "").replace(/\D/g, "");
 
-  const userData: Record<string, string[]> = {};
+  const userData: Record<string, string[] | string> = {};
   const em = await hashPII(customer.email);  if (em) userData.em = [em];
   const ph = await hashPII(phoneDigits);     if (ph) userData.ph = [ph];
   const fn = await hashPII(firstName);       if (fn) userData.fn = [fn];
   const ln = await hashPII(lastName);        if (ln) userData.ln = [ln];
+  // fbp / fbc go in PLAIN (not hashed, not arrays) — Meta's strongest signal
+  // for matching this server-side Purchase to the ad click that drove it.
+  if (fbp) userData.fbp = fbp;
+  if (fbc) userData.fbc = fbc;
 
   const apiVersion = acct.api_version || "v19.0";
   const body = {
@@ -1193,6 +1199,8 @@ Deno.serve(async (req: Request) => {
           { name: trialData.name, email: trialData.email, phone: trialData.phone },
           session.id,
           purchaseValue,
+          metadata.fbp || "",
+          metadata.fbc || "",
         );
       } catch (e) {
         console.error("Meta CAPI purchase exception:", e);

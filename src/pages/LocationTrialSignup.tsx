@@ -131,6 +131,26 @@ function loadMetaPixel(pixelId: string): () => void {
   };
 }
 
+// Meta click identifiers for server-side Conversions API matching.
+// _fbp is set by the pixel on every visit; _fbc is set when the visitor
+// arrived from an ad (fbclid). These are the strongest signals Meta uses to
+// tie a server-side Purchase event back to the ad that drove it — without
+// them, ad conversions under-report badly. Threaded through checkout ->
+// Stripe metadata -> stripe-webhook -> CAPI.
+function getMetaClickIds(): { fbp: string; fbc: string } {
+  if (typeof document === 'undefined') return { fbp: '', fbc: '' };
+  const readCookie = (name: string): string => {
+    const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : '';
+  };
+  let fbc = readCookie('_fbc');
+  if (!fbc) {
+    const fbclid = new URLSearchParams(window.location.search).get('fbclid');
+    if (fbclid) fbc = `fb.1.${Date.now()}.${fbclid}`;
+  }
+  return { fbp: readCookie('_fbp'), fbc };
+}
+
 export default function LocationTrialSignup() {
   const { location: locationParam } = useParams<{ location: string }>();
   const [isProcessing, setIsProcessing] = useState(false);
@@ -140,6 +160,7 @@ export default function LocationTrialSignup() {
     lastName: '',
     email: '',
     phone: '',
+    smsConsent: false,
     newsletter: false,
   });
 
@@ -187,6 +208,9 @@ export default function LocationTrialSignup() {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mail)) { setError('Please enter a valid email address.'); return; }
     const digits = tel.replace(/\D/g, '');
     if (digits.length < 10 || digits.length > 11) { setError('Please enter a valid US phone number.'); return; }
+    // Explicit SMS opt-in is required — this consent checkbox is what the
+    // Twilio Toll-Free Verification submission points to as opt-in proof.
+    if (!formData.smsConsent) { setError('Please agree to receive class confirmations by text to continue.'); return; }
 
     setIsProcessing(true);
 
@@ -218,6 +242,7 @@ export default function LocationTrialSignup() {
           customerPhone: formData.phone.trim(),
           newsletter: formData.newsletter,
           ...getUtmParams(),
+          ...getMetaClickIds(),
         }),
       });
 
@@ -443,6 +468,22 @@ export default function LocationTrialSignup() {
                   </div>
 
                   <div className="pt-3">
+                    <label className="flex items-start gap-3 cursor-pointer text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        name="smsConsent"
+                        checked={formData.smsConsent}
+                        onChange={handleChange}
+                        required
+                        className="mt-0.5 w-5 h-5 text-red-600 border-gray-300 rounded focus:ring-red-500 flex-shrink-0"
+                      />
+                      <span>
+                        <span className="font-semibold">I agree to receive transactional text messages</span> — class confirmations and trial updates — from Better Body Bootcamp {location.name} at the mobile number provided. Msg &amp; data rates may apply. Msg frequency varies. Reply STOP to opt out, HELP for help. *
+                      </span>
+                    </label>
+                  </div>
+
+                  <div className="pt-3">
                     <label className="flex items-start gap-3 cursor-pointer text-sm text-gray-700 py-2 min-h-[44px]">
                       <input
                         type="checkbox"
@@ -462,7 +503,7 @@ export default function LocationTrialSignup() {
                   )}
 
                   <p className="text-xs text-gray-600 leading-relaxed">
-                    By clicking <strong>Continue to Secure Checkout</strong>, you agree to receive transactional SMS from Better Body Bootcamp about your trial and membership at the phone number provided. Message frequency varies; msg &amp; data rates may apply. Reply HELP for help or STOP to opt out. See our <a href="/privacy" className="underline">Privacy Policy</a> and <a href="/terms" className="underline">Terms</a>.
+                    By continuing you agree to our <a href="/privacy" className="underline">Privacy Policy</a> and <a href="/terms" className="underline">Terms</a>. We never share your phone number with third parties.
                   </p>
 
                   <button

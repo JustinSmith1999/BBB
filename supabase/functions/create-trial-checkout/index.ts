@@ -153,6 +153,12 @@ Deno.serve(async (req: Request) => {
       utm_campaign: (body.utmCampaign ?? null) || null,
       utm_content:  (body.utmContent  ?? null) || null,
     };
+    // Meta click identifiers captured in the browser. Threaded through to the
+    // stripe-webhook so the server-side Purchase CAPI event can match this
+    // conversion back to the ad. Sliced to stay under Stripe's 500-char
+    // metadata value limit.
+    const fbp = typeof body.fbp === "string" ? body.fbp.slice(0, 255) : "";
+    const fbc = typeof body.fbc === "string" ? body.fbc.slice(0, 480) : "";
     // priceVariant: 'trial' (default, $49 / 2 weeks) | 'special' ($129 / 30-day
     // comeback offer) | 'resign' ($99 first month subscription win-back).
     const priceVariant: "trial" | "special" | "resign" =
@@ -355,6 +361,8 @@ Deno.serve(async (req: Request) => {
         utm_medium: utm.utm_medium ?? "",
         utm_campaign: utm.utm_campaign ?? "",
         utm_content: utm.utm_content ?? "",
+        fbp,
+        fbc,
       },
     });
 

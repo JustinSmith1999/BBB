@@ -1,8 +1,11 @@
 // Supabase Edge Function: meta-insights-sync
 //
-// Pulls daily ad insights from Meta Marketing API for every studio in
-// `meta_accounts` and upserts them into `meta_insights_daily`. Designed to run
-// every 6 hours via pg_cron.
+// Pulls ad insights from the Meta Marketing API for every studio in
+// `meta_accounts` and writes THREE things:
+//   1. account-level daily totals  -> meta_insights_daily      (original)
+//   2. per-ad daily metrics        -> meta_ad_insights_daily    (new)
+//   3. per-ad creative + identity  -> meta_ads                  (new)
+// Designed to run every 6 hours via pg_cron.
 //
 // POST body (optional):
 //   { studio_slug?: string,   // run for one studio (default: all ACTIVE)
@@ -42,6 +45,8 @@ type ActionRow = { action_type: string; value: string };
 type InsightRow = {
   date_start: string;
   date_stop: string;
+  ad_id?: string;
+  ad_name?: string;
   spend?: string;
   impressions?: string;
   reach?: string;
@@ -67,6 +72,12 @@ const FIELDS = [
   'date_start', 'date_stop', 'spend', 'impressions', 'reach', 'clicks',
   'inline_link_clicks', 'unique_clicks', 'ctr', 'cpc', 'cpm', 'frequency',
   'actions', 'action_values',
+].join(',');
+
+// Ad-level insight fields. Adds ad_id / ad_name so each row is one ad-day.
+const AD_FIELDS = [
+  'ad_id', 'ad_name', 'date_start', 'date_stop', 'spend', 'impressions',
+  'reach', 'clicks', 'inline_link_clicks', 'ctr', 'cpm', 'frequency', 'actions',
 ].join(',');
 
 async function fetchInsightsAttempt(
@@ -125,6 +136,208 @@ async function fetchInsights(
   if (a.rows.length > 0) return { rows: a.rows, attempts };
 
   return { rows: [], attempts };
+}
+
+// ── AD-LEVEL: per-ad daily insights ─────────────────────────────────────────
+// One row per ad per day (level=ad). Single attempt — if the token can read
+// account insights it can read ad insights too; a 4xx is a real error.
+async function fetchAdInsights(
+  baseUrl: string,
+  adAccountId: string,
+  accessToken: string,
+  windowDays: number
+): Promise<InsightRow[]> {
+  const today = new Date();
+  const start = new Date();
+  start.setDate(today.getDate() - windowDays);
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  const timeRange = JSON.stringify({ since: fmt(start), until: fmt(today) });
+  const q = `fields=${AD_FIELDS}&time_increment=1&time_range=${encodeURIComponent(timeRange)}&level=ad`;
+  const url = `${baseUrl}/${adAccountId}/insights?${q}`;
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  const body = await r.json();
+  if (!r.ok) {
+    throw new Error(`ad insights HTTP ${r.status} ${JSON.stringify((body as { error?: unknown })?.error ?? body).slice(0, 300)}`);
+  }
+  return (body?.data ?? []) as InsightRow[];
+}
+
+// ── AD-LEVEL: ad identity + creative content ────────────────────────────────
+type AdObject = {
+  id: string;
+  name?: string;
+  status?: string;
+  adset?: { name?: string };
+  campaign?: { name?: string };
+  creative?: {
+    id?: string;
+    thumbnail_url?: string;
+    image_url?: string;
+    title?: string;
+    body?: string;
+    video_id?: string;
+    // deno-lint-ignore no-explicit-any
+    object_story_spec?: any;
+  };
+};
+
+async function fetchAdCreatives(
+  baseUrl: string,
+  adAccountId: string,
+  accessToken: string
+): Promise<AdObject[]> {
+  const fields =
+    'id,name,status,adset{name},campaign{name},' +
+    'creative{id,thumbnail_url,image_url,title,body,video_id,object_story_spec}';
+  const out: AdObject[] = [];
+  let url: string | null =
+    `${baseUrl}/${adAccountId}/ads?fields=${encodeURIComponent(fields)}&limit=200`;
+  let pages = 0;
+  while (url && pages < 10) {
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const body = await r.json();
+    if (!r.ok) {
+      throw new Error(`ads HTTP ${r.status} ${JSON.stringify((body as { error?: unknown })?.error ?? body).slice(0, 300)}`);
+    }
+    out.push(...((body?.data ?? []) as AdObject[]));
+    url = body?.paging?.next ?? null;
+    pages++;
+  }
+  return out;
+}
+
+// Pull a clean headline / body / image out of whatever creative shape Meta
+// returns (single image, link ad, video ad, dynamic creative all differ).
+function extractCreative(ad: AdObject) {
+  const c = ad.creative ?? {};
+  const oss = c.object_story_spec ?? {};
+  const link = oss.link_data ?? {};
+  const video = oss.video_data ?? {};
+  const tmpl = link.child_attachments?.[0] ?? {};
+  const headline =
+    c.title || link.name || video.title || tmpl.name || '';
+  const bodyText =
+    c.body || link.message || video.message || tmpl.description || '';
+  const image =
+    c.image_url || c.thumbnail_url || link.picture || video.image_url || tmpl.picture || '';
+  const thumb =
+    c.thumbnail_url || c.image_url || link.picture || video.image_url || tmpl.picture || '';
+  const videoId = c.video_id || video.video_id || link.video_id || null;
+  return {
+    creative_id: c.id ?? null,
+    image_url: image ? String(image) : null,
+    thumbnail_url: thumb ? String(thumb) : null,
+    headline: headline ? String(headline).slice(0, 500) : null,
+    body: bodyText ? String(bodyText).slice(0, 2000) : null,
+    video_id: videoId ? String(videoId) : null,
+  };
+}
+
+// For a video ad, turn the creative's video_id into a playable MP4 URL.
+// Meta's `source` URLs are CDN-signed and rotate, so we re-fetch it every
+// sync (the function runs every 6h, well inside the URL's lifetime).
+async function fetchVideoSource(
+  baseUrl: string,
+  videoId: string,
+  accessToken: string
+): Promise<string | null> {
+  try {
+    const r = await fetch(`${baseUrl}/${videoId}?fields=source`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!r.ok) return null;
+    const b = await r.json();
+    return b?.source ? String(b.source) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Sync per-ad metrics + creatives for one studio. Isolated from the
+// account-level sync so a creative hiccup never blocks the main dashboard data.
+async function syncAdLevel(
+  // deno-lint-ignore no-explicit-any
+  sb: any,
+  acc: StudioRow,
+  baseUrl: string,
+  windowDays: number,
+  dryRun: boolean,
+  result: Record<string, unknown>
+): Promise<void> {
+  // 1. per-ad daily metrics
+  const adRows = await fetchAdInsights(baseUrl, acc.ad_account_id, acc.access_token, windowDays);
+  const adInsightUpserts = adRows
+    .filter((r) => r.ad_id)
+    .map((r) => {
+      const leads = sumActions(r.actions, ['lead', 'offsite_conversion.fb_pixel_lead']);
+      const purchases = sumActions(r.actions, ['purchase', 'offsite_conversion.fb_pixel_purchase']);
+      return {
+        ad_id: r.ad_id,
+        studio_slug: acc.studio_slug,
+        date_start: r.date_start,
+        spend_cents: Math.round(Number(r.spend ?? 0) * 100),
+        impressions: Number(r.impressions ?? 0),
+        reach: Number(r.reach ?? 0),
+        clicks: Number(r.clicks ?? 0),
+        inline_link_clicks: Number(r.inline_link_clicks ?? 0),
+        ctr: Number(r.ctr ?? 0),
+        cpm_cents: Math.round(Number(r.cpm ?? 0) * 100),
+        frequency: Number(r.frequency ?? 0),
+        leads,
+        purchases,
+        synced_at: new Date().toISOString(),
+      };
+    });
+
+  // 2. ad identity + creative content (+ a playable MP4 URL for video ads)
+  const ads = await fetchAdCreatives(baseUrl, acc.ad_account_id, acc.access_token);
+  const adUpserts: Record<string, unknown>[] = [];
+  for (const ad of ads) {
+    const cr = extractCreative(ad);
+    // Video ad? Resolve its video_id to an actual MP4 source URL.
+    let videoUrl: string | null = null;
+    if (cr.video_id) {
+      videoUrl = await fetchVideoSource(baseUrl, cr.video_id, acc.access_token);
+    }
+    adUpserts.push({
+      ad_id: ad.id,
+      studio_slug: acc.studio_slug,
+      ad_name: ad.name ?? null,
+      adset_name: ad.adset?.name ?? null,
+      campaign_name: ad.campaign?.name ?? null,
+      status: ad.status ?? null,
+      creative_id: cr.creative_id,
+      image_url: cr.image_url,
+      thumbnail_url: cr.thumbnail_url,
+      headline: cr.headline,
+      body: cr.body,
+      media_type: cr.video_id ? 'video' : 'image',
+      video_url: videoUrl,
+      updated_at: new Date().toISOString(),
+    });
+  }
+
+  result.ad_rows_returned = adRows.length;
+  result.ads_returned = ads.length;
+
+  if (dryRun) {
+    result.dry_run_ad_sample = adUpserts.slice(0, 2);
+    result.dry_run_ad_insight_sample = adInsightUpserts.slice(0, 2);
+    return;
+  }
+
+  if (adUpserts.length > 0) {
+    const { error } = await sb.from('meta_ads').upsert(adUpserts, { onConflict: 'ad_id' });
+    if (error) throw new Error(`meta_ads upsert: ${error.message}`);
+    result.ads_synced = adUpserts.length;
+  }
+  if (adInsightUpserts.length > 0) {
+    const { error } = await sb
+      .from('meta_ad_insights_daily')
+      .upsert(adInsightUpserts, { onConflict: 'ad_id,date_start' });
+    if (error) throw new Error(`meta_ad_insights_daily upsert: ${error.message}`);
+    result.ad_rows_synced = adInsightUpserts.length;
+  }
 }
 
 serve(async (req) => {
@@ -235,6 +448,15 @@ serve(async (req) => {
         result.dry_run_sample = upserts.slice(0, 2);
       }
       result.ok = true;
+
+      // ── per-ad metrics + creatives ─────────────────────────────────────
+      // Own try/catch: a creative-fetch failure must never blank out the
+      // account-level data the rest of the dashboard depends on.
+      try {
+        await syncAdLevel(sb, acc, baseUrl, windowDays, dryRun, result);
+      } catch (adErr: unknown) {
+        result.ad_sync_error = String((adErr as Error).message ?? adErr);
+      }
     } catch (e: unknown) {
       result.ok = false;
       result.error = String((e as Error).message ?? e);
