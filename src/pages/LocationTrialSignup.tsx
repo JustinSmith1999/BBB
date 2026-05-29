@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Navigate } from 'react-router-dom';
 import { ArrowRight, CheckCircle, Clock, Users, Zap, MapPin, Phone, Lock } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
-import { getUtmParams } from '../lib/utm';
+import { getUtmParams, captureUtmsFromUrl } from '../lib/utm';
 
 // ─── PER-GYM CONFIG ─────────────────────────────────────────────────────────
 // `locationId` is the Supabase row UUID for the gym. The edge function
@@ -166,6 +166,11 @@ export default function LocationTrialSignup() {
 
   useEffect(() => {
     window.scrollTo(0, 0);
+    // Persist UTM tags from the landing URL into sessionStorage immediately,
+    // so attribution survives SPA re-renders / form refreshes. Without this,
+    // submissions land as "Direct/untagged" whenever the URL has been mutated
+    // between the user arriving via /ig and clicking submit.
+    captureUtmsFromUrl();
   }, [locationParam]);
 
   const key = (locationParam ?? '').toLowerCase();
@@ -241,6 +246,10 @@ export default function LocationTrialSignup() {
           customerName: `${formData.firstName.trim()} ${formData.lastName.trim()}`.trim(),
           customerPhone: formData.phone.trim(),
           newsletter: formData.newsletter,
+          // Forward Meta ad-click attribution so CAPI can credit Purchases to the ad.
+          fbclid: new URLSearchParams(window.location.search).get('fbclid') || null,
+          fbc: (document.cookie.match(/(?:^|;\s*)_fbc=([^;]+)/) || [])[1] || null,
+          fbp: (document.cookie.match(/(?:^|;\s*)_fbp=([^;]+)/) || [])[1] || null,
           ...getUtmParams(),
           ...getMetaClickIds(),
         }),
@@ -377,6 +386,9 @@ export default function LocationTrialSignup() {
                   <span className="font-bold text-gray-700 uppercase text-xs tracking-wider">Total</span>
                   <span className="text-2xl sm:text-3xl font-black text-red-600">$49</span>
                 </div>
+                <p className="text-[10px] sm:text-xs text-gray-500 mt-2 italic">
+                  You have 90 days to claim and start your trial.
+                </p>
               </div>
 
               <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 sm:p-5">
