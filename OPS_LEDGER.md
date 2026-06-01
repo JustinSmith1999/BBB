@@ -81,6 +81,29 @@ In `supabase/functions/`:
 | `test-gohighlevel-webhook` | Legacy probe | No | 2026-05-16 | No |
 | ~~`funnel-recovery`~~ | ~~Daily digest of paid customers not in MindBody~~ | ~~Owner email — daily per studio~~ | **DELETED 2026-05-31** | **DELETED 2026-05-31** |
 
+### Previously deployed-only functions, now in repo (audited 2026-06-01)
+
+Pulled from `outputs/replacement-files/supabase/functions/` and committed. Audit findings below.
+
+| Function | Cron caller | Schedule | What it sends | Owner-spam risk | Action taken |
+|---|---|---|---|---|---|
+| `trial-onboarding-sequence` | `trial-onboarding-sequence-hourly` | `0 * * * *` | 4-touch email sequence to **customer only** (D1 welcome, D7 check-in, D14 final-day, D17 winback). Tracks sends per row to prevent double-fire. `reply_to` = studio inbox. | None — owner not in `to:` | None needed |
+| `stripe-payment-audit` | `stripe-payment-audit-30min` | `*/30 * * * *` | Safety-net for missed Stripe webhooks. For every paid PI not in trial_signups, calls `handle-paid-trial` (which fires owner email + customer welcome + CAPI). | **Was HIGH** — manual `?days=N` runs dumped N owner emails | **Default flipped to `skip_emails=true` on 2026-06-01.** Opt back in with `?skip_emails=false` for rare manual re-fires. |
+| `funnel-recovery` | none (cron killed 2026-05-31) | n/a | `?action=promote_orphans` triggers welcome+owner-email per orphan. `?action=studio_digest` emails per-studio TRIAL_NOTIFY list of unmatched customers. | **HIGH** — caused the 2026-05-31 BBB Recovery digest spam | **Hard-killed 2026-06-01:** requires `BBB_RECOVERY_ENABLED=true` env var + `dry_run` is now default. Even an authenticated call with the secret no-ops unless both gates are open. |
+| `winback-fire` | `winback-fire-oneshot` | `0 14 19 5 *` (already fired May 19) | One-shot bulk send to lapsed members from `winback_sends` table. **Customer only.** `reply_to` = studio inbox. | None — owner not in `to:` | None needed |
+| `winback-followup` | `winback-followup-daily` | `0 14 * * *` (currently paused) | D3 + D7 follow-ups to original winback recipients. Skips replies/conversions/opt-outs. **Customer only.** | None — owner not in `to:` | Leave paused until business decides to resume |
+
+### Still in `replacement-files/`, not yet copied to repo (lower priority)
+
+Listed for future-me: `backfill-capi-purchases`, `backfill-location-emails`, `handle-paid-trial`, `mindbody-trial-sync`, `trial-onboarding-sms`, `studio-analytics`. Risk profile unknown without source — none currently on a cron we've observed firing in /ops.
+
+### Other deployed-only crons that DO NOT email owners
+
+| Job | Calls | Risk |
+|---|---|---|
+| `bbb_meta_insights_sync` | `/meta-insights-sync` (in repo) | None — pulls Meta data, no notifications |
+| `refresh_dashboard_kpis_5min` | `public.refresh_dashboard_kpis()` (SQL function) | **Was failing every 5min until 2026-06-01 fix migration.** Now uses only existing columns. |
+
 ---
 
 ## 3. Cron jobs (pg_cron) — every scheduled task
