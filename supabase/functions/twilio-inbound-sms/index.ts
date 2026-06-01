@@ -46,8 +46,13 @@ const TRIAL_NOTIFY: Record<string, string[]> = {
 const TWIML_OK = '<?xml version="1.0" encoding="UTF-8"?><Response/>';
 
 function isYes(body: string): boolean {
+  // 2026-05-31: tightened after the funnel-recovery spam incident. Was matching
+  // OK/Y/SURE which fired "🔥 Convert YES" emails to all owners on casual
+  // replies like "ok thanks". Now requires an explicit YES-word AND the entire
+  // message to be ≤12 chars — long replies are conversation, not consent.
   const cleaned = body.trim().toUpperCase().replace(/[^\w]/g, '');
-  return ['YES', 'Y', 'YEP', 'YUP', 'SURE', 'OK', 'OKAY', 'YESPLEASE'].includes(cleaned);
+  if (cleaned.length === 0 || cleaned.length > 12) return false;
+  return ['YES', 'YEP', 'YUP', 'YESPLEASE', 'YEAH'].includes(cleaned);
 }
 
 function isStop(body: string): boolean {
@@ -142,6 +147,28 @@ serve(async (req) => {
     });
   } catch (e) {
     console.error('twilio_inbound_log insert failed (table may not exist):', e);
+  }
+
+  // ─── NEW: SMS gateway — attach EVERY inbound to a trial_signup card by
+  // phone match (not just convert-SMS recipients). This is what /homebase
+  // reads to render the conversation thread on each card. Without this,
+  // staff have no record of what the customer texted them.
+  let matchedTrialIdForGateway: string | null = null;
+  try {
+    const { data: mid } = await sb.rpc('match_trial_by_phone', { p_phone: from, p_studio_slug: null });
+    matchedTrialIdForGateway = (mid as string | null) ?? null;
+    const { error: smsErr } = await sb.from('sms_messages').insert({
+      trial_signup_id: matchedTrialIdForGateway,
+      from_phone: from,
+      to_phone: to,
+      body,
+      direction: 'inbound',
+      twilio_sid: sid,
+      status: 'received',
+    });
+    if (smsErr) console.error('sms_messages inbound insert failed:', smsErr.message);
+  } catch (e) {
+    console.error('sms_messages inbound exception:', (e as Error).message);
   }
 
   // Find the most recent trial signup matching this phone number that received

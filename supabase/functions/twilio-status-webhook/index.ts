@@ -103,6 +103,21 @@ serve(async (req) => {
   }
   if (welcomeErr) console.error('welcome update error:', welcomeErr.message);
 
+  // ─── NEW: SMS gateway — also update sms_messages.status so /homebase
+  // shows live delivery state for every staff-sent text, not just the
+  // automated welcome/convert ones above.
+  try {
+    const gwUpdate: Record<string, unknown> = { status: messageStatus };
+    if (errorCode) gwUpdate.error_code = errorCode;
+    const { error: gwErr } = await sb
+      .from('sms_messages')
+      .update(gwUpdate)
+      .eq('twilio_sid', messageSid);
+    if (gwErr) console.error('sms_messages status update error:', gwErr.message);
+  } catch (e) {
+    console.error('sms_messages status update exception:', (e as Error).message);
+  }
+
   console.log(`twilio status: sid=${messageSid} status=${messageStatus} error=${errorCode ?? '-'} to=${to} from=${from} rows_touched=${touched}`);
 
   return new Response(JSON.stringify({ ok: true, messageSid, messageStatus, errorCode, rows_touched: touched }), {

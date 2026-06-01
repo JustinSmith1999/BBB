@@ -199,6 +199,21 @@ async function sendTrialEmail(studioSlug: string, variant: Variant, trial: {
   country?: string; newsletter_opted_in?: boolean;
   stripe_session_id: string; payment_date: string;
 }) {
+  // ── Backfill / replay guard ──────────────────────────────────────────
+  // 2026-05-31: a Stripe webhook replay sent 13 owner emails at once for
+  // historical paid trials (May 15–29). Owners thought 13 new customers had
+  // signed up. If the payment is more than 24h old, this is almost certainly
+  // a replay or backfill — log it loud and skip the owner notification. Real
+  // new-paid-trial emails are <30s after payment.
+  try {
+    const ageMs = Date.now() - new Date(trial.payment_date).getTime();
+    if (Number.isFinite(ageMs) && ageMs > 24 * 60 * 60 * 1000) {
+      console.warn(`sendTrialEmail SKIPPED — payment_date is ${Math.round(ageMs / 3600000)}h old (replay/backfill suspected). studio=${studioSlug} session=${trial.stripe_session_id}`);
+      return;
+    }
+  } catch (e) {
+    console.warn(`sendTrialEmail age check failed (continuing): ${(e as Error).message}`);
+  }
   const realRecipients = TRIAL_NOTIFY[studioSlug];
   if (!realRecipients || realRecipients.length === 0) {
     console.log(`No trial notify recipients for studio: ${studioSlug}`);
@@ -336,6 +351,12 @@ async function sendTrialWelcomeSms(
     console.error("Twilio secrets missing; skipping welcome SMS");
     return;
   }
+  // Comeback ($129) welcome SMS is disabled per Justin's request (May 27 2026).
+  // Email still goes out; just no auto-text on the comeback variant.
+  if (variant === "special") {
+    console.log(`Welcome SMS skipped — comeback variant disabled (trialSignupId=${trialSignupId})`);
+    return;
+  }
   const realTo = toE164(trial.phone);
   if (!realTo && !QA_OVERRIDE.phone) {
     console.error(`Welcome SMS skipped — unparseable phone: ${trial.phone}`);
@@ -392,6 +413,87 @@ async function sendTrialWelcomeSms(
       .from("trial_signups")
       .update({ welcome_sms_error: msg.slice(0, 500) })
       .eq("id", trialSignupId);
+  }
+}
+
+// ─── Owner notifications ──────────────────────────────────────────────────
+// On every paid trial, text every owner of that studio so they can welcome
+// the new customer personally. Owner phones live in `location_owners`;
+// many studios have multiple owners (Astoria/Williamsburg = Chris + Steve).
+// One SMS per owner per signup. Failures are logged, never block anything.
+async function notifyOwnersOfSignup(
+  locationId: string | null,
+  studioName: string,
+  variant: Variant,
+  trial: { name: string; email: string; phone: string; payment_date?: string },
+  supabase: any,
+) {
+  if (!locationId) return;
+  // ── Backfill / replay guard (matches sendTrialEmail) ─────────────────
+  // 2026-05-31: lock down owner SMS from any payment older than 24h. A real
+  // new paid trial fires within seconds of payment; anything older = replay.
+  try {
+    if (trial.payment_date) {
+      const ageMs = Date.now() - new Date(trial.payment_date).getTime();
+      if (Number.isFinite(ageMs) && ageMs > 24 * 60 * 60 * 1000) {
+        console.warn(`notifyOwnersOfSignup SKIPPED — payment_date is ${Math.round(ageMs / 3600000)}h old (replay/backfill suspected). studio=${studioName}`);
+        return;
+      }
+    }
+  } catch (e) {
+    console.warn(`notifyOwnersOfSignup age check failed (continuing): ${(e as Error).message}`);
+  }
+  const sid = Deno.env.get("TWILIO_ACCOUNT_SID");
+  const token = Deno.env.get("TWILIO_AUTH_TOKEN");
+  const from = Deno.env.get("TWILIO_FROM_NUMBER");
+  if (!sid || !token || !from) {
+    console.error("Twilio secrets missing; skipping owner notification SMS");
+    return;
+  }
+  const { data: owners, error } = await supabase
+    .from("location_owners")
+    .select("owner_name, phone")
+    .eq("location_id", locationId)
+    .eq("notify_signups", true);
+  if (error) { console.error("location_owners lookup failed:", error.message); return; }
+  if (!owners || !owners.length) return;
+
+  const priceLabel = variant === "special" ? "$129 comeback" : "$49 trial";
+  // Compact, scannable. Phone is tappable on iOS — owners can call from preview.
+  const body = `New ${priceLabel} signup · ${studioName}\n` +
+               `${trial.name || "(no name)"}\n` +
+               `${trial.phone || ""}\n` +
+               `${trial.email || ""}`.trimEnd();
+  const auth = "Basic " + btoa(`${sid}:${token}`);
+
+  for (const owner of owners) {
+    const to = toE164(owner.phone);
+    if (!to) { console.error(`Owner notification skipped — bad phone for ${owner.owner_name}: ${owner.phone}`); continue; }
+    // QA override: if QA_OVERRIDE.phone is set, redirect all owner texts to
+    // that single number too, prefixed with who it was originally for.
+    const realTo = to;
+    const sendTo = QA_OVERRIDE.phone || realTo;
+    const bodyOut = QA_OVERRIDE.phone && QA_OVERRIDE.phone !== realTo
+      ? `[QA→${owner.owner_name} ${realTo}] ${body}`
+      : body;
+    try {
+      const r = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,
+        {
+          method: "POST",
+          headers: { Authorization: auth, "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ From: from, To: sendTo, Body: bodyOut }).toString(),
+        },
+      );
+      const respBody = await r.json();
+      if (!r.ok) {
+        console.error(`Owner SMS to ${owner.owner_name} (${sendTo}) failed: ${respBody?.message || r.status}`);
+      } else {
+        console.log(`Owner SMS sent to ${owner.owner_name} (${sendTo}) sid=${respBody?.sid}`);
+      }
+    } catch (e) {
+      console.error(`Owner SMS exception for ${owner.owner_name}:`, (e as Error).message);
+    }
   }
 }
 
@@ -675,6 +777,646 @@ Deno.serve(async (req: Request) => {
     // POST { "test_trial_email": "astoria" | "bayside" | "fresh-meadows" | "williamsburg" }
     let parsedTest: any = null;
     try { parsedTest = JSON.parse(body); } catch {}
+
+    // ─── Admin: audit Stripe vs Supabase trial_signups ───────────────────
+    // For every location's Stripe account, lists every PAID Checkout Session
+    // since 2026-05-15 and reports any that don't have a matching
+    // trial_signups row (by stripe_session_id, with email fallback).
+    // POST { "stripe_audit": true }
+    // Auth: x-bbb-secret OR service-role bearer.
+    if (parsedTest?.stripe_audit) {
+      const SHARED_SECRET = Deno.env.get("FUNCTION_SHARED_SECRET") ?? "";
+      const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+      const presentedSecret = req.headers.get("x-bbb-secret") ?? "";
+      const presentedBearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+      const authed =
+        (SHARED_SECRET && presentedSecret === SHARED_SECRET) ||
+        (SERVICE_ROLE && presentedBearer === SERVICE_ROLE);
+      if (!authed) {
+        return new Response(JSON.stringify({ ok: false, error: "unauthorized" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      );
+      const { data: locations } = await supabase
+        .from("locations")
+        .select("id, name, stripe_secret_key");
+      const since = new Date("2026-05-15T00:00:00Z").getTime() / 1000;
+      const studios: any[] = [];
+      const allMissing: any[] = [];
+      for (const loc of (locations ?? [])) {
+        const sk = loc.stripe_secret_key;
+        if (!sk) { studios.push({ studio: loc.name, error: "no stripe_secret_key" }); continue; }
+        try {
+          const stripe = new Stripe(sk, { apiVersion: "2024-12-18.acacia" });
+          // Pull paid sessions in 100-item pages.
+          const sessions: any[] = [];
+          let starting_after: string | undefined = undefined;
+          for (let page = 0; page < 10; page++) {
+            const list = await stripe.checkout.sessions.list({
+              limit: 100,
+              created: { gte: since },
+              starting_after,
+            } as any);
+            sessions.push(...list.data);
+            if (!list.has_more) break;
+            starting_after = list.data[list.data.length - 1]?.id;
+            if (!starting_after) break;
+          }
+          // Only PAID + completed sessions.
+          const paid = sessions.filter((s: any) => s.payment_status === "paid" || s.status === "complete");
+          // Compare against trial_signups.stripe_session_id
+          const sessionIds = paid.map((s: any) => s.id);
+          const emails = paid.map((s: any) => (s.customer_details?.email || s.customer_email || "").toLowerCase().trim()).filter(Boolean);
+          const { data: tsBySession } = await supabase
+            .from("trial_signups")
+            .select("stripe_session_id, email")
+            .in("stripe_session_id", sessionIds);
+          const { data: tsByEmail } = await supabase
+            .from("trial_signups")
+            .select("email, stripe_session_id, payment_status")
+            .in("email", emails)
+            .eq("payment_status", "completed");
+          const haveSession = new Set((tsBySession || []).map((r: any) => r.stripe_session_id));
+          const haveEmailPaid = new Set((tsByEmail || []).map((r: any) => (r.email || "").toLowerCase().trim()));
+          const missing = paid.filter((s: any) => {
+            const e = (s.customer_details?.email || s.customer_email || "").toLowerCase().trim();
+            return !haveSession.has(s.id) && (!e || !haveEmailPaid.has(e));
+          }).map((s: any) => ({
+            stripe_session_id: s.id,
+            created: new Date(s.created * 1000).toISOString(),
+            amount_total: s.amount_total,
+            email: s.customer_details?.email || s.customer_email || null,
+            name: s.customer_details?.name || null,
+            phone: s.customer_details?.phone || null,
+            payment_intent: s.payment_intent,
+          }));
+          studios.push({
+            studio: loc.name,
+            paid_sessions_in_stripe: paid.length,
+            matched_by_session_id: haveSession.size,
+            matched_by_email_fallback: paid.length - haveSession.size - missing.length,
+            missing_in_supabase: missing.length,
+            missing_rows: missing,
+          });
+          for (const m of missing) allMissing.push({ studio: loc.name, ...m });
+        } catch (e) {
+          studios.push({ studio: loc.name, error: (e as Error).message });
+        }
+      }
+      return new Response(JSON.stringify({
+        ok: true,
+        since: "2026-05-15",
+        total_missing: allMissing.length,
+        studios,
+        all_missing_flat: allMissing,
+      }, null, 2),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // ─── Admin: one-shot backfill — insert trial_signups rows for every $49
+    // PaymentIntent since launch that doesn't yet have a row. Targets the
+    // 14 historical repeat-buyer + Payment-Link customers identified by the
+    // stripe_audit_full. Idempotent — checks by PI id before inserting.
+    // POST { "stripe_backfill_legacy_pl": true }
+    //   { dry_run?: boolean }   default false
+    if (parsedTest?.stripe_backfill_legacy_pl) {
+      const SHARED_SECRET = Deno.env.get("FUNCTION_SHARED_SECRET") ?? "";
+      const SERVICE_ROLE  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+      const presentedSecret = req.headers.get("x-bbb-secret") ?? "";
+      const presentedBearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+      const authed =
+        (SHARED_SECRET && presentedSecret === SHARED_SECRET) ||
+        (SERVICE_ROLE && presentedBearer === SERVICE_ROLE);
+      if (!authed) {
+        return new Response(JSON.stringify({ ok: false, error: "unauthorized" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      );
+      const dryRun = !!parsedTest?.dry_run;
+      const { data: locations } = await supabase
+        .from("locations")
+        .select("id, name, stripe_secret_key");
+      const since = new Date("2026-05-15T00:00:00Z").getTime() / 1000;
+      const studios: any[] = [];
+      const inserted: any[] = [];
+      const skipped: any[] = [];
+
+      for (const loc of (locations ?? [])) {
+        const sk = loc.stripe_secret_key;
+        if (!sk) { studios.push({ studio: loc.name, error: "no stripe_secret_key" }); continue; }
+        try {
+          const stripe = new Stripe(sk, { apiVersion: "2024-12-18.acacia" });
+
+          // 1. List paid checkout sessions in window — their PI ids are
+          //    OWNED by the Checkout flow and shouldn't be backfilled.
+          const ownedByCheckout = new Set<string>();
+          {
+            let starting_after: string | undefined = undefined;
+            for (let page = 0; page < 10; page++) {
+              const list = await stripe.checkout.sessions.list({
+                limit: 100,
+                created: { gte: since },
+                starting_after,
+              } as any);
+              for (const s of list.data) {
+                if ((s.payment_status === "paid" || s.status === "complete") && s.payment_intent) {
+                  ownedByCheckout.add(s.payment_intent as string);
+                }
+              }
+              if (!list.has_more) break;
+              starting_after = list.data[list.data.length - 1]?.id;
+              if (!starting_after) break;
+            }
+          }
+
+          // 2. List succeeded $49 PIs in window
+          const succeededPIs: any[] = [];
+          {
+            let starting_after: string | undefined = undefined;
+            for (let page = 0; page < 20; page++) {
+              const list = await stripe.paymentIntents.list({
+                limit: 100,
+                created: { gte: since },
+                starting_after,
+                expand: ["data.latest_charge", "data.customer"],
+              } as any);
+              for (const p of list.data) {
+                if (p.status === "succeeded" && Number(p.amount) === 4900) {
+                  succeededPIs.push(p);
+                }
+              }
+              if (!list.has_more) break;
+              starting_after = list.data[list.data.length - 1]?.id;
+              if (!starting_after) break;
+            }
+          }
+
+          // 3. For each PI NOT owned by Checkout, see if trial_signups already
+          //    has a row keyed on its id. If not, insert.
+          const studioInserted: any[] = [];
+          const studioSkipped: any[] = [];
+          for (const pi of succeededPIs) {
+            if (ownedByCheckout.has(pi.id)) {
+              studioSkipped.push({ pi: pi.id, reason: "owned_by_checkout" });
+              continue;
+            }
+            if ((pi as any).invoice) {
+              studioSkipped.push({ pi: pi.id, reason: "subscription_invoice" });
+              continue;
+            }
+            const { data: existing } = await supabase
+              .from("trial_signups")
+              .select("id")
+              .eq("stripe_session_id", pi.id)
+              .maybeSingle();
+            if (existing) {
+              studioSkipped.push({ pi: pi.id, reason: "already_in_supabase", row: existing.id });
+              continue;
+            }
+            const ch  = (pi.latest_charge as any) || null;
+            const cust = (pi.customer && typeof pi.customer === "object") ? pi.customer as any : null;
+            const email = (ch?.billing_details?.email || pi.receipt_email || cust?.email || null)?.toLowerCase().trim() || null;
+            const name  = ch?.billing_details?.name  || cust?.name  || null;
+            const phone = ch?.billing_details?.phone || cust?.phone || null;
+            const row = {
+              name: name || "",
+              email: email || "",
+              phone: phone || "",
+              location_id: loc.id,
+              stripe_session_id: pi.id,
+              payment_status: "completed",
+              payment_date: new Date(pi.created * 1000).toISOString(),
+              source_category: "legacy_archived",
+            };
+            if (dryRun) {
+              studioInserted.push({ pi: pi.id, would_insert: row });
+              continue;
+            }
+            const { data: insertedRow, error: insErr } = await supabase
+              .from("trial_signups")
+              .insert([row])
+              .select("id, name, email")
+              .single();
+            if (insErr) {
+              studioSkipped.push({ pi: pi.id, reason: "insert_error", error: insErr.message });
+            } else {
+              studioInserted.push({ pi: pi.id, row_id: insertedRow.id, name: insertedRow.name, email: insertedRow.email });
+            }
+          }
+          studios.push({
+            studio: loc.name,
+            total_pis: succeededPIs.length,
+            owned_by_checkout: ownedByCheckout.size,
+            inserted: studioInserted.length,
+            skipped: studioSkipped.length,
+            inserted_rows: studioInserted,
+            skipped_rows: studioSkipped,
+          });
+          inserted.push(...studioInserted.map((x) => ({ studio: loc.name, ...x })));
+          skipped.push(...studioSkipped.map((x) => ({ studio: loc.name, ...x })));
+        } catch (e) {
+          studios.push({ studio: loc.name, error: (e as Error).message });
+        }
+      }
+
+      return new Response(JSON.stringify({
+        ok: true,
+        dry_run: dryRun,
+        total_inserted: inserted.length,
+        total_skipped: skipped.length,
+        studios,
+      }, null, 2),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // ─── Admin: FULL audit — every successful payment in Stripe since launch
+    // The standard stripe_audit only walks checkout.sessions. This walks
+    // payment_intents.list too, so Payment-Link / raw API / Pancham-era
+    // payments that bypassed Checkout still show up. Dedupes by PI id
+    // (a session's payment_intent is the same PI that lists from PIs.list).
+    // Match against trial_signups by: stripe_session_id, payment_intent id,
+    // and email (case-insensitive) as a fallback.
+    // POST { "stripe_audit_full": true }
+    if (parsedTest?.stripe_audit_full) {
+      const SHARED_SECRET = Deno.env.get("FUNCTION_SHARED_SECRET") ?? "";
+      const SERVICE_ROLE  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+      const presentedSecret = req.headers.get("x-bbb-secret") ?? "";
+      const presentedBearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+      const authed =
+        (SHARED_SECRET && presentedSecret === SHARED_SECRET) ||
+        (SERVICE_ROLE && presentedBearer === SERVICE_ROLE);
+      if (!authed) {
+        return new Response(JSON.stringify({ ok: false, error: "unauthorized" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      );
+      const { data: locations } = await supabase
+        .from("locations")
+        .select("id, name, stripe_secret_key");
+      const since = new Date("2026-05-15T00:00:00Z").getTime() / 1000;
+      // Only flag the $49 trial — other charges (memberships, packs, drop-ins
+      // from MindBody) live in Stripe too but aren't expected in trial_signups.
+      // Optional override: POST { stripe_audit_full: true, amount_cents: 0 }
+      // to see every successful payment regardless of amount.
+      const onlyAmount = parsedTest?.amount_cents !== undefined ? Number(parsedTest.amount_cents) : 4900;
+      const studios: any[] = [];
+      const allMissing: any[] = [];
+      for (const loc of (locations ?? [])) {
+        const sk = loc.stripe_secret_key;
+        if (!sk) { studios.push({ studio: loc.name, error: "no stripe_secret_key" }); continue; }
+        try {
+          const stripe = new Stripe(sk, { apiVersion: "2024-12-18.acacia" });
+
+          // 1. Paid checkout sessions (and the PI they wrap)
+          const sessions: any[] = [];
+          {
+            let starting_after: string | undefined = undefined;
+            for (let page = 0; page < 10; page++) {
+              const list = await stripe.checkout.sessions.list({
+                limit: 100,
+                created: { gte: since },
+                starting_after,
+              } as any);
+              sessions.push(...list.data);
+              if (!list.has_more) break;
+              starting_after = list.data[list.data.length - 1]?.id;
+              if (!starting_after) break;
+            }
+          }
+          const paidSessions = sessions.filter((s: any) => s.payment_status === "paid" || s.status === "complete");
+          const sessionPI = new Set<string>(paidSessions.map((s: any) => s.payment_intent).filter(Boolean));
+
+          // 2. All payment_intents in the window (succeeded only). Expand both
+          //    latest_charge AND customer so we have every fallback for
+          //    email/name/phone — billing_details, receipt_email, customer
+          //    record. Stripe Link / Apple Pay often leave billing_details
+          //    empty but the customer record has the email.
+          const intents: any[] = [];
+          {
+            let starting_after: string | undefined = undefined;
+            for (let page = 0; page < 20; page++) {
+              const list = await stripe.paymentIntents.list({
+                limit: 100,
+                created: { gte: since },
+                starting_after,
+                expand: ['data.latest_charge', 'data.customer'],
+              } as any);
+              intents.push(...list.data);
+              if (!list.has_more) break;
+              starting_after = list.data[list.data.length - 1]?.id;
+              if (!starting_after) break;
+            }
+          }
+          const succeededPIs = intents.filter((p: any) => p.status === "succeeded");
+
+          // 3. Combine into a single "successful payment" list, deduped by PI.
+          //    Checkout-session payments take priority (they have customer email).
+          type PayRow = {
+            id: string;             // the stripe payment_intent id (canonical)
+            created: number;
+            amount_cents: number;
+            email: string | null;
+            name: string | null;
+            phone: string | null;
+            source: 'checkout' | 'payment_intent';
+            session_id: string | null;
+          };
+          const byPI = new Map<string, PayRow>();
+          for (const s of paidSessions) {
+            const piId = s.payment_intent as string | null;
+            if (!piId) continue;
+            byPI.set(piId, {
+              id: piId,
+              created: s.created,
+              amount_cents: Number(s.amount_total || 0),
+              email: (s.customer_details?.email || s.customer_email || null)?.toLowerCase().trim() || null,
+              name:  s.customer_details?.name || null,
+              phone: s.customer_details?.phone || null,
+              source: 'checkout',
+              session_id: s.id,
+            });
+          }
+          for (const p of succeededPIs) {
+            if (byPI.has(p.id)) continue;
+            // Cascade of fallbacks: charge billing_details → receipt_email →
+            // customer record. Stripe Link / Apple Pay / saved-card flows
+            // skip billing_details, but the Customer object always has email.
+            const ch  = p.charges?.data?.[0] || (p.latest_charge as any) || null;
+            const cust = (p.customer && typeof p.customer === 'object') ? p.customer : null;
+            const email = (
+              ch?.billing_details?.email ||
+              p.receipt_email ||
+              cust?.email ||
+              null
+            )?.toLowerCase().trim() || null;
+            const name  = ch?.billing_details?.name  || cust?.name  || null;
+            const phone = ch?.billing_details?.phone || cust?.phone || null;
+            byPI.set(p.id, {
+              id: p.id,
+              created: p.created,
+              amount_cents: Number(p.amount || 0),
+              email,
+              name,
+              phone,
+              source: 'payment_intent',
+              session_id: null,
+            });
+          }
+
+          // 4. Filter to the trial price (or all if amount_cents=0 override).
+          const candidates = Array.from(byPI.values())
+            .filter(r => onlyAmount === 0 || r.amount_cents === onlyAmount);
+
+          // 5. Match against trial_signups via stripe_session_id, the raw
+          //    PI string stored there (some legacy rows have pi_ in that
+          //    column), and email fallback.
+          const sessionIds = candidates.map(r => r.session_id).filter(Boolean) as string[];
+          const piIds      = candidates.map(r => r.id);
+          const emails     = candidates.map(r => r.email).filter(Boolean) as string[];
+          const { data: tsBySession } = await supabase
+            .from("trial_signups")
+            .select("stripe_session_id, email")
+            .or(`stripe_session_id.in.(${[...sessionIds, ...piIds].map(x => `"${x}"`).join(",")})`)
+            .limit(2000);
+          const { data: tsByEmail } = await supabase
+            .from("trial_signups")
+            .select("email, stripe_session_id")
+            .in("email", emails)
+            .eq("payment_status", "completed");
+          const haveSession  = new Set((tsBySession || []).map((r: any) => r.stripe_session_id));
+          const haveEmailPaid = new Set((tsByEmail || []).map((r: any) => (r.email || "").toLowerCase().trim()));
+
+          const missing = candidates.filter(r => {
+            const sessionHit = (r.session_id && haveSession.has(r.session_id)) || haveSession.has(r.id);
+            const emailHit   = !!r.email && haveEmailPaid.has(r.email);
+            return !sessionHit && !emailHit;
+          }).map(r => ({
+            payment_intent: r.id,
+            session_id: r.session_id,
+            source: r.source,
+            created: new Date(r.created * 1000).toISOString(),
+            amount_cents: r.amount_cents,
+            email: r.email,
+            name:  r.name,
+            phone: r.phone,
+          }));
+
+          // Pass { show_matched: true } to dump every candidate PI grouped by
+          // email — fastest way to spot if the same customer was charged twice
+          // (the 2:1 Stripe:Supabase ratio investigation).
+          const groupedByEmail: Record<string, any[]> = {};
+          if (parsedTest?.show_matched) {
+            for (const r of candidates) {
+              const k = r.email || `(no-email-${r.id.slice(0, 8)})`;
+              (groupedByEmail[k] ||= []).push({
+                pi: r.id, source: r.source, created: new Date(r.created * 1000).toISOString(), name: r.name,
+              });
+            }
+          }
+          const duplicates = Object.entries(groupedByEmail)
+            .filter(([_, arr]) => arr.length > 1)
+            .map(([email, arr]) => ({ email, count: arr.length, charges: arr }))
+            .sort((a, b) => b.count - a.count);
+
+          studios.push({
+            studio: loc.name,
+            stripe_checkout_paid:        paidSessions.length,
+            stripe_succeeded_intents:    succeededPIs.length,
+            unique_payments_after_dedupe: byPI.size,
+            candidates_for_diff:         candidates.length,
+            distinct_emails:             Object.keys(groupedByEmail).length || undefined,
+            duplicate_charge_customers:  duplicates.length || undefined,
+            duplicate_charges:           parsedTest?.show_matched ? duplicates : undefined,
+            amount_filter_cents:         onlyAmount,
+            missing_in_supabase:         missing.length,
+            missing_rows:                missing,
+          });
+          for (const m of missing) allMissing.push({ studio: loc.name, ...m });
+        } catch (e) {
+          studios.push({ studio: loc.name, error: (e as Error).message });
+        }
+      }
+      return new Response(JSON.stringify({
+        ok: true,
+        since: "2026-05-15",
+        amount_filter_cents: onlyAmount,
+        note: onlyAmount === 4900
+          ? "Filtering to the $49 trial only. Pass {amount_cents:0} to see ALL successful payments."
+          : `Filtering to ${onlyAmount}¢ payments.`,
+        total_missing: allMissing.length,
+        studios,
+        all_missing_flat: allMissing,
+      }, null, 2),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // ─── Admin: REVERSE audit — Supabase paid rows that Stripe doesn't know
+    // For every trial_signups row marked completed since launch, ask the
+    // location's current Stripe account whether the session_id resolves.
+    // Returns rows split into: confirmed | null_session | not_in_stripe.
+    // POST { "stripe_audit_reverse": true }
+    if (parsedTest?.stripe_audit_reverse) {
+      const SHARED_SECRET = Deno.env.get("FUNCTION_SHARED_SECRET") ?? "";
+      const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+      const presentedSecret = req.headers.get("x-bbb-secret") ?? "";
+      const presentedBearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+      const authed =
+        (SHARED_SECRET && presentedSecret === SHARED_SECRET) ||
+        (SERVICE_ROLE && presentedBearer === SERVICE_ROLE);
+      if (!authed) {
+        return new Response(JSON.stringify({ ok: false, error: "unauthorized" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      );
+      const { data: locations } = await supabase
+        .from("locations")
+        .select("id, name, stripe_secret_key");
+      const locMap: Record<string, { name: string; key: string | null }> = {};
+      for (const l of (locations ?? [])) locMap[l.id] = { name: l.name, key: l.stripe_secret_key };
+
+      const { data: rows } = await supabase
+        .from("trial_signups")
+        .select("id, name, email, phone, payment_date, payment_status, stripe_session_id, location_id, created_at, utm_source, utm_content, front_desk_stage, front_desk_note")
+        .eq("payment_status", "completed")
+        .gte("created_at", "2026-05-15")
+        .order("payment_date", { ascending: false });
+
+      // Pre-fetch MindBody-side data once: map emails → client_id + visit count.
+      // The visit query is studio-scoped at lookup time so a person who's a
+      // client at studio A but never visited B doesn't get false credit.
+      const allEmails = (rows ?? []).map((r: any) => (r.email || "").toLowerCase().trim()).filter(Boolean);
+      const { data: mbClients } = await supabase
+        .from("mindbody_clients")
+        .select("mindbody_id, email, first_name, last_name, status, member_since")
+        .in("email", allEmails);
+      const mbByEmail: Record<string, any> = {};
+      for (const c of (mbClients ?? [])) {
+        const k = (c.email || "").toLowerCase().trim();
+        if (k) mbByEmail[k] = c;
+      }
+      const mbIds = (mbClients ?? []).map((c: any) => c.mindbody_id);
+      const { data: mbVisits } = await supabase
+        .from("mindbody_visits")
+        .select("mindbody_client_id, studio_slug, starts_at, signed_in")
+        .in("mindbody_client_id", mbIds);
+      const visitsByClient: Record<string, { total: number; last: string | null; signed_in: number }> = {};
+      for (const v of (mbVisits ?? [])) {
+        const k = v.mindbody_client_id;
+        if (!visitsByClient[k]) visitsByClient[k] = { total: 0, last: null, signed_in: 0 };
+        visitsByClient[k].total++;
+        if (v.signed_in) visitsByClient[k].signed_in++;
+        if (!visitsByClient[k].last || (v.starts_at && v.starts_at > visitsByClient[k].last!)) visitsByClient[k].last = v.starts_at;
+      }
+
+      const out: any = { confirmed: [], null_session: [], not_in_stripe: [], errors: [] };
+      for (const r of (rows ?? [])) {
+        const loc = locMap[r.location_id];
+        const emailKey = (r.email || "").toLowerCase().trim();
+        const mb = mbByEmail[emailKey];
+        const v = mb ? visitsByClient[mb.mindbody_id] : null;
+        const baseEntry = {
+          id: r.id,
+          name: r.name,
+          email: r.email,
+          phone: r.phone,
+          studio: loc?.name || "?",
+          paid_date: r.payment_date,
+          signed_up: r.created_at,
+          // Where they came from
+          utm_source: r.utm_source || null,
+          utm_content: r.utm_content || null,
+          front_desk_stage: r.front_desk_stage || null,
+          front_desk_note: r.front_desk_note || null,
+          // MindBody side
+          in_mindbody: !!mb,
+          mindbody_status: mb?.status || null,
+          mindbody_member_since: mb?.member_since || null,
+          visit_count: v?.signed_in || 0,
+          last_visit_at: v?.last || null,
+        };
+        if (!r.stripe_session_id) {
+          out.null_session.push({ ...baseEntry, stripe_state: "NO_SESSION_ID" });
+          continue;
+        }
+        if (!loc?.key) {
+          out.errors.push({ ...baseEntry, error: "location missing stripe_secret_key" });
+          continue;
+        }
+        try {
+          const stripe = new Stripe(loc.key, { apiVersion: "2024-12-18.acacia" });
+          // Our `stripe_session_id` column historically stored two different
+          // things depending on which flow the customer used:
+          //   - cs_live_... or cs_test_...  → real Stripe Checkout Session
+          //   - pi_...                      → PaymentIntent (Payment Links,
+          //                                    direct charges, batch imports)
+          // Try the right one based on the prefix.
+          const sid = r.stripe_session_id as string;
+          let confirmed = false;
+          let amount: number | null = null;
+          let stripeKind: string | null = null;
+          let stripeStatus: string | null = null;
+          if (sid.startsWith("cs_")) {
+            const s = await stripe.checkout.sessions.retrieve(sid);
+            stripeKind = "checkout_session";
+            stripeStatus = s.payment_status ?? s.status ?? null;
+            if (s && (s.payment_status === "paid" || s.status === "complete")) {
+              confirmed = true;
+              amount = s.amount_total ?? null;
+            }
+          } else if (sid.startsWith("pi_")) {
+            const pi = await stripe.paymentIntents.retrieve(sid);
+            stripeKind = "payment_intent";
+            stripeStatus = pi.status ?? null;
+            if (pi && pi.status === "succeeded") {
+              confirmed = true;
+              amount = pi.amount ?? null;
+            }
+          } else {
+            // Some legacy / manual ids (e.g. "manual-henessey-...")
+            stripeKind = "unknown_id_format";
+          }
+          if (confirmed) {
+            out.confirmed.push({ ...baseEntry, stripe_state: "PAID_IN_STRIPE", stripe_kind: stripeKind, stripe_amount_cents: amount });
+          } else if (stripeKind === "unknown_id_format") {
+            out.not_in_stripe.push({ ...baseEntry, stripe_state: "MANUAL_IMPORT_NOT_IN_STRIPE", stripe_kind: stripeKind });
+          } else {
+            out.not_in_stripe.push({ ...baseEntry, stripe_state: `STRIPE_STATUS_${(stripeStatus || "unknown").toUpperCase()}`, stripe_kind: stripeKind });
+          }
+        } catch (e) {
+          out.not_in_stripe.push({ ...baseEntry, stripe_state: "STRIPE_NOT_FOUND", stripe_error: (e as Error).message.slice(0, 120) });
+        }
+      }
+      const summary = {
+        total_paid_in_supabase: (rows ?? []).length,
+        confirmed_in_stripe: out.confirmed.length,
+        no_stripe_session_id: out.null_session.length,
+        not_in_stripe: out.not_in_stripe.length,
+        errors: out.errors.length,
+      };
+      // Sub-summaries — how many of the phantom rows are real MindBody customers?
+      const stripeMissing = [...out.null_session, ...out.not_in_stripe];
+      const phantomBreakdown = {
+        total_phantom: stripeMissing.length,
+        in_mindbody: stripeMissing.filter((r: any) => r.in_mindbody).length,
+        in_mindbody_with_visits: stripeMissing.filter((r: any) => r.in_mindbody && (r.visit_count || 0) > 0).length,
+        ghost_no_mb_no_visits: stripeMissing.filter((r: any) => !r.in_mindbody).length,
+      };
+      return new Response(JSON.stringify({ ok: true, summary, phantomBreakdown, ...out }, null, 2),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     if (parsedTest?.test_trial_email) {
       const presentedBearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
       const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -1234,6 +1976,21 @@ Deno.serve(async (req: Request) => {
         }
       }
 
+      // ─── Owner notification SMS — one per owner of this studio ─────────
+      // Carlos gets Bayside + Fresh Meadows. Chris + Steve each get a copy
+      // on Astoria + Williamsburg. List lives in public.location_owners.
+      try {
+        await notifyOwnersOfSignup(
+          locationId,
+          studioName,
+          variant,
+          { name: trialData.name, email: trialData.email, phone: trialData.phone, payment_date: trialData.payment_date },
+          supabase,
+        );
+      } catch (e) {
+        console.error("owner notification SMS exception:", e);
+      }
+
       if (data && data[0] && location.gohighlevel_webhook_url) {
         const trialSignupId = data[0].id;
         // Fix #10: wrap in EdgeRuntime.waitUntil so the runtime doesn't tear
@@ -1258,6 +2015,78 @@ Deno.serve(async (req: Request) => {
         } else {
           // Local dev fallback — await directly so dev tests don't lose the task
           await ghlTask;
+        }
+      }
+    }
+
+    // ─── payment_intent.succeeded — covers raw Payment Link / API flows ──
+    // Legacy Stripe Payment Links and direct PaymentIntent API charges don't
+    // fire checkout.session.completed. We want those $49 trials in the
+    // dashboard too. Key rules:
+    //   1. Only act on $49 payments (skip memberships, packs, etc.)
+    //   2. Skip if the PI already belongs to a Checkout Session — the
+    //      session.completed handler above will deal with it.
+    //   3. Skip if we already wrote a trial_signups row keyed on this PI id
+    //      (idempotent — Stripe may resend webhooks).
+    //   4. Insert a fresh row per PI so returning customers get counted
+    //      every time they pay, never silently merged into an old row.
+    if (event.type === "payment_intent.succeeded") {
+      const pi = event.data.object as Stripe.PaymentIntent;
+      const amount = Number(pi.amount || 0);
+      if (amount !== 4900) {
+        // Not the $49 trial — log and ignore. Memberships and packs land
+        // here too; they shouldn't create trial_signups rows.
+        console.log(`PI ${pi.id} succeeded for ${amount}¢ — not a trial, skipping`);
+      } else if (pi.invoice || (pi as any).checkout_session) {
+        // Part of a subscription invoice or a Checkout Session — already
+        // handled elsewhere (or doesn't belong in trial_signups).
+        console.log(`PI ${pi.id} belongs to invoice/checkout — skipping (already handled)`);
+      } else {
+        // Idempotency check — have we already written a row keyed on this PI?
+        // We store the PI id in stripe_session_id for these rows so the
+        // existing audit/dedupe logic finds them.
+        const { data: existing } = await supabase
+          .from("trial_signups")
+          .select("id")
+          .eq("stripe_session_id", pi.id)
+          .maybeSingle();
+        if (existing) {
+          console.log(`PI ${pi.id} already has trial_signups row ${existing.id} — skipping`);
+        } else {
+          // Pull customer details — same cascade the audit uses.
+          let email: string | null = null;
+          let name:  string | null = null;
+          let phone: string | null = null;
+          try {
+            const expanded = await stripe.paymentIntents.retrieve(pi.id, {
+              expand: ["latest_charge", "customer"],
+            });
+            const ch  = (expanded.latest_charge as any) || null;
+            const cust = (expanded.customer && typeof expanded.customer === "object") ? expanded.customer as any : null;
+            email = (ch?.billing_details?.email || expanded.receipt_email || cust?.email || null)?.toLowerCase().trim() || null;
+            name  = ch?.billing_details?.name  || cust?.name  || null;
+            phone = ch?.billing_details?.phone || cust?.phone || null;
+          } catch (e) {
+            console.error("PI expand failed:", (e as Error).message);
+          }
+          const { data: inserted, error: piInsertErr } = await supabase
+            .from("trial_signups")
+            .insert([{
+              name: name || "",
+              email: email || "",
+              phone: phone || "",
+              location_id: locationId,
+              stripe_session_id: pi.id,  // PI id stored here so audit dedupes
+              payment_status: "completed",
+              payment_date: new Date(pi.created * 1000).toISOString(),
+              source_category: "legacy_archived",  // tag so dashboard can include/exclude
+            }])
+            .select();
+          if (piInsertErr) {
+            console.error("PI insert failed:", piInsertErr.message);
+          } else {
+            console.log(`Inserted trial_signups for PI ${pi.id}:`, inserted?.[0]?.id);
+          }
         }
       }
     }
