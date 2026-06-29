@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Navigate } from 'react-router-dom';
-import { ArrowRight, CheckCircle, Clock, Users, Zap, MapPin, Phone, Lock } from 'lucide-react';
+import { CheckCircle, Clock, Users, Zap, MapPin, Phone, Lock } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
 import { getUtmParams, captureUtmsFromUrl } from '../lib/utm';
 
@@ -23,6 +23,17 @@ type LocationConfig = {
   phone: string;
   image: string;
   metaPixelId: string | null; // each gym has its own Meta Pixel for ad attribution
+  // 2026-06-29: per-studio Mariana Tek location ID. Used to scope the
+  // /intro-offers widget so the customer only sees this studio's $49 trial
+  // pass option (not all 4 studios' offers). Verified live in mt-public-classes
+  // calls + WidgetLab.tsx.
+  mtLocationId: number;
+  // 2026-06-19: pre-rendered hero banner. When set, the trial page swaps the
+  // gradient hero for this branded banner image (image already contains the
+  // "TWO WEEKS FOR $49" headline + studio name baked in). Mobile + desktop
+  // variants are crops of the same design tuned for each viewport.
+  heroImageWeb?: string;
+  heroImageMobile?: string;
 };
 
 const LOCATIONS: Record<string, LocationConfig> = {
@@ -38,6 +49,7 @@ const LOCATIONS: Record<string, LocationConfig> = {
     phone: '(718) 704-9954',
     image: '/astoria-final.webp',
     metaPixelId: '1291566006435758',
+    mtLocationId: 48717,
   },
   'bayside': {
     slug: 'bayside',
@@ -51,6 +63,9 @@ const LOCATIONS: Record<string, LocationConfig> = {
     phone: '(646) 566-8870',
     image: '/bayside-final.webp',
     metaPixelId: '931144729719242',
+    mtLocationId: 48718,
+    heroImageWeb: '/bayside-hero-web.jpg',
+    heroImageMobile: '/bayside-hero-mobile.jpg',
   },
   'fresh-meadows': {
     slug: 'fresh-meadows',
@@ -64,6 +79,9 @@ const LOCATIONS: Record<string, LocationConfig> = {
     phone: '(646) 566-8207',
     image: '/freshmeadows-final.webp',
     metaPixelId: '979328851475276',
+    mtLocationId: 48719,
+    heroImageWeb: '/fresh-meadows-hero-web.jpg',
+    heroImageMobile: '/fresh-meadows-hero-mobile.jpg',
   },
   'williamsburg': {
     slug: 'williamsburg',
@@ -77,6 +95,7 @@ const LOCATIONS: Record<string, LocationConfig> = {
     phone: '(718) 683-1864',
     image: '/williamsburg-final.webp',
     metaPixelId: '2160299368182872',
+    mtLocationId: 48720,
   },
 };
 
@@ -88,6 +107,10 @@ declare global {
   interface Window {
     fbq?: (...args: unknown[]) => void;
     _fbq?: unknown;
+    // 2026-06-29: MT Web Integrations runtime — loaded site-wide via
+    // index.html. .render(selector) (re-)mounts whichever
+    // [data-mariana-integrations] div matches the selector.
+    MTIntegrations?: { render: (selector?: string) => void };
   }
 }
 
@@ -153,16 +176,105 @@ function getMetaClickIds(): { fbp: string; fbc: string } {
 
 export default function LocationTrialSignup() {
   const { location: locationParam } = useParams<{ location: string }>();
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState('');
-  const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    smsConsent: false,
-    newsletter: false,
-  });
+  // 2026-06-29: BBB Stripe form replaced by MT widget. The form state
+  // (firstName/lastName/email/phone/smsConsent/newsletter), handleChange,
+  // handleSubmit, isProcessing/error/submittingRef — all removed. MT now
+  // owns the full transaction. Pixel + UTM + soft-conversion remain.
+  const pageLoadAtRef = useRef<number>(Date.now());
+
+  // ── Soft-conversion: "text me the schedule" mini-form ───────────────────
+  // For visitors who won't commit to $49 today. Captures phone, sends the
+  // schedule link via Twilio, writes a soft_conversion lead row. 2026-06-11.
+  const [scheduleOpen,      setScheduleOpen]      = useState(false);
+  const [scheduleFirstName, setScheduleFirstName] = useState('');
+  const [scheduleLastName,  setScheduleLastName]  = useState('');
+  const [scheduleEmail,     setScheduleEmail]     = useState('');
+  const [schedulePhone,     setSchedulePhone]     = useState('');
+  const [scheduleSending,   setScheduleSending]   = useState(false);
+  const [scheduleError,     setScheduleError]     = useState('');
+  const [scheduleSent,      setScheduleSent]      = useState(false);
+
+  const handleScheduleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setScheduleError('');
+    if (!scheduleFirstName.trim()) {
+      setScheduleError('Please enter your first name.');
+      return;
+    }
+    if (!scheduleLastName.trim()) {
+      setScheduleError('Please enter your last name.');
+      return;
+    }
+    // Light email validation — server-side normalization happens in the
+    // edge function. Basic sanity here so we don't even fire the network call.
+    const emailTrim = scheduleEmail.trim();
+    if (!emailTrim || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
+      setScheduleError('Please enter a valid email address.');
+      return;
+    }
+    const phoneDigits = schedulePhone.replace(/\D/g, '');
+    if (phoneDigits.length < 10 || phoneDigits.length > 11) {
+      setScheduleError('Please enter a valid US phone number.');
+      return;
+    }
+    if (!location) return;
+    setScheduleSending(true);
+    try {
+      // Capture every signal Meta gives us so the dashboard can attribute this
+      // soft conversion back to the specific ad / campaign / creative.
+      const { fbp, fbc } = getMetaClickIds();
+      const utms = getUtmParams();
+      const timeOnPageMs = pageLoadAtRef.current
+        ? Math.max(0, Date.now() - pageLoadAtRef.current)
+        : null;
+
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/request-schedule-sms`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'apikey':        SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          studio_slug:  location.slug,
+          studio_name:  location.name,
+          location_id:  location.locationId,
+          phone:        schedulePhone.trim(),
+          first_name:   scheduleFirstName.trim(),
+          last_name:    scheduleLastName.trim(),
+          email:        scheduleEmail.trim().toLowerCase(),
+          // Full Meta + journey context for dashboard attribution
+          fbp,
+          fbc,
+          ...utms,                                  // utm_source/medium/campaign/content
+          referrer:        document.referrer || '',
+          page_url:        window.location.href,
+          time_on_page_ms: timeOnPageMs,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.ok === false) {
+        setScheduleError(data?.error || 'Could not send. Please try again.');
+        setScheduleSending(false);
+        return;
+      }
+      // Fire a Meta Pixel Lead event for the soft conversion too — different
+      // value (we got contact info but no $) so Meta can score it appropriately.
+      if (location.metaPixelId && window.fbq) {
+        window.fbq('track', 'Lead', {
+          content_name:     `${location.name} Schedule Request (soft)`,
+          content_category: 'soft_conversion',
+          value: 0,
+          currency: 'USD',
+        });
+      }
+      setScheduleSent(true);
+      setScheduleSending(false);
+    } catch (err) {
+      setScheduleError('Network error. Please try again.');
+      setScheduleSending(false);
+    }
+  };
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -186,99 +298,132 @@ export default function LocationTrialSignup() {
     return undefined;
   }, [location?.metaPixelId]);
 
+  // ─── MT widget mount (2026-06-29) ──────────────────────────────────────
+  // Mariana Tek's Web Integrations runtime is loaded site-wide via
+  // index.html. It auto-scans [data-mariana-integrations] divs on initial
+  // page load — but React lazy-mounts this route AFTER that scan, so we
+  // have to re-invoke MTIntegrations.render() once our div lands in the DOM.
+  // (Same pattern as WidgetLab.tsx — see notes there for why we have to
+  // call render() per-div with a unique selector.)
+  //
+  // The widget path `/intro-offers?location=<id>` mounts MT's native
+  // new-customer signup + intro pass purchase flow, filtered to this
+  // studio's offers. MT owns the entire transaction (account creation,
+  // payment, pass issuance, confirmation). Replaces the gutted BBB Stripe
+  // form below — kills the silent-failure bridge problem.
+  useEffect(() => {
+    if (!location?.mtLocationId) return;
+    const tryInit = (attempts: number) => {
+      if (typeof window.MTIntegrations?.render === 'function') {
+        const divs = Array.from(
+          document.querySelectorAll('[data-mariana-integrations]'),
+        ) as HTMLElement[];
+        divs.forEach((div, i) => {
+          if (!div.dataset.mtId) div.dataset.mtId = `mt-trial-${i}-${Date.now()}`;
+          if (div.children.length > 0) return; // already mounted
+          try {
+            window.MTIntegrations!.render(`[data-mt-id="${div.dataset.mtId}"]`);
+          } catch (e) {
+            console.warn('MT trial widget mount failed for', div.dataset.mtId, e);
+          }
+        });
+        return;
+      }
+      if (attempts > 0) setTimeout(() => tryInit(attempts - 1), 500);
+    };
+    tryInit(20);
+  }, [location?.mtLocationId]);
+
+  // 2026-06-04: server-side PageView CAPI with hashed email when known.
+  // 2026-06-11: REMOVED the email-required gate. Previously this only fired
+  // for email-link visitors (?email=X), so Meta ad-driven traffic was
+  // invisible to our backend — we couldn't tell if a click actually landed
+  // on the page or if 0 form fills meant 0 visits or 0 conversions.
+  // Now fires on EVERY page load. Email is optional; fbp/fbc cookies
+  // (set by the Meta browser pixel) are enough for CAPI to match. When
+  // email IS present, match quality jumps from ~6 to ~9.
+  useEffect(() => {
+    if (!location) return;
+    const params = new URLSearchParams(window.location.search);
+    const emailFromUrl = params.get('email') || '';
+    const { fbp, fbc } = getMetaClickIds();
+    // Need at least one identity signal — fbp from the Meta pixel cookie is
+    // almost always present on ad-driven traffic. If none of the three are
+    // available (very rare — private browsing + ad blocker), skip rather
+    // than fire a low-trust event Meta will discard anyway.
+    if (!emailFromUrl && !fbp && !fbc) return;
+    const eventId = `pv_${location.slug}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    // ── Client-side enrichment: device + locale + return-visitor count ──
+    // All best-effort. The function gracefully ignores missing fields.
+    let connType = '';
+    try {
+      const c = (navigator as unknown as { connection?: { effectiveType?: string } }).connection;
+      connType = c?.effectiveType || '';
+    } catch { /* ignore */ }
+    const colorScheme = window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    let timezone = '';
+    try { timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { /* ignore */ }
+    const language = navigator.language || '';
+
+    // Returning-visitor counter via localStorage (per studio).
+    let visitNumber = 1, daysSinceFirst = 0;
+    try {
+      const key = `bbb_visit_${location.slug}`;
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        visitNumber = (parsed.count || 0) + 1;
+        const firstMs = Number(parsed.first || Date.now());
+        daysSinceFirst = Math.floor((Date.now() - firstMs) / 86400000);
+        localStorage.setItem(key, JSON.stringify({ count: visitNumber, first: firstMs }));
+      } else {
+        localStorage.setItem(key, JSON.stringify({ count: 1, first: Date.now() }));
+      }
+    } catch { /* private mode — fine */ }
+
+    // Best-effort — never block the page render on this.
+    fetch(`${SUPABASE_URL}/functions/v1/meta-capi-pageview`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'apikey':        SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        studio_slug:     location.slug,
+        email:           emailFromUrl,
+        fbp, fbc,
+        page_url:        window.location.href,
+        event_id:        eventId,
+        // Client-side enrichment
+        screen_width:    window.screen?.width  ?? null,
+        viewport_width:  window.innerWidth     ?? null,
+        language,
+        timezone,
+        connection_type: connType,
+        color_scheme:    colorScheme,
+        visit_number:    visitNumber,
+        days_since_first: daysSinceFirst,
+      }),
+    }).catch(() => { /* non-blocking */ });
+    // If we DO have an email (cart-recovery email-link click), re-init the
+    // browser pixel with advanced matching so subsequent events (Lead,
+    // InitiateCheckout) inherit the email match quality.
+    if (emailFromUrl && window.fbq) {
+      window.fbq('init', location.metaPixelId, { em: emailFromUrl });
+    }
+  }, [location?.metaPixelId, location?.slug]);
+
   if (!location) {
     return <Navigate to="/trial" replace />;
   }
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value,
-    }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-
-    // Client-side guard — fast feedback before we hit the server. Server still
-    // re-validates (don't trust the browser).
-    const first = formData.firstName.trim();
-    const last  = formData.lastName.trim();
-    const mail  = formData.email.trim();
-    const tel   = formData.phone.trim();
-    if (!first || first.length < 2)      { setError('Please enter your first name.'); return; }
-    if (!last  || last.length  < 2)      { setError('Please enter your last name.'); return; }
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mail)) { setError('Please enter a valid email address.'); return; }
-    const digits = tel.replace(/\D/g, '');
-    if (digits.length < 10 || digits.length > 11) { setError('Please enter a valid US phone number.'); return; }
-    // Explicit SMS opt-in is required — this consent checkbox is what the
-    // Twilio Toll-Free Verification submission points to as opt-in proof.
-    if (!formData.smsConsent) { setError('Please agree to receive class confirmations by text to continue.'); return; }
-
-    setIsProcessing(true);
-
-    // Meta Pixel — fire Lead the moment they submit (counts pre-checkout)
-    if (location.metaPixelId && window.fbq) {
-      window.fbq('track', 'Lead', {
-        content_name: `${location.name} 2-Week Trial`,
-        content_category: 'trial',
-        value: 49,
-        currency: 'USD',
-      });
-    }
-
-    try {
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/create-trial-checkout`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          'apikey': SUPABASE_ANON_KEY,
-        },
-        body: JSON.stringify({
-          locationId: location.locationId,
-          locationName: location.name,
-          customerEmail: formData.email.trim(),
-          customerFirstName: formData.firstName.trim(),
-          customerLastName: formData.lastName.trim(),
-          customerName: `${formData.firstName.trim()} ${formData.lastName.trim()}`.trim(),
-          customerPhone: formData.phone.trim(),
-          newsletter: formData.newsletter,
-          // Forward Meta ad-click attribution so CAPI can credit Purchases to the ad.
-          fbclid: new URLSearchParams(window.location.search).get('fbclid') || null,
-          fbc: (document.cookie.match(/(?:^|;\s*)_fbc=([^;]+)/) || [])[1] || null,
-          fbp: (document.cookie.match(/(?:^|;\s*)_fbp=([^;]+)/) || [])[1] || null,
-          ...getUtmParams(),
-          ...getMetaClickIds(),
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.url) {
-        throw new Error(data.error || 'Could not start checkout. Please try again or call us.');
-      }
-
-      // Meta Pixel — fire InitiateCheckout right before Stripe redirect
-      if (location.metaPixelId && window.fbq) {
-        window.fbq('track', 'InitiateCheckout', {
-          content_name: `${location.name} 2-Week Trial`,
-          content_category: 'trial',
-          value: 49,
-          currency: 'USD',
-        });
-      }
-
-      // Redirect to gym-specific Stripe Checkout
-      window.location.href = data.url;
-    } catch (err) {
-      console.error('Trial checkout error:', err);
-      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
-      setIsProcessing(false);
-    }
-  };
+  // 2026-06-29: handleChange/handleSubmit removed. MT widget now owns the
+  // primary trial transaction (account creation + payment + pass issuance).
+  // Browser-side Lead pixel + server-side meta-capi-pageview/create-trial-checkout
+  // were tied to the dead BBB form — those signals are now generated MT-side
+  // by mt-orders-sync firing CAPI Purchase on new $49 trials.
 
   return (
     <>
@@ -289,44 +434,61 @@ export default function LocationTrialSignup() {
     />
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
       {/* HERO ─────────────────────────────────────────────────────────────── */}
-      {/* Mobile hero: pt-36 clears the fixed header + marquee strip (≈120px
-          combined). Type sized so the full badge+headline+subtitle block fits
-          inside a 390x844 viewport above the card. */}
-      <div className="relative bg-gradient-to-br from-red-600 via-red-700 to-red-800 text-white pt-36 pb-10 sm:pt-32 sm:pb-16 lg:pt-36 lg:pb-20 overflow-hidden">
-        <div className="absolute inset-0 bg-black/10"></div>
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-20 left-10 w-72 h-72 bg-white rounded-full blur-3xl"></div>
-          <div className="absolute bottom-10 right-10 w-96 h-96 bg-white rounded-full blur-3xl"></div>
+      {/* 2026-06-19: Per-studio branded banner hero when heroImageWeb is set
+          (Bayside + Fresh Meadows). Banner artwork already contains the
+          "TWO WEEKS FOR $49" headline + studio name + subhead baked in, so we
+          render the image alone — no text overlay needed. Astoria + WB still
+          use the original red gradient hero below. */}
+      {location.heroImageWeb ? (
+        <div className="relative w-full pt-28 sm:pt-24 lg:pt-28 bg-black">
+          <picture>
+            <source media="(min-width: 640px)" srcSet={location.heroImageWeb} />
+            <img
+              src={location.heroImageMobile || location.heroImageWeb}
+              alt={`Better Body Bootcamp ${location.name} — Two Weeks for $49`}
+              className="w-full h-auto block"
+              loading="eager"
+              fetchPriority="high"
+            />
+          </picture>
         </div>
+      ) : (
+        <div className="relative bg-gradient-to-br from-red-600 via-red-700 to-red-800 text-white pt-36 pb-10 sm:pt-32 sm:pb-16 lg:pt-36 lg:pb-20 overflow-hidden">
+          <div className="absolute inset-0 bg-black/10"></div>
+          <div className="absolute inset-0 opacity-10">
+            <div className="absolute top-20 left-10 w-72 h-72 bg-white rounded-full blur-3xl"></div>
+            <div className="absolute bottom-10 right-10 w-96 h-96 bg-white rounded-full blur-3xl"></div>
+          </div>
 
-        <div className="max-w-5xl mx-auto px-3 sm:px-6 lg:px-8 text-center relative z-10">
-          <span className="inline-block px-3 py-1 sm:px-4 sm:py-1.5 bg-white/15 backdrop-blur-sm rounded-full text-[10px] sm:text-xs font-bold tracking-[0.2em] uppercase border border-white/30 mb-4 sm:mb-10 whitespace-nowrap">
-            {location.badge}
-          </span>
-          <h1 className="font-black mb-3 sm:mb-6 leading-[0.95] tracking-tight">
-            <span className="block text-3xl sm:text-6xl md:text-7xl lg:text-8xl">TWO WEEKS</span>
-            <span className="block text-4xl sm:text-7xl md:text-8xl lg:text-[9rem] mt-1 sm:mt-3">FOR $49</span>
-          </h1>
-          <p className="text-sm sm:text-lg md:text-xl lg:text-2xl font-medium leading-snug sm:leading-relaxed max-w-md sm:max-w-3xl mx-auto mb-0 sm:mb-8 px-2">
-            Unlimited classes at <span className="whitespace-nowrap">Better Body Bootcamp {location.name}</span>. Real training. Real results.
-          </p>
+          <div className="max-w-5xl mx-auto px-3 sm:px-6 lg:px-8 text-center relative z-10">
+            <span className="inline-block px-3 py-1 sm:px-4 sm:py-1.5 bg-white/15 backdrop-blur-sm rounded-full text-[10px] sm:text-xs font-bold tracking-[0.2em] uppercase border border-white/30 mb-4 sm:mb-10 whitespace-nowrap">
+              {location.badge}
+            </span>
+            <h1 className="font-black mb-3 sm:mb-6 leading-[0.95] tracking-tight">
+              <span className="block text-3xl sm:text-6xl md:text-7xl lg:text-8xl">TWO WEEKS</span>
+              <span className="block text-4xl sm:text-7xl md:text-8xl lg:text-[9rem] mt-1 sm:mt-3">FOR $49</span>
+            </h1>
+            <p className="text-sm sm:text-lg md:text-xl lg:text-2xl font-medium leading-snug sm:leading-relaxed max-w-md sm:max-w-3xl mx-auto mb-0 sm:mb-8 px-2">
+              Unlimited classes at <span className="whitespace-nowrap">Better Body Bootcamp {location.name}</span>. Real training. Real results.
+            </p>
 
-          <div className="hidden sm:flex flex-nowrap justify-center items-center gap-1.5 sm:gap-4 lg:gap-8 mt-6 sm:mt-10 px-1">
-            <div className="flex items-center justify-center gap-1 sm:gap-2 bg-white/10 backdrop-blur-sm px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg border border-white/20 flex-1 sm:flex-initial">
-              <Clock className="w-3.5 h-3.5 sm:w-5 sm:h-5 flex-shrink-0" />
-              <span className="font-semibold text-[10px] sm:text-base whitespace-nowrap">14 Days</span>
-            </div>
-            <div className="flex items-center justify-center gap-1 sm:gap-2 bg-white/10 backdrop-blur-sm px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg border border-white/20 flex-1 sm:flex-initial">
-              <Users className="w-3.5 h-3.5 sm:w-5 sm:h-5 flex-shrink-0" />
-              <span className="font-semibold text-[10px] sm:text-base whitespace-nowrap">Expert Trainers</span>
-            </div>
-            <div className="flex items-center justify-center gap-1 sm:gap-2 bg-white/10 backdrop-blur-sm px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg border border-white/20 flex-1 sm:flex-initial">
-              <Zap className="w-3.5 h-3.5 sm:w-5 sm:h-5 flex-shrink-0" />
-              <span className="font-semibold text-[10px] sm:text-base whitespace-nowrap">High-Energy</span>
+            <div className="hidden sm:flex flex-nowrap justify-center items-center gap-1.5 sm:gap-4 lg:gap-8 mt-6 sm:mt-10 px-1">
+              <div className="flex items-center justify-center gap-1 sm:gap-2 bg-white/10 backdrop-blur-sm px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg border border-white/20 flex-1 sm:flex-initial">
+                <Clock className="w-3.5 h-3.5 sm:w-5 sm:h-5 flex-shrink-0" />
+                <span className="font-semibold text-[10px] sm:text-base whitespace-nowrap">14 Days</span>
+              </div>
+              <div className="flex items-center justify-center gap-1 sm:gap-2 bg-white/10 backdrop-blur-sm px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg border border-white/20 flex-1 sm:flex-initial">
+                <Users className="w-3.5 h-3.5 sm:w-5 sm:h-5 flex-shrink-0" />
+                <span className="font-semibold text-[10px] sm:text-base whitespace-nowrap">Expert Trainers</span>
+              </div>
+              <div className="flex items-center justify-center gap-1 sm:gap-2 bg-white/10 backdrop-blur-sm px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg border border-white/20 flex-1 sm:flex-initial">
+                <Zap className="w-3.5 h-3.5 sm:w-5 sm:h-5 flex-shrink-0" />
+                <span className="font-semibold text-[10px] sm:text-base whitespace-nowrap">High-Energy</span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* MAIN CARD ────────────────────────────────────────────────────────── */}
       {/* No overlap on mobile so the hero subtitle is fully visible. Desktop
@@ -387,7 +549,13 @@ export default function LocationTrialSignup() {
                   <span className="text-2xl sm:text-3xl font-black text-red-600">$49</span>
                 </div>
                 <p className="text-[10px] sm:text-xs text-gray-500 mt-2 italic">
-                  You have 90 days to claim and start your trial.
+                  You have 60 days to claim and start your trial.
+                </p>
+                <p className="text-xs sm:text-sm text-red-600 font-bold mt-2">
+                  Two-week trial available only to New York City residents.
+                </p>
+                <p className="text-[9px] sm:text-[10px] text-gray-400 mt-3 leading-tight">
+                  All trials non-refundable.
                 </p>
               </div>
 
@@ -418,124 +586,133 @@ export default function LocationTrialSignup() {
                   </p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">First Name *</label>
-                      <input
-                        type="text"
-                        name="firstName"
-                        value={formData.firstName}
-                        onChange={handleChange}
-                        required
-                        minLength={2}
-                        autoComplete="given-name"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Last Name *</label>
-                      <input
-                        type="text"
-                        name="lastName"
-                        value={formData.lastName}
-                        onChange={handleChange}
-                        required
-                        minLength={2}
-                        autoComplete="family-name"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900"
-                      />
-                    </div>
-                  </div>
+                {/* ── Mariana Tek native signup widget ────────────────────
+                    2026-06-29: replaces the gutted BBB Stripe form. MT's
+                    Web Integrations runtime (loaded in index.html) mounts
+                    the new-customer signup + intro pass purchase flow in
+                    an iframe scoped to this studio's location ID. MT owns
+                    the entire transaction — account creation, payment,
+                    pass issuance, confirmation. Kills the silent-failure
+                    bridge problem (no more Joel Witten / Angelo Nunez
+                    falling through cracks). See useEffect above for the
+                    re-init pattern (React lazy-mount races MT auto-scan).
+                    ─────────────────────────────────────────────────────── */}
+                <div
+                  key={`mt-trial-${location.slug}`}
+                  data-mariana-integrations={`/intro-offers?location=${location.mtLocationId}`}
+                  className="w-full bg-white rounded-xl overflow-hidden"
+                  style={{ minHeight: '640px' }}
+                />
 
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Email *</label>
-                      <input
-                        type="email"
-                        name="email"
-                        value={formData.email}
-                        onChange={handleChange}
-                        required
-                        autoComplete="email"
-                        placeholder="you@email.com"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1.5">Mobile Phone *</label>
-                      <input
-                        type="tel"
-                        name="phone"
-                        value={formData.phone}
-                        onChange={handleChange}
-                        required
-                        inputMode="tel"
-                        autoComplete="tel"
-                        placeholder="(212) 555-0100"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900"
-                      />
-                      <p className="text-[10px] text-gray-500 mt-1">We text class confirmations — must be a real US mobile.</p>
-                    </div>
-                  </div>
+                <p className="text-xs text-gray-600 leading-relaxed mt-4">
+                  By starting your trial you agree to our{' '}
+                  <a href="/privacy" className="underline">Privacy Policy</a> and{' '}
+                  <a href="/terms" className="underline">Terms</a>. Payment +
+                  account creation handled securely by Mariana Tek. Your account
+                  works in the BBB / Mariana Tek app for booking classes.
+                </p>
 
-                  <div className="pt-3">
-                    <label className="flex items-start gap-3 cursor-pointer text-sm text-gray-700">
-                      <input
-                        type="checkbox"
-                        name="smsConsent"
-                        checked={formData.smsConsent}
-                        onChange={handleChange}
-                        required
-                        className="mt-0.5 w-5 h-5 text-red-600 border-gray-300 rounded focus:ring-red-500 flex-shrink-0"
-                      />
-                      <span>
-                        <span className="font-semibold">I agree to receive transactional text messages</span> — class confirmations and trial updates — from Better Body Bootcamp {location.name} at the mobile number provided. Msg &amp; data rates may apply. Msg frequency varies. Reply STOP to opt out, HELP for help. *
-                      </span>
-                    </label>
-                  </div>
+                <div className="flex items-center justify-center gap-2 text-xs text-gray-500 pt-2">
+                  <Lock className="w-3.5 h-3.5" />
+                  Powered by Mariana Tek — secure payments + native booking
+                </div>
 
-                  <div className="pt-3">
-                    <label className="flex items-start gap-3 cursor-pointer text-sm text-gray-700 py-2 min-h-[44px]">
-                      <input
-                        type="checkbox"
-                        name="newsletter"
-                        checked={formData.newsletter}
-                        onChange={handleChange}
-                        className="mt-0.5 w-5 h-5 text-red-600 border-gray-300 rounded focus:ring-red-500"
-                      />
-                      <span>Send me class schedules and updates</span>
-                    </label>
-                  </div>
-
-                  {error && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
-                      {error}
+                {/* ── Soft-conversion: "text me the schedule" ───────────── */}
+                <div className="mt-8 pt-6 border-t border-gray-200">
+                  {!scheduleSent ? (
+                    !scheduleOpen ? (
+                      <div className="text-center">
+                        <p className="text-sm text-gray-600 mb-3">
+                          Not ready to commit to $49 today?
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setScheduleOpen(true)}
+                          className="text-sm font-semibold text-red-700 underline underline-offset-2 hover:text-red-800 transition"
+                        >
+                          Just text me the class schedule →
+                        </button>
+                      </div>
+                    ) : (
+                      <form onSubmit={handleScheduleSubmit} className="bg-gray-50 border border-gray-200 rounded-xl p-4 sm:p-5" noValidate>
+                        <h3 className="text-base font-bold text-gray-900 mb-1">No pressure — we'll text you the schedule.</h3>
+                        <p className="text-xs text-gray-600 mb-4">
+                          Drop in whenever it fits. No card, no commitment. We'll send the class schedule to your phone.
+                        </p>
+                        <div className="grid sm:grid-cols-2 gap-3">
+                          <input
+                            type="text"
+                            value={scheduleFirstName}
+                            onChange={(e) => setScheduleFirstName(e.target.value)}
+                            required
+                            placeholder="First name *"
+                            autoComplete="given-name"
+                            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900 text-sm"
+                          />
+                          <input
+                            type="text"
+                            value={scheduleLastName}
+                            onChange={(e) => setScheduleLastName(e.target.value)}
+                            required
+                            placeholder="Last name *"
+                            autoComplete="family-name"
+                            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900 text-sm"
+                          />
+                          <input
+                            type="email"
+                            value={scheduleEmail}
+                            onChange={(e) => setScheduleEmail(e.target.value)}
+                            required
+                            inputMode="email"
+                            autoComplete="email"
+                            placeholder="Email *"
+                            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900 text-sm sm:col-span-2"
+                          />
+                          <input
+                            type="tel"
+                            value={schedulePhone}
+                            onChange={(e) => setSchedulePhone(e.target.value)}
+                            required
+                            inputMode="tel"
+                            autoComplete="tel"
+                            placeholder="Mobile phone *"
+                            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900 text-sm sm:col-span-2"
+                          />
+                        </div>
+                        {scheduleError && (
+                          <div className="mt-3 text-xs text-red-700">{scheduleError}</div>
+                        )}
+                        <p className="text-[10px] text-gray-500 mt-2">
+                          One text with the schedule link. Reply STOP to opt out. Standard rates may apply.
+                        </p>
+                        <div className="mt-3 flex items-center gap-2">
+                          <button
+                            type="submit"
+                            disabled={scheduleSending}
+                            className="flex-1 bg-gray-900 hover:bg-black text-white font-semibold text-sm py-2.5 px-4 rounded-lg transition disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            {scheduleSending ? 'Sending…' : 'Text me the schedule'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setScheduleOpen(false)}
+                            className="text-xs text-gray-500 hover:text-gray-700 px-2 py-2"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    )
+                  ) : (
+                    <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                      <CheckCircle className="w-6 h-6 text-green-600 mx-auto mb-2" />
+                      <h3 className="text-base font-bold text-gray-900 mb-1">Schedule sent!</h3>
+                      <p className="text-sm text-gray-700">
+                        Check your phone — we just texted you the schedule link. See you in class.
+                      </p>
                     </div>
                   )}
-
-                  <p className="text-xs text-gray-600 leading-relaxed">
-                    By continuing you agree to our <a href="/privacy" className="underline">Privacy Policy</a> and <a href="/terms" className="underline">Terms</a>. We never share your phone number with third parties.
-                  </p>
-
-                  <button
-                    type="submit"
-                    disabled={isProcessing}
-                    className="group w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-6 py-4 rounded-xl font-black text-lg uppercase tracking-wider transition-all transform hover:scale-[1.01] shadow-lg hover:shadow-red-600/40 flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none"
-                  >
-                    {isProcessing ? 'Processing...' : (
-                      <>
-                        Continue to Secure Checkout · $49
-                        <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                      </>
-                    )}
-                  </button>
-
-                  <div className="flex items-center justify-center gap-2 text-xs text-gray-500 pt-2">
-                    <Lock className="w-3.5 h-3.5" />
-                    Payment processed securely via Stripe
-                  </div>
-                </form>
+                </div>
               </div>
             </div>
           </div>
