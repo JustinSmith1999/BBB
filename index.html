@@ -8,6 +8,8 @@
     <link rel="preconnect" href="https://uracuwugpxqjfgtuobal.supabase.co" crossorigin />
     <link rel="dns-prefetch" href="https://connect.facebook.net" />
     <link rel="dns-prefetch" href="https://checkout.stripe.com" />
+    <link rel="dns-prefetch" href="https://betterbodybootcamp.marianaiframes.com" />
+    <link rel="preconnect" href="https://betterbodybootcamp.marianaiframes.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#dc2626" />
@@ -15,6 +17,11 @@
     <meta name="description" content="New York's premier group fitness bootcamp since 2011. High-energy HIIT, strength training, and fat-burning workouts at 4 NYC locations. Try 2 weeks for $49." />
     <meta name="robots" content="index,follow" />
     <link rel="canonical" href="https://betterbodybootcamp.com" />
+    <!-- Google Search Console ownership verification (URL prefix property
+         for https://betterbodybootcamp.com). Per Google's guidance keep
+         this tag in place even after verification succeeds, otherwise the
+         property gets unverified the next time their crawler revisits. -->
+    <meta name="google-site-verification" content="_QMxQ5TlrrxppOExkyMcUuTKPJCQv7vCrxMrfFlBGgQ" />
 
     <meta name="geo.region" content="US-NY" />
     <meta name="geo.placename" content="New York City" />
@@ -32,9 +39,153 @@
     <meta name="twitter:title" content="Better Body Bootcamp | NYC Group Fitness &amp; Bootcamp Classes" />
     <meta name="twitter:description" content="New York's premier group fitness bootcamp since 2011. High-energy HIIT, strength training, and fat-burning workouts at 4 NYC locations. Try 2 weeks for $49." />
     <meta name="twitter:image" content="https://uracuwugpxqjfgtuobal.supabase.co/storage/v1/object/public/logos/0180_bbb_bbb-newtext_logo_new_black_1%20(1).png" />
+
+    <!-- ─────────────────────────────────────────────────────────────────────
+         STATIC SEO SCHEMA GRAPH (2026-07-08)
+         Baked into the server-served HTML so it is visible to crawlers that
+         do NOT execute JavaScript — specifically the AI answer engines
+         (GPTBot / PerplexityBot / ClaudeBot / Google-Extended). The rich
+         per-page schema in LocationDetail.tsx is injected via react-helmet
+         AFTER JS runs, so non-JS bots never see it. This @graph gives every
+         page load the Organization + WebSite + all 4 studio LocalBusiness
+         entities (address, geo, hours, socials) up front, so AI engines can
+         name and cite each Better Body Bootcamp studio correctly.
+         Single source of truth for the studio facts also lives in
+         src/pages/LocationDetail.tsx (LOCATION_SEO) — keep the two in sync.
+    ───────────────────────────────────────────────────────────────────────── -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://betterbodybootcamp.com/#organization",
+          "name": "Better Body Bootcamp",
+          "url": "https://betterbodybootcamp.com",
+          "logo": "https://uracuwugpxqjfgtuobal.supabase.co/storage/v1/object/public/logos/0180_bbb_bbb-newtext_logo_new_black_1%20(1).png",
+          "description": "New York City group fitness and bootcamp studios with 4 locations across Queens and Brooklyn. High-energy HIIT, strength training, and coached group workouts. Try 2 weeks for $49.",
+          "areaServed": [
+            { "@type": "City", "name": "New York" },
+            { "@type": "AdministrativeArea", "name": "Queens" },
+            { "@type": "AdministrativeArea", "name": "Brooklyn" }
+          ],
+          "sameAs": [
+            "https://www.instagram.com/betterbodybootcamp",
+            "https://www.facebook.com/betterbodybootcamp"
+          ]
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://betterbodybootcamp.com/#website",
+          "url": "https://betterbodybootcamp.com",
+          "name": "Better Body Bootcamp",
+          "publisher": { "@id": "https://betterbodybootcamp.com/#organization" },
+          "inLanguage": "en-US"
+        },
+        {
+          "@type": ["HealthClub", "GymCenter", "LocalBusiness"],
+          "@id": "https://betterbodybootcamp.com/locations/astoria",
+          "name": "Better Body Bootcamp Astoria",
+          "url": "https://betterbodybootcamp.com/locations/astoria",
+          "parentOrganization": { "@id": "https://betterbodybootcamp.com/#organization" },
+          "description": "Bootcamp and group fitness classes in Astoria, Queens. Expert trainers, real results. Try 2 weeks for $49.",
+          "telephone": "+1-718-704-9954",
+          "priceRange": "$$",
+          "image": "https://uracuwugpxqjfgtuobal.supabase.co/storage/v1/object/public/logos/0180_bbb_bbb-newtext_logo_new_black_1%20(1).png",
+          "currenciesAccepted": "USD",
+          "paymentAccepted": ["Cash", "Credit Card", "Apple Pay", "Google Pay"],
+          "address": { "@type": "PostalAddress", "streetAddress": "31-18 Steinway Street", "addressLocality": "Astoria", "addressRegion": "NY", "postalCode": "11103", "addressCountry": "US" },
+          "geo": { "@type": "GeoCoordinates", "latitude": 40.7634, "longitude": -73.9148 },
+          "hasMap": "https://www.google.com/maps/search/?api=1&query=40.7634,-73.9148",
+          "openingHoursSpecification": [{ "@type": "OpeningHoursSpecification", "dayOfWeek": ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"], "opens": "06:00", "closes": "21:00" }],
+          "areaServed": { "@type": "City", "name": "Astoria" },
+          "sameAs": ["https://www.instagram.com/betterbodybootcampastoria", "https://www.facebook.com/betterbodybootcampastoria"]
+        },
+        {
+          "@type": ["HealthClub", "GymCenter", "LocalBusiness"],
+          "@id": "https://betterbodybootcamp.com/locations/bayside",
+          "name": "Better Body Bootcamp Bayside",
+          "url": "https://betterbodybootcamp.com/locations/bayside",
+          "parentOrganization": { "@id": "https://betterbodybootcamp.com/#organization" },
+          "description": "Bootcamp and group fitness classes in Bayside, Queens. Expert trainers, real results. Try 2 weeks for $49.",
+          "telephone": "+1-646-566-8870",
+          "priceRange": "$$",
+          "image": "https://uracuwugpxqjfgtuobal.supabase.co/storage/v1/object/public/logos/0180_bbb_bbb-newtext_logo_new_black_1%20(1).png",
+          "currenciesAccepted": "USD",
+          "paymentAccepted": ["Cash", "Credit Card", "Apple Pay", "Google Pay"],
+          "address": { "@type": "PostalAddress", "streetAddress": "3447 Bell Blvd", "addressLocality": "Bayside", "addressRegion": "NY", "postalCode": "11361", "addressCountry": "US" },
+          "geo": { "@type": "GeoCoordinates", "latitude": 40.7666, "longitude": -73.7732 },
+          "hasMap": "https://www.google.com/maps/search/?api=1&query=40.7666,-73.7732",
+          "openingHoursSpecification": [{ "@type": "OpeningHoursSpecification", "dayOfWeek": ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"], "opens": "06:00", "closes": "21:00" }],
+          "areaServed": { "@type": "City", "name": "Bayside" },
+          "sameAs": ["https://www.instagram.com/betterbodybootcampbayside", "https://www.facebook.com/betterbodybootcampbayside"]
+        },
+        {
+          "@type": ["HealthClub", "GymCenter", "LocalBusiness"],
+          "@id": "https://betterbodybootcamp.com/locations/fresh-meadows",
+          "name": "Better Body Bootcamp Fresh Meadows",
+          "url": "https://betterbodybootcamp.com/locations/fresh-meadows",
+          "parentOrganization": { "@id": "https://betterbodybootcamp.com/#organization" },
+          "description": "Bootcamp and group fitness classes in Fresh Meadows, Queens. Expert trainers, real results. Try 2 weeks for $49.",
+          "telephone": "+1-646-566-8207",
+          "priceRange": "$$",
+          "image": "https://uracuwugpxqjfgtuobal.supabase.co/storage/v1/object/public/logos/0180_bbb_bbb-newtext_logo_new_black_1%20(1).png",
+          "currenciesAccepted": "USD",
+          "paymentAccepted": ["Cash", "Credit Card", "Apple Pay", "Google Pay"],
+          "address": { "@type": "PostalAddress", "streetAddress": "76-46 164th Street", "addressLocality": "Fresh Meadows", "addressRegion": "NY", "postalCode": "11366", "addressCountry": "US" },
+          "geo": { "@type": "GeoCoordinates", "latitude": 40.7345, "longitude": -73.7906 },
+          "hasMap": "https://www.google.com/maps/search/?api=1&query=40.7345,-73.7906",
+          "openingHoursSpecification": [{ "@type": "OpeningHoursSpecification", "dayOfWeek": ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"], "opens": "06:00", "closes": "21:00" }],
+          "areaServed": { "@type": "City", "name": "Fresh Meadows" },
+          "sameAs": ["https://www.instagram.com/betterbodyfreshmeadows", "https://www.facebook.com/betterbodybootcampfreshmeadows"]
+        },
+        {
+          "@type": ["HealthClub", "GymCenter", "LocalBusiness"],
+          "@id": "https://betterbodybootcamp.com/locations/williamsburg",
+          "name": "Better Body Bootcamp Williamsburg",
+          "url": "https://betterbodybootcamp.com/locations/williamsburg",
+          "parentOrganization": { "@id": "https://betterbodybootcamp.com/#organization" },
+          "description": "Bootcamp and group fitness classes in Williamsburg, Brooklyn. Expert trainers, real results. Try 2 weeks for $49.",
+          "telephone": "+1-718-683-1864",
+          "priceRange": "$$",
+          "image": "https://uracuwugpxqjfgtuobal.supabase.co/storage/v1/object/public/logos/0180_bbb_bbb-newtext_logo_new_black_1%20(1).png",
+          "currenciesAccepted": "USD",
+          "paymentAccepted": ["Cash", "Credit Card", "Apple Pay", "Google Pay"],
+          "address": { "@type": "PostalAddress", "streetAddress": "487 Driggs Ave", "addressLocality": "Brooklyn", "addressRegion": "NY", "postalCode": "11211", "addressCountry": "US" },
+          "geo": { "@type": "GeoCoordinates", "latitude": 40.7146, "longitude": -73.9602 },
+          "hasMap": "https://www.google.com/maps/search/?api=1&query=40.7146,-73.9602",
+          "openingHoursSpecification": [{ "@type": "OpeningHoursSpecification", "dayOfWeek": ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"], "opens": "06:00", "closes": "21:00" }],
+          "areaServed": { "@type": "City", "name": "Williamsburg" },
+          "sameAs": ["https://www.instagram.com/betterbodybootcampwilliamsburg", "https://www.facebook.com/betterbodybootcampwilliamsburg"]
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <!-- 2026-06-24: Mariana Tek Web Integrations runtime. Bootstraps the iframe
+         widgets used on /schedule/[slug], /classes, /pricing, /account, etc.
+         (Renders wherever the React tree includes a <div data-mariana-integrations="..."> element.)
+         Replaces the per-page healcode.js / MindBody widget loaders. Lives in
+         index.html so it's available on first paint of any page. -->
+    <script>
+      (function () {
+        var TENANT_NAME = 'betterbodybootcamp';
+        var d = document;
+        var sA = ['polyfills', 'js'];
+        for (var i = 0; i < sA.length; i++) {
+          var s = d.createElement('script');
+          s.src = 'https://' + TENANT_NAME + '.marianaiframes.com/' + sA[i];
+          s.setAttribute('data-timestamp', +new Date());
+          (d.head || d.body).appendChild(s);
+        }
+      })();
+    </script>
+    <noscript>
+      Please enable JavaScript to view class schedules &amp; bookings —
+      <a href="https://marianatek.com/?ref_noscript" rel="nofollow">Web Integrations by Mariana Tek</a>.
+    </noscript>
   </body>
 </html>
