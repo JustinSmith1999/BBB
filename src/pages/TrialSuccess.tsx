@@ -1,122 +1,235 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { CheckCircle, ArrowRight, Calendar } from 'lucide-react';
+import { CheckCircle, Calendar, ArrowRight } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
+
+const APP_STORE_URL = 'https://apps.apple.com/us/app/better-body-studios/id6778182425';
+
+// 2026-06-26: MT Web Integrations class-type id for the daily schedule widget
+// (same one the pre-NativeClassList schedule pages used). The booking widget
+// path is `/schedule/daily/<classTypeId>?locations=<mtLocationId>`.
+const MT_CLASS_TYPE_ID = 48541;
+
+// Per-studio Meta Pixel IDs — mirrors LocationTrialSignup.tsx.
+const STUDIO_PIXELS: Record<string, string> = {
+  astoria:         '1291566006435758',
+  bayside:         '931144729719242',
+  'fresh-meadows': '979328851475276',
+  williamsburg:    '2160299368182872',
+};
+
+// Studio → display name + MT location id (for the booking widget).
+const STUDIOS: Record<string, { name: string; mtLocationId: number }> = {
+  astoria:         { name: 'Astoria',       mtLocationId: 48717 },
+  bayside:         { name: 'Bayside',       mtLocationId: 48718 },
+  'fresh-meadows': { name: 'Fresh Meadows', mtLocationId: 48719 },
+  williamsburg:    { name: 'Williamsburg',  mtLocationId: 48720 },
+};
+
+declare global {
+  interface Window {
+    fbq?: (...args: unknown[]) => void;
+    _fbq?: unknown;
+    MTIntegrations?: { render: (selector?: string) => void };
+  }
+}
+
+function ensurePixelLoaded(pixelId: string): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined') return resolve();
+    const markerId = `meta-pixel-${pixelId}`;
+    if (window.fbq && document.getElementById(markerId)) {
+      window.fbq('init', pixelId);
+      return resolve();
+    }
+    const tag = document.createElement('script');
+    tag.id = markerId;
+    tag.text = `
+      !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+      n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+      if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+      n.queue=[];t=b.createElement(e);t.async=!0;
+      t.src=v;s=b.getElementsByTagName(e)[0];
+      s.parentNode.insertBefore(t,s)}(window, document,'script',
+      'https://connect.facebook.net/en_US/fbevents.js');
+      fbq('init', '${pixelId}');
+    `;
+    document.head.appendChild(tag);
+    const ns = document.createElement('noscript');
+    ns.id = `${markerId}-ns`;
+    ns.innerHTML = `<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${pixelId}&ev=Purchase&noscript=1" />`;
+    document.head.appendChild(ns);
+    setTimeout(resolve, 250);
+  });
+}
 
 export default function TrialSuccess() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [countdown, setCountdown] = useState(5);
   const sessionId = searchParams.get('session_id');
+
+  // Capture the studio BEFORE the pixel effect clears it from sessionStorage,
+  // so we can drop the customer onto the right studio's booking schedule.
+  const [studioSlug] = useState<string>(() => {
+    try { return sessionStorage.getItem('bbb_last_trial_studio') || ''; } catch { return ''; }
+  });
+  const studio = STUDIOS[studioSlug];
+
+  // ── Meta Pixel Purchase event (unchanged behavior) ──────────────────────
+  // event_id MATCHES stripe-webhook's `trial_${session.id}` so Meta dedupes.
+  useEffect(() => {
+    if (!sessionId) return;
+    let cancelled = false;
+    const pixelsToFire = studioSlug && STUDIO_PIXELS[studioSlug]
+      ? [STUDIO_PIXELS[studioSlug]]
+      : Object.values(STUDIO_PIXELS);
+    (async () => {
+      for (const pid of pixelsToFire) {
+        if (cancelled) return;
+        await ensurePixelLoaded(pid);
+        window.fbq?.('track', 'Purchase',
+          { value: 49, currency: 'USD', content_name: '2-Week Trial' },
+          { eventID: `trial_${sessionId}` },
+        );
+      }
+      try { sessionStorage.removeItem('bbb_last_trial_studio'); } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [sessionId, studioSlug]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
-
-    if (!sessionId) {
-      navigate('/locations');
-      return;
-    }
-
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          navigate('/locations');
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
+    if (!sessionId) navigate('/locations');
   }, [sessionId, navigate]);
 
-  if (!sessionId) {
-    return null;
-  }
+  // ── Mount the MT booking widget ─────────────────────────────────────────
+  // The MT Web Integrations runtime (loaded in index.html) auto-scans on page
+  // load, but this route mounts lazily AFTER that scan — so we poll for
+  // MTIntegrations.render() and invoke it once our div is in the DOM. Same
+  // pattern as LocationTrialSignup's buy-widget mount. For Astoria / Fresh
+  // Meadows / Williamsburg (bought via MT's widget) the customer is already
+  // signed into their MT session, so this schedule lets them reserve in one
+  // tap. Bayside (Stripe checkout) has no MT session yet — MT's widget will
+  // prompt them to sign in, which they can do once they set their password.
+  useEffect(() => {
+    if (!studio) return;
+    let stop = false;
+    const tryInit = (attempts: number) => {
+      if (stop) return;
+      if (typeof window.MTIntegrations?.render === 'function') {
+        const divs = Array.from(document.querySelectorAll('[data-mariana-integrations]')) as HTMLElement[];
+        divs.forEach((div, i) => {
+          if (!div.dataset.mtId) div.dataset.mtId = `mt-success-${i}-${Date.now()}`;
+          if (div.children.length > 0) return;
+          try { window.MTIntegrations!.render(`[data-mt-id="${div.dataset.mtId}"]`); }
+          catch (e) { console.warn('MT booking widget mount failed', e); }
+        });
+        return;
+      }
+      if (attempts > 0) setTimeout(() => tryInit(attempts - 1), 500);
+    };
+    tryInit(20);
+    return () => { stop = true; };
+  }, [studio]);
+
+  if (!sessionId) return null;
 
   return (
     <>
-    <SEOHead
-      title="Welcome to Better Body Bootcamp!"
-      description="Your trial signup was successful. Welcome to Better Body Bootcamp!"
-      canonical="/trial-success"
-      noindex={true}
-    />
-    <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-black flex items-center justify-center px-4">
-      <div className="max-w-2xl w-full">
-        <div className="bg-gradient-to-br from-gray-900 to-black border-2 border-green-500/50 rounded-3xl p-8 md:p-12 text-center shadow-2xl">
-          <div className="bg-green-500/20 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 border-4 border-green-500">
-            <CheckCircle className="w-12 h-12 text-green-400" />
-          </div>
+      <SEOHead
+        title="You're in — book your first class"
+        description="Your Better Body Bootcamp trial is active. Book your first class now."
+        canonical="/trial-success"
+        noindex={true}
+      />
+      <div className="min-h-screen bg-gradient-to-b from-black via-gray-900 to-black py-10 px-4">
+        <div className="max-w-2xl w-full mx-auto">
+          <div className="bg-gradient-to-br from-gray-900 to-black border-2 border-green-500/50 rounded-3xl p-6 md:p-10 shadow-2xl">
 
-          <h1 className="text-3xl md:text-4xl lg:text-5xl font-display font-black text-white mb-4">
-            Payment Successful!
-          </h1>
+            {/* Confirmation header */}
+            <div className="text-center">
+              <div className="bg-green-500/20 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-5 border-4 border-green-500">
+                <CheckCircle className="w-10 h-10 text-green-400" />
+              </div>
+              <h1 className="text-3xl md:text-4xl font-display font-black text-white mb-3">
+                You&apos;re in!
+              </h1>
+              <p className="text-lg text-gray-300 mb-2">
+                Your 2-week trial{studio ? <> at <span className="font-bold text-white">{studio.name}</span></> : ''} is active.
+              </p>
+              <p className="text-base text-red-400 font-semibold mb-6 inline-flex items-center gap-2 justify-center">
+                <Calendar className="w-5 h-5" /> Now book your first class below 👇
+              </p>
+            </div>
 
-          <p className="text-lg md:text-xl text-gray-300 mb-8">
-            Welcome to Better Body Bootcamp! Your 2-week trial is ready.
-          </p>
+            {studio ? (
+              <>
+                {/* MT native booking schedule — reserve right here, same session */}
+                <div
+                  key={`mt-book-${studio.mtLocationId}`}
+                  data-mariana-integrations={`/schedule/daily/${MT_CLASS_TYPE_ID}?locations=${studio.mtLocationId}`}
+                  className="w-full rounded-2xl bg-white overflow-hidden"
+                  style={{ minHeight: '620px' }}
+                />
+                <p className="text-gray-400 text-xs mt-3 text-center leading-relaxed">
+                  Just paid through our booking system? You&apos;re already signed in — pick a class above and tap reserve.
+                  Otherwise, sign in with your checkout email. We also emailed you a link to set your password for next time and the app.
+                </p>
+              </>
+            ) : (
+              // Fallback: studio unknown (cold-loaded URL) — let them pick.
+              <div className="bg-black/50 border border-white/10 rounded-2xl p-6">
+                <p className="text-gray-300 text-sm mb-4 text-center">Pick your studio to book your first class:</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {Object.entries(STUDIOS).map(([slug, s]) => (
+                    <button
+                      key={slug}
+                      onClick={() => navigate(`/schedule/${slug}`)}
+                      className="px-4 py-3 rounded-xl bg-white/5 hover:bg-red-600 border border-white/10 text-white font-bold text-sm transition-colors"
+                    >
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
-          <div className="bg-black/50 border border-white/10 rounded-2xl p-6 mb-8">
-            <h2 className="text-xl font-bold text-white mb-4 flex items-center justify-center gap-2">
-              <Calendar className="w-6 h-6 text-red-500" />
-              What's Next?
-            </h2>
-            <div className="space-y-3 text-left text-gray-300">
-              <div className="flex items-start gap-3">
-                <span className="text-red-500 font-bold">1.</span>
-                <p className="text-sm md:text-base">
-                  Check your email for confirmation and location details
-                </p>
-              </div>
-              <div className="flex items-start gap-3">
-                <span className="text-red-500 font-bold">2.</span>
-                <p className="text-sm md:text-base">
-                  Your location will contact you to schedule your first class
-                </p>
-              </div>
-              <div className="flex items-start gap-3">
-                <span className="text-red-500 font-bold">3.</span>
-                <p className="text-sm md:text-base">
-                  Show up ready to work and experience real training
-                </p>
-              </div>
+            {/* Secondary — the app, for booking on the go */}
+            <div className="mt-7 pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-center gap-4">
+              <span className="text-gray-400 text-sm">Prefer your phone?</span>
+              <a
+                href={APP_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Download Better Body Studios on the App Store"
+                className="inline-flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-bold transition-all hover:scale-[1.02]"
+                style={{ backgroundColor: '#000', color: '#fff', border: '1px solid #1f2937' }}
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff" aria-hidden="true">
+                  <path d="M17.05 12.04c-.02-3 2.45-4.44 2.56-4.51-1.4-2.04-3.57-2.32-4.34-2.35-1.84-.19-3.6 1.08-4.54 1.08-.94 0-2.39-1.06-3.93-1.03-2.02.03-3.88 1.18-4.92 2.99-2.1 3.65-.54 9.05 1.51 12.01 1 1.45 2.19 3.08 3.74 3.02 1.51-.06 2.08-.97 3.9-.97 1.82 0 2.34.97 3.94.94 1.63-.03 2.66-1.47 3.65-2.93 1.15-1.68 1.62-3.31 1.64-3.39-.04-.02-3.15-1.21-3.21-4.78zM14.09 3.83c.83-1.01 1.39-2.41 1.24-3.83-1.19.05-2.65.79-3.51 1.79-.77.89-1.45 2.32-1.27 3.7 1.33.11 2.69-.67 3.54-1.66z"/>
+                </svg>
+                <span className="flex flex-col leading-tight items-start text-left">
+                  <span className="text-[10px] text-white/70 uppercase tracking-wide">Download on the</span>
+                  <span className="text-base font-black text-white">App Store</span>
+                </span>
+              </a>
             </div>
           </div>
 
-          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 mb-6">
-            <p className="text-yellow-200 text-sm font-semibold">
-              Your trial expires 3 months from today. Make sure to use it!
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => navigate('/locations')}
+              className="inline-flex items-center gap-2 text-gray-400 hover:text-white text-sm font-semibold transition-colors"
+            >
+              <span>View studio info</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+            <p className="text-gray-500 text-xs mt-4">
+              Questions? <a href="/contact" className="text-red-500 hover:text-red-400 font-semibold">Contact us</a>
             </p>
           </div>
-
-          <button
-            onClick={() => navigate('/locations')}
-            className="group inline-flex items-center gap-2 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-8 py-4 rounded-xl font-bold transition-all transform hover:scale-[1.02] shadow-lg"
-          >
-            <span>View All Locations</span>
-            <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-          </button>
-
-          <p className="text-gray-500 text-sm mt-6">
-            Redirecting in {countdown} seconds...
-          </p>
-        </div>
-
-        <div className="mt-8 text-center">
-          <p className="text-gray-400 text-sm mb-2">
-            Questions about your trial?
-          </p>
-          <a
-            href="/contact"
-            className="text-red-500 hover:text-red-400 font-semibold text-sm"
-          >
-            Contact Us
-          </a>
         </div>
       </div>
-    </div>
     </>
   );
 }
