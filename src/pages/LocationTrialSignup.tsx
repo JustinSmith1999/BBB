@@ -131,6 +131,11 @@ function loadMetaPixel(pixelId: string): () => void {
   // Standard Meta Pixel snippet, inlined so we can scope it per-gym
   const inline = document.createElement('script');
   inline.id = SCRIPT_ID;
+  // 2026-07-02 (QA #8): the MT buy widget rewrites the URL (?_mt=/buy/…),
+  // which Meta's pixel auto-catches as a SECOND PageView (ec=1 then ec=2),
+  // inflating PageView volume + frequency. `autoConfig=false` disables Meta's
+  // automatic SPA/pushState pageview + button auto-tracking for this pixel, so
+  // the only PageView that fires is our single explicit one below.
   inline.text = `
     !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
     n.callMethod.apply(n,arguments):n.queue.push(arguments)};
@@ -139,6 +144,7 @@ function loadMetaPixel(pixelId: string): () => void {
     t.src=v;s=b.getElementsByTagName(e)[0];
     s.parentNode.insertBefore(t,s)}(window, document,'script',
     'https://connect.facebook.net/en_US/fbevents.js');
+    fbq('set', 'autoConfig', false, '${pixelId}');
     fbq('init', '${pixelId}');
     fbq('track', 'PageView');
   `;
@@ -182,10 +188,41 @@ export default function LocationTrialSignup() {
   // owns the full transaction. Pixel + UTM + soft-conversion remain.
   const pageLoadAtRef = useRef<number>(Date.now());
 
+  // ── 2026-07-01 BAYSIDE-ONLY STRIPE CHECKOUT OVERRIDE ────────────────────
+  // 2026-07 RESOLVED: Bayside now uses the Mariana Tek buy widget like every
+  // other studio. The earlier Stripe fallback (task #498) assumed the $49 trial
+  // contract (memberships-14721) was Astoria-single-location. Verified directly
+  // in MT admin (Products → Memberships → Contracts → "$49 Two Weeks Trial",
+  // id 14721): it is ACTIVE and sellable at ALL FOUR locations — Astoria (48717),
+  // Bayside (48718), Fresh Meadows (48719), Williamsburg (48720). The prior
+  // read of "Astoria-only" was a different, inactive product ("Trial Offer Tags"
+  // type), not the live trial. With the contract sellable at Bayside, the MT
+  // widget routes /buy/48718 correctly — no more checkout rewrite to Astoria —
+  // and MT takes the payment into its own Stripe + grants the pass + activates
+  // the member automatically. This kills the parallel Stripe checkout that was
+  // collecting money without provisioning the member in MT.
+  //
+  // The Bayside Stripe form + handleBaysideSubmit below are now dead code, kept
+  // temporarily behind this flag for a fast rollback. Verify one real Bayside
+  // trial end-to-end, then delete the fallback block entirely.
+  const useBaysideFallback = false;
+  const [baysideForm,       setBaysideForm]       = useState({
+    firstName: '', lastName: '', email: '', phone: '', newsletter: false,
+  });
+  const [baysideSubmitting, setBaysideSubmitting] = useState(false);
+  const [baysideError,      setBaysideError]      = useState('');
+  const baysideSubmittingRef = useRef(false);
+
   // ── Soft-conversion: "text me the schedule" mini-form ───────────────────
   // For visitors who won't commit to $49 today. Captures phone, sends the
   // schedule link via Twilio, writes a soft_conversion lead row. 2026-06-11.
-  const [scheduleOpen,      setScheduleOpen]      = useState(false);
+  // 2026-07-02 (QA #2): default OPEN. The MT buy widget owns the paid
+  // transaction but captures NOTHING pre-payment — anyone who bounces before
+  // completing MT checkout was invisible (no abandoned-cart, no comeback
+  // audience, no Meta Lead). Surfacing this capture inline under the widget
+  // feeds soft_conversions + fires a Meta Lead for every identified visitor,
+  // reusing the tested request-schedule-sms path. Collapsible via Cancel.
+  const [scheduleOpen,      setScheduleOpen]      = useState(true);
   const [scheduleFirstName, setScheduleFirstName] = useState('');
   const [scheduleLastName,  setScheduleLastName]  = useState('');
   const [scheduleEmail,     setScheduleEmail]     = useState('');
@@ -193,6 +230,70 @@ export default function LocationTrialSignup() {
   const [scheduleSending,   setScheduleSending]   = useState(false);
   const [scheduleError,     setScheduleError]     = useState('');
   const [scheduleSent,      setScheduleSent]      = useState(false);
+
+  // 2026-07-01: Bayside-only Stripe Checkout handler. Posts to the same
+  // create-trial-checkout edge function the pre-cutover flow used (task #382
+  // verified Bayside path works). On success returns { url: Stripe URL } and
+  // we redirect. Fires InitiateCheckout pixel for Meta attribution.
+  const handleBaysideSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (baysideSubmittingRef.current) return;
+    setBaysideError('');
+    const first = baysideForm.firstName.trim();
+    const last  = baysideForm.lastName.trim();
+    const mail  = baysideForm.email.trim();
+    const tel   = baysideForm.phone.trim();
+    if (!first) { setBaysideError('Please enter your first name.'); return; }
+    if (!last)  { setBaysideError('Please enter your last name.'); return; }
+    if (!mail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) {
+      setBaysideError('Please enter a valid email address.'); return;
+    }
+    if (!tel || tel.replace(/\D/g,'').length < 10) {
+      setBaysideError('Please enter a valid phone number.'); return;
+    }
+    if (!location) return;
+
+    baysideSubmittingRef.current = true;
+    setBaysideSubmitting(true);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/create-trial-checkout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          apikey: SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          locationId: location.locationId,
+          locationName: location.name,
+          customerEmail: mail,
+          customerFirstName: first,
+          customerLastName: last,
+          customerName: `${first} ${last}`.trim(),
+          customerPhone: tel,
+          newsletter: baysideForm.newsletter,
+          ...getUtmParams(),
+          priceVariant: 'trial',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.url) {
+        throw new Error(data?.error || 'Could not start checkout. Please try again.');
+      }
+      if (location.metaPixelId && window.fbq) {
+        window.fbq('track', 'InitiateCheckout', {
+          content_name: `${location.name} 2-Week Trial ($49)`,
+          value: 49, currency: 'USD',
+        });
+      }
+      try { sessionStorage.setItem('bbb_last_trial_studio', location.slug); } catch { /* ignore */ }
+      window.location.href = data.url;
+    } catch (err) {
+      setBaysideError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+      baysideSubmittingRef.current = false;
+      setBaysideSubmitting(false);
+    }
+  };
 
   const handleScheduleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -344,18 +445,25 @@ export default function LocationTrialSignup() {
   // email IS present, match quality jumps from ~6 to ~9.
   useEffect(() => {
     if (!location) return;
+    // 2026-07-02 (QA #1): This event was silently dropping on the single most
+    // important ad landing page. Root cause: getMetaClickIds() ran synchronously
+    // at mount, BEFORE the Meta pixel script (injected in a separate effect) had
+    // written the _fbp cookie. On direct ad clicks with no fbclid in the URL,
+    // fbp/fbc were both empty at that instant, the gate bailed, and we fired
+    // ZERO server-side PageView / visitor rows — so trial_page_visitors +
+    // meta-capi-pageview (the +9 EMQ CAPI mirror, task #182) went dark.
+    //
+    // Fix: fire on a short deferral so the pixel can set _fbp, re-read the
+    // cookies at fire time, and record the visit even if only fbp is present.
+    // We also fire an unconditional low-trust fallback (no cookies) after a
+    // longer wait so we never lose an ad-driven visit entirely — the function
+    // dedupes on event_id and gracefully handles missing identity fields.
     const params = new URLSearchParams(window.location.search);
     const emailFromUrl = params.get('email') || '';
-    const { fbp, fbc } = getMetaClickIds();
-    // Need at least one identity signal — fbp from the Meta pixel cookie is
-    // almost always present on ad-driven traffic. If none of the three are
-    // available (very rare — private browsing + ad blocker), skip rather
-    // than fire a low-trust event Meta will discard anyway.
-    if (!emailFromUrl && !fbp && !fbc) return;
     const eventId = `pv_${location.slug}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    let fired = false;
 
     // ── Client-side enrichment: device + locale + return-visitor count ──
-    // All best-effort. The function gracefully ignores missing fields.
     let connType = '';
     try {
       const c = (navigator as unknown as { connection?: { effectiveType?: string } }).connection;
@@ -382,37 +490,52 @@ export default function LocationTrialSignup() {
       }
     } catch { /* private mode — fine */ }
 
-    // Best-effort — never block the page render on this.
-    fetch(`${SUPABASE_URL}/functions/v1/meta-capi-pageview`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        'apikey':        SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({
-        studio_slug:     location.slug,
-        email:           emailFromUrl,
-        fbp, fbc,
-        page_url:        window.location.href,
-        event_id:        eventId,
-        // Client-side enrichment
-        screen_width:    window.screen?.width  ?? null,
-        viewport_width:  window.innerWidth     ?? null,
-        language,
-        timezone,
-        connection_type: connType,
-        color_scheme:    colorScheme,
-        visit_number:    visitNumber,
-        days_since_first: daysSinceFirst,
-      }),
-    }).catch(() => { /* non-blocking */ });
-    // If we DO have an email (cart-recovery email-link click), re-init the
-    // browser pixel with advanced matching so subsequent events (Lead,
-    // InitiateCheckout) inherit the email match quality.
-    if (emailFromUrl && window.fbq) {
-      window.fbq('init', location.metaPixelId, { em: emailFromUrl });
+    const fireVisit = () => {
+      if (fired) return;
+      const { fbp, fbc } = getMetaClickIds();
+      // Best-effort — never block the page render on this. Fires once per mount.
+      fired = true;
+      fetch(`${SUPABASE_URL}/functions/v1/meta-capi-pageview`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'apikey':        SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          studio_slug:     location.slug,
+          email:           emailFromUrl,
+          fbp, fbc,
+          page_url:        window.location.href,
+          referrer:        document.referrer || '',
+          event_id:        eventId,
+          // Client-side enrichment
+          screen_width:    window.screen?.width  ?? null,
+          viewport_width:  window.innerWidth     ?? null,
+          language,
+          timezone,
+          connection_type: connType,
+          color_scheme:    colorScheme,
+          visit_number:    visitNumber,
+          days_since_first: daysSinceFirst,
+        }),
+      }).catch(() => { /* non-blocking */ });
+      if (emailFromUrl && window.fbq) {
+        window.fbq('init', location.metaPixelId, { em: emailFromUrl });
+      }
+    };
+
+    // Try immediately if we already have identity (email link / returning
+    // visitor with cookies). Otherwise defer to let the pixel set _fbp, then
+    // fire regardless so no ad visit is lost.
+    const { fbp: fbp0, fbc: fbc0 } = getMetaClickIds();
+    if (emailFromUrl || fbp0 || fbc0) {
+      fireVisit();
+    } else {
+      const t = setTimeout(fireVisit, 1500);
+      return () => clearTimeout(t);
     }
+    return undefined;
   }, [location?.metaPixelId, location?.slug]);
 
   if (!location) {
@@ -586,36 +709,115 @@ export default function LocationTrialSignup() {
                   </p>
                 </div>
 
-                {/* ── Mariana Tek native signup widget ────────────────────
+                {/* ── Mariana Tek native signup widget (Astoria/FM/WB only) ─
                     2026-06-29: replaces the gutted BBB Stripe form. MT's
                     Web Integrations runtime (loaded in index.html) mounts
                     the new-customer signup + intro pass purchase flow in
-                    an iframe scoped to this studio's location ID. MT owns
-                    the entire transaction — account creation, payment,
-                    pass issuance, confirmation. Kills the silent-failure
-                    bridge problem (no more Joel Witten / Angelo Nunez
-                    falling through cracks). See useEffect above for the
-                    re-init pattern (React lazy-mount races MT auto-scan).
+                    an iframe scoped to this studio's location ID.
+                    2026-07-01: BAYSIDE-ONLY OVERRIDE — see useBaysideFallback
+                    at top of component. Task #498 (MT pass 14721 Astoria-
+                    only) makes the iframe non-convertible for Bayside; we
+                    fall back to the pre-cutover Stripe Checkout flow
+                    (verified working per task #382) until MT support
+                    reconfigures the pass. Ticket in
+                    bbb-marketing/mt-support-pass-14721.md.
                     ─────────────────────────────────────────────────────── */}
-                <div
-                  key={`mt-trial-${location.slug}`}
-                  data-mariana-integrations={`/intro-offers?location=${location.mtLocationId}`}
-                  className="w-full bg-white rounded-xl overflow-hidden"
-                  style={{ minHeight: '640px' }}
-                />
-
-                <p className="text-xs text-gray-600 leading-relaxed mt-4">
-                  By starting your trial you agree to our{' '}
-                  <a href="/privacy" className="underline">Privacy Policy</a> and{' '}
-                  <a href="/terms" className="underline">Terms</a>. Payment +
-                  account creation handled securely by Mariana Tek. Your account
-                  works in the BBB / Mariana Tek app for booking classes.
-                </p>
-
-                <div className="flex items-center justify-center gap-2 text-xs text-gray-500 pt-2">
-                  <Lock className="w-3.5 h-3.5" />
-                  Powered by Mariana Tek — secure payments + native booking
-                </div>
+                {!useBaysideFallback ? (
+                  <>
+                    {/* MT widget — deep-link straight to the $49 trial pass.
+                        2026-07-02 (QA #7 ROLLBACK, verified live post-deploy):
+                        the /intro-offers path 404s inside the iframe — MT never
+                        flagged pass 14721 as an intro offer, so that route has
+                        nothing to render. Reverted to the /buy deep-link (the
+                        $49 overlay auto-opens). Sticker-shock-on-close stands
+                        until MT reconfigures the pass — folded into the pass-
+                        14721 support ticket (task #498): ask MT to (a) split
+                        into 4 per-studio passes AND (b) flag them as intro
+                        offers so /intro-offers works. */}
+                    <div
+                      key={`mt-trial-${location.slug}`}
+                      data-mariana-integrations={`/buy/${location.mtLocationId}?activeProduct=memberships-14721&locations=${location.mtLocationId}`}
+                      className="w-full bg-white rounded-xl"
+                      style={{ height: '720px', overflowY: 'auto' }}
+                    />
+                    <p className="text-xs text-gray-600 leading-relaxed mt-4">
+                      By starting your trial you agree to our{' '}
+                      <a href="/privacy" className="underline">Privacy Policy</a> and{' '}
+                      <a href="/terms" className="underline">Terms</a>. Payment +
+                      account creation handled securely by Mariana Tek.
+                    </p>
+                    <div className="flex items-center justify-center gap-2 text-xs text-gray-500 pt-2">
+                      <Lock className="w-3.5 h-3.5" />
+                      Powered by Mariana Tek — secure payments + native booking
+                    </div>
+                  </>
+                ) : (
+                  <form onSubmit={handleBaysideSubmit} className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <input
+                        type="text" required autoComplete="given-name"
+                        placeholder="First name"
+                        value={baysideForm.firstName}
+                        onChange={e => setBaysideForm(f => ({ ...f, firstName: e.target.value }))}
+                        disabled={baysideSubmitting}
+                        className="px-3 py-3 rounded-lg border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"
+                      />
+                      <input
+                        type="text" required autoComplete="family-name"
+                        placeholder="Last name"
+                        value={baysideForm.lastName}
+                        onChange={e => setBaysideForm(f => ({ ...f, lastName: e.target.value }))}
+                        disabled={baysideSubmitting}
+                        className="px-3 py-3 rounded-lg border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"
+                      />
+                    </div>
+                    <input
+                      type="email" required autoComplete="email"
+                      placeholder="Email address"
+                      value={baysideForm.email}
+                      onChange={e => setBaysideForm(f => ({ ...f, email: e.target.value }))}
+                      disabled={baysideSubmitting}
+                      className="w-full px-3 py-3 rounded-lg border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"
+                    />
+                    <input
+                      type="tel" required autoComplete="tel"
+                      placeholder="Phone number"
+                      value={baysideForm.phone}
+                      onChange={e => setBaysideForm(f => ({ ...f, phone: e.target.value }))}
+                      disabled={baysideSubmitting}
+                      className="w-full px-3 py-3 rounded-lg border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"
+                    />
+                    <label className="flex items-start gap-2 text-xs text-gray-600 min-h-[24px] pt-1">
+                      <input
+                        type="checkbox"
+                        checked={baysideForm.newsletter}
+                        onChange={e => setBaysideForm(f => ({ ...f, newsletter: e.target.checked }))}
+                        className="mt-0.5"
+                      />
+                      Send me class updates + BBB Bayside news
+                    </label>
+                    {baysideError && (
+                      <p className="text-xs text-red-600 leading-relaxed">{baysideError}</p>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={baysideSubmitting}
+                      className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-xl text-base transition-colors disabled:opacity-60 disabled:cursor-wait"
+                    >
+                      {baysideSubmitting ? 'Starting checkout…' : 'Claim my $49 trial →'}
+                    </button>
+                    <p className="text-xs text-gray-600 leading-relaxed">
+                      By starting your trial you agree to our{' '}
+                      <a href="/privacy" className="underline">Privacy Policy</a> and{' '}
+                      <a href="/terms" className="underline">Terms</a>. Payment
+                      handled securely by Stripe.
+                    </p>
+                    <div className="flex items-center justify-center gap-2 text-xs text-gray-500 pt-1">
+                      <Lock className="w-3.5 h-3.5" />
+                      Powered by Stripe — Apple Pay, Google Pay, Link supported
+                    </div>
+                  </form>
+                )}
 
                 {/* ── Soft-conversion: "text me the schedule" ───────────── */}
                 <div className="mt-8 pt-6 border-t border-gray-200">
@@ -635,9 +837,9 @@ export default function LocationTrialSignup() {
                       </div>
                     ) : (
                       <form onSubmit={handleScheduleSubmit} className="bg-gray-50 border border-gray-200 rounded-xl p-4 sm:p-5" noValidate>
-                        <h3 className="text-base font-bold text-gray-900 mb-1">No pressure — we'll text you the schedule.</h3>
+                        <h3 className="text-base font-bold text-gray-900 mb-1">Want us to hold your spot?</h3>
                         <p className="text-xs text-gray-600 mb-4">
-                          Drop in whenever it fits. No card, no commitment. We'll send the class schedule to your phone.
+                          Not ready to pay right now? Leave your info and we'll text you the class schedule + a link to start your $49 trial whenever you're ready. No card, no commitment.
                         </p>
                         <div className="grid sm:grid-cols-2 gap-3">
                           <input
