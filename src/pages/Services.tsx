@@ -1,26 +1,29 @@
 import { useState, useEffect } from 'react';
-import { ArrowRight, CheckCircle, Users, UserRound, Activity, Apple, ImagePlus } from 'lucide-react';
+import { ArrowRight, CheckCircle, Users, UserRound, Activity, Apple } from 'lucide-react';
 import { supabase, LOCATION_PUBLIC_COLUMNS, Location } from '../lib/supabase';
 import { getUtmParams } from '../lib/utm';
 import SEOHead from '../components/SEOHead';
 
 /* ────────────────────────────────────────────────────────────────────────
-   ADDING PHOTOS / VIDEOS
-   Each service below has a media slot. To fill one:
-     1. Drop your image or video file into  public/services/
-        (e.g. public/services/group-training.jpg  or  .mp4)
-     2. Set `src` on that service in the MEDIA map below to the path,
-        e.g. src: '/services/group-training.jpg'
-        (a full https:// URL works too)
+   PHOTOS / VIDEOS
+   Each service has a media slot filled with a free, commercially-licensed
+   stock photo (Pexels License — free for commercial use, no attribution
+   required). These are stand-ins: replace them with real photos of YOUR
+   studios and members — authentic photos convert far better than stock.
+   To swap one:
+     1. Drop your image/video into public/services/ (e.g. group-training.jpg)
+     2. Set `src` below to '/services/group-training.jpg' (or any https URL)
      3. Set `type` to 'image' or 'video'.
-   Leave src as '' and the styled placeholder shows instead — nothing breaks.
+   If an image ever fails to load, a clean branded panel shows — never
+   developer text.
    ──────────────────────────────────────────────────────────────────────── */
+const PX = '?auto=compress&cs=tinysrgb&w=1600&h=1200&fit=crop';
 const MEDIA: Record<string, { type: 'image' | 'video'; src: string }> = {
-  'group-training':       { type: 'image', src: '' },
-  'small-group-training': { type: 'image', src: '' },
-  'personal-training':    { type: 'image', src: '' },
-  'inbody':               { type: 'image', src: '' },
-  'nutrition':            { type: 'image', src: '' },
+  'group-training':       { type: 'image', src: `https://images.pexels.com/photos/6339401/pexels-photo-6339401.jpeg${PX}` },
+  'small-group-training': { type: 'image', src: `https://images.pexels.com/photos/14623747/pexels-photo-14623747.jpeg${PX}` },
+  'personal-training':    { type: 'image', src: `https://images.pexels.com/photos/13451904/pexels-photo-13451904.jpeg${PX}` },
+  'inbody':               { type: 'image', src: `https://images.pexels.com/photos/6629204/pexels-photo-6629204.jpeg${PX}` },
+  'nutrition':            { type: 'image', src: `https://images.pexels.com/photos/15319047/pexels-photo-15319047/free-photo-of-nutritionist-holding-broccoli-in-office.jpeg${PX}` },
 };
 
 // 'all' = every active studio. An array = only those studios (matched by name).
@@ -115,8 +118,8 @@ const SERVICES: Service[] = [
   },
 ];
 
-/* ── Media slot: renders your image/video, or a styled placeholder ── */
-function MediaSlot({ slug, name }: { slug: string; name: string }) {
+/* ── Media slot: renders the image/video, or a clean branded panel ── */
+function MediaSlot({ slug, name, icon: Icon }: { slug: string; name: string; icon: typeof Users }) {
   const media = MEDIA[slug];
   const [failed, setFailed] = useState(false);
   const showPlaceholder = !media?.src || failed;
@@ -148,22 +151,27 @@ function MediaSlot({ slug, name }: { slug: string; name: string }) {
         />
       )}
       {showPlaceholder && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-center text-center px-6"
+          style={{ background: 'linear-gradient(135deg, rgba(216,59,59,0.14), rgba(0,0,0,0.06))' }}
+        >
           <div
             className="flex items-center justify-center rounded-2xl mb-4"
             style={{
-              width: '54px', height: '54px',
-              backgroundColor: 'rgba(216,59,59,0.10)',
-              border: '1px solid rgba(216,59,59,0.22)',
+              width: '58px', height: '58px',
+              backgroundColor: 'var(--brand-red)',
             }}
           >
-            <ImagePlus style={{ width: '22px', height: '22px', color: 'var(--brand-red)' }} />
+            <Icon style={{ width: '26px', height: '26px', color: '#fff' }} />
           </div>
-          <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
+          <p
+            className="font-display font-black uppercase"
+            style={{ fontSize: '16px', letterSpacing: '-0.01em', color: 'var(--text-primary)', marginBottom: '4px', maxWidth: '20ch' }}
+          >
             {name}
           </p>
-          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5, maxWidth: '30ch' }}>
-            Photo / video slot — add your media in <code style={{ color: 'var(--brand-red)' }}>/services/{slug}</code>
+          <p style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+            Better Body Bootcamp
           </p>
         </div>
       )}
@@ -403,7 +411,7 @@ function ServiceSection({ service, locations, flip }: { service: Service; locati
 
           {/* Media + form column */}
           <div className={flip ? 'lg:order-1' : ''}>
-            <MediaSlot slug={service.slug} name={service.name} />
+            <MediaSlot slug={service.slug} name={service.name} icon={service.icon} />
             <div className="mt-5">
               <ServiceContactForm service={service} locations={locations} />
             </div>
@@ -424,7 +432,7 @@ export default function ServicesPage() {
       .select(LOCATION_PUBLIC_COLUMNS)
       .eq('is_active', true)
       .order('display_order')
-      .then(({ data }) => setLocations((data as Location[]) || []));
+      .then(({ data }) => setLocations((data as unknown as Location[]) || []));
   }, []);
 
   return (
