@@ -16,7 +16,13 @@ export default {
         'text-primary': '#F5F1EA',
       },
       maxWidth: {
-        'content': '1200px',
+        // 2026-06-26: Bumped from 1200 → 1440. On typical desktop/laptop
+        // viewports (1440-1680px), 1200 forced 100-240px of dead space on
+        // each side of every page, which makes the layout feel "zoomed in"
+        // because content is squeezed into a narrow center column. 1440
+        // uses the full screen on 13" MacBooks (1470 logical) and leaves
+        // a comfortable gutter on larger monitors.
+        'content': '1440px',
       },
     },
   },

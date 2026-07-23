@@ -16,7 +16,7 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import Stripe from "npm:stripe@^17.4.0";
+import Stripe from "npm:stripe@17.4.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

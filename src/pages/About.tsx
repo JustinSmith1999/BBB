@@ -148,9 +148,13 @@ export default function AboutPage() {
       <div style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
 
         {/* ── Hero ── */}
+        {/* 2026-06-30: Tightened. Was minHeight 65vh + 160/80 padding + 64px
+            H1 cap — felt like a full-screen takeover. Cut to 42vh + 112/56
+            padding + 52px H1 cap so the eyebrow + headline read as a section
+            opener, not a banner. */}
         <div
           className="relative overflow-hidden flex items-end"
-          style={{ minHeight: '65vh', paddingTop: '160px', paddingBottom: '80px' }}
+          style={{ minHeight: '42vh', paddingTop: '112px', paddingBottom: '56px' }}
         >
           <img
             src="https://images.pexels.com/photos/1552252/pexels-photo-1552252.jpeg?auto=compress&cs=tinysrgb&w=1920&q=80"
@@ -163,17 +167,17 @@ export default function AboutPage() {
             style={{ background: 'linear-gradient(to bottom, rgba(14,15,19,0.4) 0%, rgba(14,15,19,0.92) 100%)' }}
           />
 
-          <div className="relative z-10 max-w-content mx-auto px-6 flex flex-col items-start gap-8">
+          <div className="relative z-10 max-w-content mx-auto px-6 flex flex-col items-start gap-6">
             <img
               src="https://uracuwugpxqjfgtuobal.supabase.co/storage/v1/object/public/logos/0180_bbb_bbb-newtext_logo_new_black_1%20(1).png"
               alt="Better Body Bootcamp"
-              style={{ height: '48px', width: 'auto', filter: 'brightness(0) invert(1)' }}
+              style={{ height: '40px', width: 'auto', filter: 'brightness(0) invert(1)' }}
             />
             <div>
-              <p className="eyebrow mb-5">SINCE 2011 · NYC</p>
+              <p className="eyebrow mb-3">SINCE 2011 · NYC</p>
               <h1
                 className="font-display font-black uppercase"
-                style={{ fontSize: 'clamp(48px, 8vw, 96px)', lineHeight: '0.9', letterSpacing: '-0.01em' }}
+                style={{ fontSize: 'clamp(34px, 4.2vw, 52px)', lineHeight: '0.92', letterSpacing: '-0.01em' }}
               >
                 BUILDING NYC'S
                 <br />
@@ -329,14 +333,17 @@ export default function AboutPage() {
                   <span style={{ color: 'var(--brand-red)' }}>FROM EACH STUDIO</span>
                 </h2>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: '1.65', maxWidth: '42ch' }}>
-                  Real workouts, real members, real results — posted daily from our Astoria, Williamsburg, and Bayside locations.
+                  Real workouts, real members, real results — posted daily from our four NYC locations.
                 </p>
               </div>
               <div className="flex flex-col gap-3 flex-shrink-0">
+                {/* 2026-06-30: Added Fresh Meadows handle so all 4 studios surface equally.
+                    Justin: confirm @betterbodyfreshmeadows is live before deploy. */}
                 {[
-                  { handle: '@betterbodyastoria', url: 'https://www.instagram.com/betterbodyastoria/' },
+                  { handle: '@betterbodyastoria',      url: 'https://www.instagram.com/betterbodyastoria/' },
+                  { handle: '@betterbodybayside',      url: 'https://www.instagram.com/betterbodybayside/' },
+                  { handle: '@betterbodyfreshmeadows', url: 'https://www.instagram.com/betterbodyfreshmeadows/' },
                   { handle: '@betterbodywilliamsburg', url: 'https://www.instagram.com/betterbodywilliamsburg/' },
-                  { handle: '@betterbodybayside', url: 'https://www.instagram.com/betterbodybayside/' },
                 ].map(({ handle, url }) => (
                   <a
                     key={handle}

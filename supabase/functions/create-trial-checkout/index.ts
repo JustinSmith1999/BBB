@@ -1,5 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import Stripe from "npm:stripe@^17.4.0";
+import Stripe from "npm:stripe@17.4.0";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -108,6 +108,23 @@ Deno.serve(async (req: Request) => {
       newsletter,
     } = body;
 
+    // ─── Meta CAPI match-quality fingerprint (2026-06-05) ─────────────────
+    // The CAPI Purchase event lives or dies by these two unhashed signals.
+    // Without client_ip_address + client_user_agent, Meta receives our event
+    // (HTTP 200, events_received:1) but its matching layer can't tie the
+    // server event to the original ad click, so it declines to attribute.
+    // Bayside showed this most visibly — $372 spend / 8 days / 0 attributed
+    // purchases despite real paid trials. We pull IP from the standard
+    // proxy chain (forwarded-for first) and the UA from its own header,
+    // then persist on the row so stripe-webhook can include them in the
+    // server-side Purchase event.
+    const ipChain = (req.headers.get("x-forwarded-for") || "").split(",");
+    const clientIp = (ipChain[0] || "").trim()
+      || req.headers.get("cf-connecting-ip")
+      || req.headers.get("x-real-ip")
+      || null;
+    const clientUserAgent = (req.headers.get("user-agent") || "").slice(0, 1024) || null;
+
     // ─── Validate identity fields (HARD — return 400 on any failure) ─────
     // The front-desk + win-back automation is useless if name/email/phone are
     // garbage, so we reject up-front instead of capturing junk into the DB.
@@ -159,12 +176,23 @@ Deno.serve(async (req: Request) => {
     // metadata value limit.
     const fbp = typeof body.fbp === "string" ? body.fbp.slice(0, 255) : "";
     const fbc = typeof body.fbc === "string" ? body.fbc.slice(0, 480) : "";
-    // priceVariant: 'trial' (default, $49 / 2 weeks) | 'special' ($129 / 30-day
-    // comeback offer) | 'resign' ($99 first month subscription win-back).
-    const priceVariant: "trial" | "special" | "resign" =
-      body.priceVariant === "special" ? "special"
+    // priceVariant:
+    //   'trial'    (default, $49 / 2 weeks)
+    //   'special'  ($129 / 30-day comeback offer)
+    //   'resign'   ($99 first month subscription win-back)
+    //   'comeback' ($29 / 1 week — sent to 7d+ abandoned leads, see comeback-offer-cron)
+    const priceVariant: "trial" | "special" | "resign" | "comeback" =
+      body.priceVariant === "special"  ? "special"
       : body.priceVariant === "resign" ? "resign"
+      : body.priceVariant === "comeback" ? "comeback"
       : "trial";
+
+    // For the $29 comeback flow we also carry the original_signup_id so the
+    // webhook can credit comeback_converted_at on the right row.
+    const comebackOriginalSignupId =
+      typeof body.comebackOriginalSignupId === "string" && body.comebackOriginalSignupId.length === 36
+        ? body.comebackOriginalSignupId
+        : null;
 
     if (!locationId) {
       return badRequest("locationId", "Location ID is required");
@@ -175,9 +203,56 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
+    // ─── Same-person duplicate-trial guard (2026-06-01, hardened 2026-06-01,
+    //     loosened 2026-06-17 to allow pending-row retries) ───────────────────
+    // Block submissions where the SAME PERSON ALREADY PAID a trial at THIS
+    // studio. Only completed payments count as a real duplicate — a stale
+    // pending row is NOT a duplicate, it's a stuck checkout from a failed
+    // earlier attempt and the customer needs to retry.
+    //
+    // 2026-06-17 update: the previous version blocked anyone with a pending
+    // row at the same studio. After the 6/11-6/17 create-trial-checkout
+    // outage, 24 recovery customers had stuck pending rows and were getting
+    // told "you already started this trial" when they tried to re-submit
+    // via the apology SMS. Now we only block when payment_status='completed'
+    // — pending rows fall through to the smart dedupe below (lines ~340)
+    // which UPDATES the existing pending row with the latest form data
+    // and reuses it, preserving the original UTM attribution.
+    //
+    // Returns 409 with a clear field-targeted message the front-end shows.
+    try {
+      const phoneLast10 = customerPhone.replace(/\D+/g, "").slice(-10);
+      const { data: dupes } = await supabase
+        .from("trial_signups")
+        .select("id, name, email, phone, payment_status, payment_date, created_at")
+        .eq("location_id", locationId)
+        .is("deleted_at", null)
+        .eq("payment_status", "completed")
+        .limit(50);
+      if (Array.isArray(dupes)) {
+        const isSamePerson = dupes.find((row) => {
+          const rEmail = String(row.email ?? "").trim().toLowerCase();
+          const rPhoneLast10 = String(row.phone ?? "").replace(/\D+/g, "").slice(-10);
+          const emailMatch = rEmail && rEmail === customerEmail;
+          const phoneMatch = rPhoneLast10.length === 10 && rPhoneLast10 === phoneLast10;
+          return emailMatch || phoneMatch;
+        });
+        if (isSamePerson) {
+          const msg = `${customerName} already signed up for the $49 trial at this studio. If you'd like to sign someone else up, change the name, email, and phone to theirs.`;
+          console.log(`Duplicate guard: blocked completed-paid duplicate ${customerName} (${customerEmail}) at location ${locationId}; matched row ${isSamePerson.id}`);
+          return new Response(
+            JSON.stringify({ success: false, field: "firstName", error: msg, code: "already_signed_up" }),
+            { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+      }
+    } catch (e) {
+      console.warn("Duplicate guard skipped:", (e as Error).message);
+    }
+
     const { data: location, error: locationError } = await supabase
       .from("locations")
-      .select("stripe_secret_key, stripe_publishable_key, stripe_price_id, stripe_special_price_id, name")
+      .select("stripe_secret_key, stripe_publishable_key, stripe_price_id, stripe_special_price_id, stripe_comeback_price_id, name")
       .eq("id", locationId)
       .single();
 
@@ -189,18 +264,21 @@ Deno.serve(async (req: Request) => {
       throw new Error("Stripe credentials not configured for this location");
     }
 
-    // Pick the right Stripe Price for this checkout. Same Stripe account either
-    // way — the $129 win-back is a separate Price under the same gym LLC.
+    // Pick the right Stripe Price for this checkout. Same Stripe account in
+    // every case — the special / comeback prices are siblings under the same
+    // gym LLC's Stripe account.
     const chosenPriceId =
-      priceVariant === "special"
-        ? location.stripe_special_price_id
-        : location.stripe_price_id;
+      priceVariant === "special"  ? location.stripe_special_price_id
+    : priceVariant === "comeback" ? location.stripe_comeback_price_id
+    : location.stripe_price_id;
 
     if (!chosenPriceId) {
       throw new Error(
         priceVariant === "special"
           ? "Comeback ($129) Stripe price not configured for this location"
-          : "Trial ($49) Stripe price not configured for this location"
+        : priceVariant === "comeback"
+          ? "Comeback ($29) Stripe price not configured for this location"
+        : "Trial ($49) Stripe price not configured for this location"
       );
     }
 
@@ -258,39 +336,159 @@ Deno.serve(async (req: Request) => {
       console.error("lead upsert exception:", e);
     }
 
-    // ─── Fix #9: Insert pending trial_signups row BEFORE the Stripe call ─
+    // ─── Fix #9 + dedupe: pending trial_signups row before Stripe ─────────
     // Earlier this happened AFTER Stripe — if the DB write failed the customer
     // could pay and we'd have no pending row for the webhook to match on. Now
-    // we write first (without session_id), then PATCH with the session ID once
-    // Stripe returns. If the Stripe call fails we leave a pending row tagged
-    // for retry / cleanup.
+    // we write first, then PATCH with the session ID once Stripe returns.
+    //
+    // DEDUPE: if the same email+location already has a `pending` row created
+    // within the last 60 minutes, UPDATE that one instead of inserting a new
+    // one. Stops the "user fills form, doesn't complete checkout, comes back
+    // and re-submits" pattern from creating ghost duplicates (e.g. Vanessa
+    // Cruz × 4 across 3 sessions in May 2026 audit).
     let pendingRowId: string | null = null;
+    const emailNorm = (customerEmail || '').toLowerCase().trim() || null;
     try {
-      const { data: pending, error: signupErr } = await supabase
-        .from("trial_signups")
-        .insert({
-          name: customerName ?? null,
-          email: customerEmail ?? null,
-          phone: customerPhone ?? null,
-          address: address,
-          city: city,
-          zip_code: zipCode,
-          country: country,
-          newsletter_opted_in: !!newsletter,
-          location_id: locationId,
-          payment_status: "pending",
-          ...utm,
-        })
-        .select("id")
-        .single();
-      if (signupErr) {
-        console.error("pre-Stripe trial_signups insert failed:", signupErr.message);
-      } else if (pending) {
-        pendingRowId = pending.id;
-        console.log("pre-Stripe pending row saved:", pendingRowId);
+      let existing: { id: string } | null = null;
+      if (emailNorm) {
+        // 2026-06-17: window expanded from 60 min → 30 days. After the
+        // 6/11-6/17 checkout outage, 24 customers had pending rows from
+        // multiple days ago. When they retry via the recovery SMS we want
+        // to REUSE their original row (preserves UTM attribution + the
+        // pending_signup_id metadata Stripe carries) instead of creating
+        // a fresh duplicate. 30 days is the cleanup horizon for stale
+        // abandoned-cart rows so reusing within that window is safe.
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        const { data: dupes } = await supabase
+          .from("trial_signups")
+          .select("id, created_at, payment_status")
+          .eq("location_id", locationId)
+          .eq("email", emailNorm)
+          .eq("payment_status", "pending")
+          .is("deleted_at", null)
+          .gte("created_at", thirtyDaysAgo)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        if (dupes && dupes.length > 0) {
+          existing = { id: dupes[0].id };
+          console.log("dedupe: reusing existing pending row", existing.id, "for", emailNorm);
+        }
+      }
+
+      if (existing) {
+        // Refresh the existing pending row with the latest form data — they
+        // may have corrected typos in a second pass. Don't overwrite UTMs
+        // since the first capture wins on attribution.
+        // Also refresh CAPI match-quality fields (IP, UA, fbp, fbc) — the
+        // second submit may be from a different device / different cookie.
+        const { error: updateErr } = await supabase
+          .from("trial_signups")
+          .update({
+            name: customerName ?? null,
+            phone: customerPhone ?? null,
+            address: address,
+            city: city,
+            zip_code: zipCode,
+            country: country,
+            newsletter_opted_in: !!newsletter,
+            client_ip: clientIp,
+            client_user_agent: clientUserAgent,
+            fbp: fbp || null,
+            fbc: fbc || null,
+          })
+          .eq("id", existing.id);
+        if (updateErr) console.error("pending row refresh failed:", updateErr.message);
+        pendingRowId = existing.id;
+      } else {
+        const { data: pending, error: signupErr } = await supabase
+          .from("trial_signups")
+          .insert({
+            name: customerName ?? null,
+            email: emailNorm,
+            phone: customerPhone ?? null,
+            address: address,
+            city: city,
+            zip_code: zipCode,
+            country: country,
+            newsletter_opted_in: !!newsletter,
+            location_id: locationId,
+            payment_status: "pending",
+            // NEVER leave source_category NULL. A downstream `.neq()` filter
+            // in /homebase silently dropped every NULL-source row on 2026-06-01,
+            // hiding 25 paid leads across all 4 studios. Tag at insert time
+            // so the dashboard / homebase can trust this column as non-null.
+            source_category: "trial_form",
+            // Meta CAPI match-quality fingerprint — see comment block above.
+            // stripe-webhook reads these off the row when firing the server-side
+            // Purchase event so Meta can attribute it back to the ad click.
+            client_ip: clientIp,
+            client_user_agent: clientUserAgent,
+            fbp: fbp || null,
+            fbc: fbc || null,
+            ...utm,
+          })
+          .select("id")
+          .single();
+        if (signupErr) {
+          console.error("pre-Stripe trial_signups insert failed:", signupErr.message);
+        } else if (pending) {
+          pendingRowId = pending.id;
+          console.log("pre-Stripe pending row saved:", pendingRowId);
+        }
       }
     } catch (e) {
       console.error("pre-Stripe trial_signups insert exception:", e);
+    }
+
+    // ─── Server-side CAPI Lead (mirrors browser Pixel Lead) ────────────────
+    // Why: browser fbq('track', 'Lead') gets eaten by Safari ITP / ad blockers /
+    // iOS 17+ privacy on ~30-40% of NYC traffic. Most acute at Bayside, which
+    // showed 6 reported leads vs 7 paid (paid > leads = impossible unless
+    // leads silently dropped). Without Lead signal, Meta's algorithm can't
+    // learn what a "good lead" looks like at Bayside → high CPL.
+    //
+    // The browser-side fbq is still wired (so dedupe works via shared
+    // event_id when leadEventId is forwarded). When the browser Lead drops,
+    // this server-side fire is the only signal Meta gets — and it always fires.
+    //
+    // Non-blocking: even if CAPI fails, checkout proceeds normally.
+    try {
+      const slug = (location.name ?? "")
+        .toLowerCase()
+        .replace(/\s+/g, "-");
+      const leadEventId =
+        (typeof body.leadEventId === "string" && body.leadEventId.trim()) ||
+        `lead_${slug}_${pendingRowId || "anon"}_${Date.now()}`;
+      const capiUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/meta-capi-lead`;
+      const capiAuth = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+      EdgeRuntime.waitUntil(
+        fetch(capiUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${capiAuth}`,
+            "apikey":        capiAuth,
+          },
+          body: JSON.stringify({
+            studio_slug:       slug,
+            email:             customerEmail,
+            name:              customerName,
+            phone:             customerPhone,
+            fbp:               fbp || null,
+            fbc:               fbc || null,
+            client_ip:         clientIp,
+            client_user_agent: clientUserAgent,
+            page_url:          `https://betterbodybootcamp.com/trial/${slug}`,
+            value:             49,
+            currency:          "USD",
+            content_name:      `${location.name ?? slug} 2-Week Trial`,
+            content_category:  "trial",
+            event_id:          leadEventId,
+          }),
+        }).catch((e) => console.error("meta-capi-lead invoke failed:", (e as Error).message))
+      );
+    } catch (e) {
+      console.error("meta-capi-lead dispatch exception:", (e as Error).message);
     }
 
     const stripe = new Stripe(location.stripe_secret_key, {
@@ -321,15 +519,38 @@ Deno.serve(async (req: Request) => {
       .toLowerCase()
       .replace(/\s+/g, "-");
 
-    // Cancel back to the page they came from. /special funnels return to the
-    // comeback page; /trial funnels return to the location page.
+    // Cancel back to the page they came from. /special, /comeback, and /trial
+    // each have their own funnel page.
     const cancelPath =
-      priceVariant === "special"
-        ? `/special/${cancelSlug}`
-        : `/locations/${cancelSlug}`;
+      priceVariant === "special"  ? `/special/${cancelSlug}`
+    : priceVariant === "comeback" ? `/comeback/${cancelSlug}`
+    : `/locations/${cancelSlug}`;
 
+    // 2026-06-15 ROLLBACK: the 6/11 switch to automatic_payment_methods
+    // silently killed the entire trial funnel — 0 of 12 leads since 6/11
+    // got a stripe_session_id, vs 79% before. Root cause: automatic_payment
+    // _methods requires each studio's Stripe account to have those methods
+    // configured in their Dashboard (Apple Pay domain verified, etc.) and
+    // at least one isn't. When Stripe throws, the user just sees a generic
+    // error. Reverting to card-only restores the funnel; we can re-enable
+    // AMP later studio-by-studio after each account is verified.
+    //
+    // Original 6/10 comment kept for context:
+    //   "Mobile users from Meta ads expect Apple Pay / Google Pay buttons;
+    //    when they don't see them they bail rather than type a 16-digit
+    //    card number on their phone." — true, but card-only is still
+    //    converting 56% of Stripe-reachers, so not as catastrophic as
+    //    100% session-creation failure.
+    // 2026-06-18: Adding Stripe Link to payment methods. Unlike Apple Pay /
+    // Google Pay (which require per-domain verification in each studio's
+    // Stripe Dashboard — the trap that broke 6/11), Link works on every
+    // Stripe account by default. It's Stripe's own one-tap login that
+    // remembers payment + email across the Stripe network. Expected mobile
+    // checkout conversion lift ~12-18%. Zero per-account config needed.
+    // Apple/Google Pay can be added later studio-by-studio after each
+    // account's Dashboard domain is verified.
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
+      payment_method_types: ["card", "link"],
       line_items: [
         {
           price: chosenPriceId,
@@ -340,6 +561,17 @@ Deno.serve(async (req: Request) => {
       success_url: `${req.headers.get("origin")}/trial-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${req.headers.get("origin")}${cancelPath}`,
       customer: customer.id,
+      // 2026-06-24: Force Stripe to send an official receipt to the customer's
+      // email after payment. Without receipt_email here, Stripe only sends a
+      // receipt when the studio's Stripe Dashboard → Settings → Emails has
+      // "Successful payments" enabled — that's per-account and inconsistent
+      // across the 4 studios. Forcing it at the checkout level guarantees
+      // every paid trial customer gets a Stripe-branded proof of purchase
+      // with transaction ID, date, amount, and card last-4. Independent of
+      // our own welcome email which fires from stripe-webhook.
+      payment_intent_data: {
+        receipt_email: customerEmail || undefined,
+      },
       metadata: {
         locationId,
         locationName: locationName ?? location.name ?? "",
@@ -354,8 +586,14 @@ Deno.serve(async (req: Request) => {
         country,
         newsletter: newsletter ? "true" : "false",
         priceVariant,
-        trialType: priceVariant === "special" ? "30-day-comeback-129" : "2-week-unlimited",
+        trialType:
+          priceVariant === "special"  ? "30-day-comeback-129"
+        : priceVariant === "comeback" ? "1-week-comeback-29"
+        : "2-week-unlimited",
         trialSignupId: pendingRowId ?? "",
+        // For the $29 comeback flow, also carry which abandoned signup this
+        // converts. The webhook will stamp comeback_converted_at on that row.
+        comebackOriginalSignupId: comebackOriginalSignupId ?? "",
         // UTM tags passed through so the webhook's fallback insert can keep them.
         utm_source: utm.utm_source ?? "",
         utm_medium: utm.utm_medium ?? "",
@@ -386,6 +624,8 @@ Deno.serve(async (req: Request) => {
           location_id: locationId,
           stripe_session_id: session.id,
           payment_status: "pending",
+          // Match the primary insert above — never NULL source_category.
+          source_category: "trial_form",
           ...utm,
         });
         if (fallbackErr) console.error("trial_signups fallback insert failed:", fallbackErr.message);

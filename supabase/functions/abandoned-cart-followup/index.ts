@@ -159,7 +159,19 @@ ${studio.address}, ${studio.city}, NY ${studio.zip}
   };
 }
 
-async function sendEmail(to: string, name: string, studio: typeof LOCATION_TO_STUDIO[string]) {
+// Send the abandoned-cart email AND log it to email_log so the attribution
+// card can count "paid trials that received an abandoned-cart email earlier."
+//
+// Tags on the Resend payload let resend-webhook update the delivery state on
+// this exact row. The email_log row is the canonical record we query against.
+async function sendEmail(
+  supabase: ReturnType<typeof createClient>,
+  trialId: string,
+  studioSlug: string,
+  to: string,
+  name: string,
+  studio: typeof LOCATION_TO_STUDIO[string],
+) {
   if (!RESEND_API_KEY) {
     throw new Error("RESEND_API_KEY not set");
   }
@@ -177,13 +189,50 @@ async function sendEmail(to: string, name: string, studio: typeof LOCATION_TO_ST
       subject: tmpl.subject,
       html: tmpl.html,
       text: tmpl.text,
+      tags: [
+        { name: "send_path",       value: "abandoned_cart_email" },
+        { name: "trial_signup_id", value: trialId },
+        { name: "studio_slug",     value: studioSlug },
+      ],
     }),
   });
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`Resend API error ${res.status}: ${err}`);
   }
-  return await res.json();
+  const body = await res.json();
+  // Log the send so the attribution card can find it. The send_path tag is
+  // the join key the Funnel Health + attribution RPCs use. Columns match the
+  // real email_log schema — no provider/studio_slug top-level fields exist;
+  // studio_slug rides along in raw for fallback joins.
+  // 2026-06-12 NIGHT — stop lying about email_log writes. The supabase-js
+  // client returns errors in {error}, NOT as thrown exceptions. The previous
+  // try/catch caught nothing while the real error (e.g. column mismatch or
+  // missing INSERT policy) sat in `error` and was discarded. Surface it.
+  const logPayload = {
+    trial_signup_id: trialId,
+    send_path:       "abandoned_cart_email",
+    resend_id:       body?.id ?? null,
+    from_addr:       FROM_EMAIL,
+    to_addrs:        [to],
+    subject:         tmpl.subject,
+    event_type:      "sent_inline",
+    raw:             { source: "abandoned-cart-followup", studio_slug: studioSlug, resend_id: body?.id ?? null },
+  };
+  const { error: logErr } = await supabase.from("email_log").insert(logPayload);
+  if (logErr) {
+    console.error("email_log insert FAILED", {
+      pg_code:    (logErr as { code?: string }).code,
+      pg_message: logErr.message,
+      pg_details: (logErr as { details?: string }).details,
+      pg_hint:    (logErr as { hint?: string }).hint,
+      payload:    logPayload,
+    });
+    // Don't throw — the Resend send already succeeded and we don't want to
+    // re-send next cron tick. But the loud console.error means we'll see
+    // the real Postgres error in the function logs instead of silence.
+  }
+  return body;
 }
 
 // ─── Identity helpers — used to dedupe across duplicate signups ───────────
@@ -226,16 +275,19 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Pending abandoned carts: 1h–14d old, not yet emailed. Oldest first, so if
-    // someone filled the form more than once we act on their first attempt.
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    // Pending abandoned carts: 10min–14d old, not yet emailed. Oldest first.
+    // 2026-06-12: window dropped from 1h → 10min per Justin. Faster touch =
+    // higher recovery rate when the lead is still warm. Requires the cron
+    // to fire at least every 5 min, which it does via the every-5-min
+    // cron-job.org pinger feeding sync-orchestrator.
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
 
     const { data: candidates, error: queryErr } = await supabase
       .from("trial_signups")
       .select("id, name, email, phone, location_id, created_at")
       .eq("payment_status", "pending")
-      .lt("created_at", oneHourAgo)         // older than 1 hour
+      .lt("created_at", tenMinAgo)          // older than 10 minutes
       .gt("created_at", fourteenDaysAgo)    // but newer than 14 days (cold-cart cap)
       .is("abandoned_email_sent_at", null)  // not yet emailed
       .order("created_at", { ascending: true })
@@ -252,21 +304,48 @@ Deno.serve(async (req: Request) => {
     // Everyone who has EVER completed a payment — by email and by phone. An
     // abandoned-cart email must never go to someone who already paid, even if
     // they have a separate pending row from filling the trial form twice.
-    const { data: paidRows, error: paidErr } = await supabase
-      .from("trial_signups")
-      .select("email, phone")
-      .eq("payment_status", "completed");
+    //
+    // TWO SOURCES checked, not one:
+    //   1. trial_signups.payment_status = 'completed' (our row's view of truth)
+    //   2. stripe_paid_mirror (Stripe's truth — fresher when the webhook
+    //      lagged or failed)
+    //
+    // BACKGROUND: 23 cart-recovery emails went to already-paid customers
+    // between May 17 and Jun 2, because trial_signups.payment_status stayed
+    // pending for hours after Stripe actually charged the card (webhook
+    // gap). Checking the mirror catches everyone the webhook hasn't synced
+    // through yet. Belt and suspenders.
+    const [paidRowsResult, mirrorResult] = await Promise.all([
+      supabase.from("trial_signups").select("email, phone").eq("payment_status", "completed"),
+      supabase.from("stripe_paid_mirror").select("customer_email, customer_phone"),
+    ]);
 
-    if (paidErr) {
-      console.error("Paid-lookup error:", paidErr);
+    if (paidRowsResult.error) {
+      console.error("Paid-lookup error:", paidRowsResult.error);
       return new Response(
-        JSON.stringify({ ok: false, error: paidErr.message }),
+        JSON.stringify({ ok: false, error: paidRowsResult.error.message }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    if (mirrorResult.error) {
+      // Mirror failure isn't fatal — trial_signups is still consulted.
+      console.error("Mirror-lookup error (continuing with trial_signups only):", mirrorResult.error.message);
+    }
 
-    const paidEmails = new Set((paidRows ?? []).map(r => normEmail(r.email)).filter(Boolean));
-    const paidPhones = new Set((paidRows ?? []).map(r => normPhone(r.phone)).filter(Boolean));
+    const paidEmails = new Set<string>();
+    const paidPhones = new Set<string>();
+    for (const r of paidRowsResult.data ?? []) {
+      const e = normEmail(r.email);  if (e) paidEmails.add(e);
+      const p = normPhone(r.phone); if (p) paidPhones.add(p);
+    }
+    for (const m of mirrorResult.data ?? []) {
+      const e = normEmail(m.customer_email);  if (e) paidEmails.add(e);
+      const p = normPhone(m.customer_phone); if (p) paidPhones.add(p);
+    }
+    console.log(
+      `Paid-customer guard: ${paidEmails.size} emails + ${paidPhones.size} phones ` +
+      `(trial_signups ${paidRowsResult.data?.length ?? 0} + mirror ${mirrorResult.data?.length ?? 0})`
+    );
 
     // Who we've emailed in THIS run — so a person who submitted the form
     // multiple times only ever receives one email.
@@ -305,7 +384,7 @@ Deno.serve(async (req: Request) => {
       }
 
       try {
-        await sendEmail(row.email, row.name ?? "", studio);
+        await sendEmail(supabase, row.id, studio.slug, row.email, row.name ?? "", studio);
         if (email) sentEmails.add(email);
         if (phone) sentPhones.add(phone);
         // Mark this row AND every other pending row from the same person, so a

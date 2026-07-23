@@ -7,6 +7,12 @@
 /homebase                https://bbbmarketing.netlify.app/frontdesk.html  200!
 /homebase/*              https://bbbmarketing.netlify.app/:splat        200!
 
+# /ops reverse-proxies to Justin's ops dashboard. 2026-06-12: was missing
+# entirely — Justin had never seen /ops because the catch-all SPA fallback
+# below was swallowing it back to the React app. Critical bug.
+/ops                     https://bbbmarketing.netlify.app/ops.html       200!
+/ops/*                   https://bbbmarketing.netlify.app/:splat         200!
+
 # Tracked marketing links — must come BEFORE the /* SPA catch-all below,
 # or the catch-all swallows them and the redirect never fires.
 # These route through the track-link edge function, which logs the click in
@@ -23,6 +29,22 @@
 /flyer/bayside        https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=flyer-bayside              302
 /flyer/fresh-meadows  https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=flyer-fresh-meadows        302
 /flyer/williamsburg   https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=flyer-williamsburg         302
+
+# /mb/{slug} → direct to that studio's MindBody classic schedule URL.
+# 2026-06-12: replaces the in-page Healcode widget for SMS schedule sends —
+# the widget was unreliable; the classic URL renders every time. sLoc IDs
+# come from supabase/functions/mindbody-create-trial-client (verified live).
+# 302 (not 301) so we can change destinations later without browser caching.
+/mb/astoria        https://clients.mindbodyonline.com/classic/ws?studioid=5733997&stype=-7&sLoc=2  302
+/mb/bayside        https://clients.mindbodyonline.com/classic/ws?studioid=5733997&stype=-7&sLoc=6  302
+/mb/fresh-meadows  https://clients.mindbodyonline.com/classic/ws?studioid=5733997&stype=-7&sLoc=3  302
+/mb/williamsburg   https://clients.mindbodyonline.com/classic/ws?studioid=5733997&stype=-7&sLoc=1  302
+
+# 2026-07-02 QA fix #3: bare /comeback used to hit the SPA 404 (LocationComebackSignup
+# is only mounted at /comeback/:studio). Any wild link to the bare URL dead-ended.
+# Default the studio-less URL to Bayside (the studio the $29 comeback offer targets).
+# Verified comeback-* senders already emit /comeback/{slug}, so this is a safety net.
+/comeback                /comeback/bayside                              302
 
 # SPA fallback for client-side React Router.
 /*                       /index.html                                    200

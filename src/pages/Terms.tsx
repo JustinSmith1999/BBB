@@ -53,7 +53,7 @@ export default function Terms() {
             <FileText className="w-4 h-4" />
             Legal Document
           </div>
-          <h1 className="text-[clamp(2.5rem,7vw,6rem)] font-black mb-4 leading-none tracking-tight">
+          <h1 className="text-[clamp(2rem,4.5vw,4rem)] font-black mb-4 leading-none tracking-tight">
             Terms of <span className="text-red-500">Service</span>
           </h1>
           <p className="text-gray-400 text-sm">Last updated: April 1, 2025</p>
@@ -137,7 +137,7 @@ export default function Terms() {
                     </div>
                     <div className="space-y-2">
                       <SubHead>Class Cancellations</SubHead>
-                      <p>Members must cancel scheduled classes through the Mindbody app only. Cancellations by phone or any other method are not accepted. Late cancellations or no-shows may be subject to a late cancel fee as outlined in your membership agreement. Repeat late cancellations may result in additional fees or restrictions on future bookings.</p>
+                      <p>Members must cancel scheduled classes through the Better Body Studios app only. Cancellations by phone or any other method are not accepted. Late cancellations or no-shows may be subject to a late cancel fee as outlined in your membership agreement. Repeat late cancellations may result in additional fees or restrictions on future bookings.</p>
                     </div>
                     <div className="space-y-2">
                       <SubHead>Membership Freeze</SubHead>

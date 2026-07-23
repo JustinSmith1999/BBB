@@ -26,8 +26,8 @@ export default function Home() {
   return (
     <>
       <SEOHead
-        title="Better Body Bootcamp | NYC's #1 Group Fitness Since 2011"
-        description="Transform your body and your life at Better Body Bootcamp. High-energy group training across 4 NYC locations — Astoria, Bayside, Fresh Meadows, Williamsburg. Start your 2-week trial for $49."
+        title="Best Gyms in Queens & NYC | Better Body Bootcamp · 4 Locations"
+        description="The #1 group fitness gyms in Queens and NYC. Three Better Body Bootcamp studios in Queens (Astoria, Bayside, Fresh Meadows) plus Williamsburg, Brooklyn. Real strength training, expert coaches, 2-week trial for $49."
         canonical="/"
         schema={[organizationSchema, websiteSchema]}
       />

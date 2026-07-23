@@ -1,5 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import Stripe from "npm:stripe@^17.4.0";
+// Pinned EXACT — do NOT use ^ or ~. A 17.x point release on 6/1/2026 hardened
+// the Node-only sync constructEvent path, which silently broke our webhook for
+// 4 days. Auto-upgrade on the Stripe SDK is forbidden in this repo.
+import Stripe from "npm:stripe@17.4.0";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -7,6 +10,33 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, stripe-signature",
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SEND-PATH ALLOWLIST (2026-06-01 — Justin's seatbelt rule)
+//
+// Every customer-facing or owner-facing send goes through this gate. The env
+// var BBB_SEND_PATHS_ENABLED is a comma-separated list of path names. A path
+// only fires if its name appears in the list. New send paths default to OFF.
+//
+// To turn a path on: Supabase Dashboard → Edge Functions → stripe-webhook →
+//   Settings → Edit BBB_SEND_PATHS_ENABLED, add the name, save. No deploy.
+//
+// Current paths (these names are the ONLY contract — don't rename without
+// updating the env var):
+//   stripe_owner_email           → sendTrialEmail        (paid trial → studio inbox)
+//   stripe_owner_sms             → notifyOwnersOfSignup  (paid trial → owner cell)
+//   stripe_customer_welcome_email→ sendCustomerConfirmationEmail (paid trial → customer)
+//   stripe_customer_welcome_sms  → sendTrialWelcomeSms   (paid trial → customer)
+//
+// If the env var is missing, the default-on set is the bare minimum Justin
+// approved: customer welcome email + owner SMS. Everything else is off.
+// ─────────────────────────────────────────────────────────────────────────────
+const DEFAULT_ENABLED_PATHS = "stripe_owner_sms,stripe_customer_welcome_email";
+function isSendPathEnabled(pathName: string): boolean {
+  const raw = Deno.env.get("BBB_SEND_PATHS_ENABLED") ?? DEFAULT_ENABLED_PATHS;
+  const set = new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
+  return set.has(pathName);
+}
 
 // Per-studio routing for paid-trial staff notifications.
 // Owners + the per-studio shared mailbox so any front-desk staff sees it too.
@@ -41,16 +71,17 @@ const TRIAL_NOTIFY_PHONES: Record<string, string[]> = {
   "astoria": [],
 };
 
-// QA MODE — while Justin vets the full notification suite (trial + comeback,
-// staff + customer, email + SMS), every outbound message redirects to these
-// addresses. Real recipients (gym inboxes, customer email, customer phone)
-// get nothing. The QA copy keeps the would-be recipient in the subject + body
-// banner + log so Justin can verify routing before flipping live.
+// QA MODE — DISABLED 2026-06-02 by Justin after Funnel Health dashboard
+// proved 65 of 69 paid customers ($3,185 in revenue) got no welcome since
+// May 15 launch. The dual gate (BBB_SMS_AUTO_SEND_ENABLED + per-path
+// BBB_SEND_PATHS_ENABLED) is the only protection now. Both must be set
+// correctly for any send to leave the server.
 //
-// To go live (after approval): set both fields to null.
+// To return to QA mode (e.g. testing changes): set email/phone to a
+// known-safe address/number again.
 const QA_OVERRIDE: { email: string | null; phone: string | null } = {
-  email: "Justin@J20solutions.com",
-  phone: "+16317086585", // Justin's cell
+  email: null,
+  phone: null,
 };
 
 // Per-studio sender mailboxes. Resend accepts any address @betterbodybootcamp
@@ -131,7 +162,46 @@ async function sendMetaPurchaseEvent(
   valueUsd: number,
   fbp: string,
   fbc: string,
+  // 2026-06-05: client_ip_address + client_user_agent are critical Meta CAPI
+  // match-quality signals. Without them, Meta receives the event (HTTP 200)
+  // but can't tie it back to an ad click, so the conversion goes unattributed.
+  // Bayside symptom: $372 spend / 8 days / 0 attributed purchases despite
+  // real paid trials. Captured at form-fill time and stored on trial_signups.
+  clientIp: string,
+  clientUserAgent: string,
 ): Promise<void> {
+  // ── Permanent monitoring helper ──────────────────────────────────────────
+  // Justin called out the recurring "CAPI silently broken for weeks" pattern.
+  // Every attempt — success OR failure — now writes a row to capi_events so
+  // the failure mode "nobody reads the function logs" is gone. Best-effort;
+  // logging itself never blocks the webhook.
+  const eventId = `trial_${stripeSessionId}`;
+  const logAttempt = async (fields: {
+    ok: boolean;
+    pixel_id?: string | null;
+    http_status?: number | null;
+    meta_event_id?: string | null;
+    error?: string | null;
+    raw?: unknown;
+  }) => {
+    try {
+      await supabase.from("capi_events").insert({
+        studio_slug: studioSlug,
+        pixel_id: fields.pixel_id ?? null,
+        event_name: "Purchase",
+        event_id: eventId,
+        value_usd: valueUsd,
+        ok: fields.ok,
+        http_status: fields.http_status ?? null,
+        meta_event_id: fields.meta_event_id ?? null,
+        error: fields.error ?? null,
+        raw: fields.raw ? (fields.raw as Record<string, unknown>) : null,
+      });
+    } catch (e) {
+      console.error("capi_events insert failed:", (e as Error).message);
+    }
+  };
+
   // Pixel ID + access token live on the studio's meta_accounts row — the same
   // credentials meta-insights-sync uses to read insights.
   const { data: acct, error } = await supabase
@@ -140,7 +210,15 @@ async function sendMetaPurchaseEvent(
     .eq("studio_slug", studioSlug)
     .maybeSingle();
   if (error || !acct?.pixel_id || !acct?.access_token) {
-    console.log(`Meta CAPI skipped for ${studioSlug}: no pixel_id / access_token on file`);
+    const reason = error
+      ? `meta_accounts lookup error: ${error.message}`
+      : !acct
+      ? "no meta_accounts row for studio"
+      : !acct.pixel_id
+      ? "meta_accounts.pixel_id is NULL — run 20260601_populate_meta_pixel_ids.sql"
+      : "meta_accounts.access_token is NULL/empty";
+    console.log(`Meta CAPI skipped for ${studioSlug}: ${reason}`);
+    await logAttempt({ ok: false, error: reason, pixel_id: acct?.pixel_id ?? null });
     return;
   }
 
@@ -159,6 +237,13 @@ async function sendMetaPurchaseEvent(
   // for matching this server-side Purchase to the ad click that drove it.
   if (fbp) userData.fbp = fbp;
   if (fbc) userData.fbc = fbc;
+  // client_ip_address + client_user_agent: PLAIN, single string (not array).
+  // These complete the browser fingerprint so Meta can link the server event
+  // to the actual ad-click session. Without these the match score floors out
+  // around 4-5/10 and Meta declines attribution — the Bayside symptom.
+  // Meta accepts both IPv4 and IPv6. UA capped server-side at 1024 chars.
+  if (clientIp)        userData.client_ip_address = clientIp;
+  if (clientUserAgent) userData.client_user_agent = clientUserAgent;
 
   const apiVersion = acct.api_version || "v19.0";
   const body = {
@@ -186,10 +271,78 @@ async function sendMetaPurchaseEvent(
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
   );
   const respText = await res.text();
+  let respJson: Record<string, unknown> | null = null;
+  try { respJson = JSON.parse(respText); } catch { /* not JSON */ }
+  const metaEventId =
+    typeof respJson?.fbtrace_id === "string" ? (respJson.fbtrace_id as string) : null;
+
   if (!res.ok) {
     console.error(`Meta CAPI Purchase FAILED for ${studioSlug}: HTTP ${res.status} ${respText.slice(0, 300)}`);
+    await logAttempt({
+      ok: false,
+      pixel_id: acct.pixel_id,
+      http_status: res.status,
+      error: respText.slice(0, 600),
+      raw: respJson ?? { text: respText.slice(0, 600) },
+    });
   } else {
     console.log(`Meta CAPI Purchase sent for ${studioSlug} ($${valueUsd}): ${respText.slice(0, 200)}`);
+    await logAttempt({
+      ok: true,
+      pixel_id: acct.pixel_id,
+      http_status: res.status,
+      meta_event_id: metaEventId,
+      raw: respJson ?? { text: respText.slice(0, 600) },
+    });
+  }
+}
+
+// ─── Inline email_log writer ────────────────────────────────────────────────
+// We previously relied entirely on the Resend webhook to populate email_log.
+// On 2026-06-02 audit, email_log had ZERO rows for 14 days — meaning the
+// Resend webhook → DB pipeline is broken (or never wired up). Emails likely
+// went out (Resend API accepted them) but we had no audit trail at all.
+//
+// Fix: every time we POST to Resend and get a 2xx back, write a row to
+// email_log right here. event_type='sent_inline' so it's distinguishable
+// from rows the webhook would write (event_type='sent', 'delivered', etc.).
+// This gives us a bootstrap audit trail that doesn't depend on Resend
+// webhook config or signature verification.
+async function logEmailSentInline(supabase: any, params: {
+  resend_id: string | null;
+  send_path: string;
+  from_addr: string;
+  to_addrs: string[];
+  subject: string;
+  trial_signup_id?: string | null;
+  studio_slug?: string | null;
+}) {
+  // 2026-06-12 NIGHT — same fix as abandoned-cart-followup. supabase-js does
+  // NOT throw on insert errors; it returns { error }. The previous try/catch
+  // was catching nothing. The REAL pg error was sitting in `error` and being
+  // silently discarded, which is why /ops + the dashboard always showed
+  // "0 emails sent" even though Resend was firing thousands.
+  const payload = {
+    resend_id:       params.resend_id ?? null,
+    event_type:      "sent_inline",  // Resend webhook would write 'sent'
+    from_addr:       params.from_addr,
+    to_addrs:        params.to_addrs,
+    subject:         params.subject,
+    send_path:       params.send_path,
+    trial_signup_id: params.trial_signup_id ?? null,
+    raw:             { studio_slug: params.studio_slug ?? null, inline: true },
+  };
+  const { error: logErr } = await supabase.from("email_log").insert(payload);
+  if (logErr) {
+    console.error("logEmailSentInline FAILED", {
+      pg_code:    (logErr as { code?: string }).code,
+      pg_message: logErr.message,
+      pg_details: (logErr as { details?: string }).details,
+      pg_hint:    (logErr as { hint?: string }).hint,
+      payload,
+    });
+    // Don't throw — the Resend send already succeeded. The loud console.error
+    // surfaces the real reason in function logs so we can fix it.
   }
 }
 
@@ -199,16 +352,20 @@ async function sendTrialEmail(studioSlug: string, variant: Variant, trial: {
   country?: string; newsletter_opted_in?: boolean;
   stripe_session_id: string; payment_date: string;
 }) {
+  if (!isSendPathEnabled("stripe_owner_email")) {
+    console.log(`sendTrialEmail SKIPPED — path "stripe_owner_email" not in BBB_SEND_PATHS_ENABLED (studio=${studioSlug})`);
+    return;
+  }
   // ── Backfill / replay guard ──────────────────────────────────────────
   // 2026-05-31: a Stripe webhook replay sent 13 owner emails at once for
-  // historical paid trials (May 15–29). Owners thought 13 new customers had
-  // signed up. If the payment is more than 24h old, this is almost certainly
-  // a replay or backfill — log it loud and skip the owner notification. Real
-  // new-paid-trial emails are <30s after payment.
+  // historical paid trials (May 15–29). 2026-06-03: tightened threshold from
+  // 24h → 1h after the webhook-secret-mismatch fix triggered a 3-day backlog
+  // drain. Real new-paid-trial sends fire <30s after payment; anything over
+  // 1h is a replay or backfill — skip loudly.
   try {
     const ageMs = Date.now() - new Date(trial.payment_date).getTime();
-    if (Number.isFinite(ageMs) && ageMs > 24 * 60 * 60 * 1000) {
-      console.warn(`sendTrialEmail SKIPPED — payment_date is ${Math.round(ageMs / 3600000)}h old (replay/backfill suspected). studio=${studioSlug} session=${trial.stripe_session_id}`);
+    if (Number.isFinite(ageMs) && ageMs > 60 * 60 * 1000) {
+      console.warn(`sendTrialEmail SKIPPED — payment_date is ${Math.round(ageMs / 60000)}min old (replay/backfill suspected). studio=${studioSlug} session=${trial.stripe_session_id}`);
       return;
     }
   } catch (e) {
@@ -268,10 +425,6 @@ async function sendTrialEmail(studioSlug: string, variant: Variant, trial: {
         <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Newsletter opt-in</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0">${newsletter}</td></tr>
         <tr><td style="padding:8px 0;color:#666">Stripe session</td><td style="padding:8px 0;font-family:ui-monospace,SFMono-Regular,monospace;font-size:11px;color:#666;word-break:break-all"><a href="${stripeDashUrl}" style="color:#666;text-decoration:underline">${trial.stripe_session_id}</a></td></tr>
       </table>
-      <div style="margin-top:24px;padding:16px;background:#fef3c7;border-radius:8px;border-left:4px solid #d97706">
-        <div style="font-size:13px;color:#92400e;font-weight:700;margin-bottom:4px">📞 NEXT STEP</div>
-        <div style="font-size:14px;color:#111;line-height:1.5">Call <strong>${trial.name || "the customer"}</strong> at <a href="tel:${trial.phone}" style="color:#dc2626;text-decoration:none;font-weight:600">${trial.phone || ""}</a> today to book their first class. First-class shows are the #1 predictor of trial → monthly conversion.</div>
-      </div>
       <div style="margin-top:20px;font-size:12px;color:#999;text-align:center;border-top:1px solid #eee;padding-top:16px">
         BBB Trial Automation · <a href="${leadDashUrl}" style="color:#999">View in dashboard</a>
       </div>
@@ -288,9 +441,7 @@ Newsletter: ${newsletter}
 Paid: ${paidLocal}
 Source: betterbodybootcamp.com/${variant === "special" ? "special" : "trial"}/${studioSlug}
 Offer: ${cfg.priceLabel} · ${cfg.durationLabel}
-Stripe session: ${trial.stripe_session_id}
-
-📞 Call ${trial.phone || "the customer"} today to book their first class.`;
+Stripe session: ${trial.stripe_session_id}`;
   try {
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -320,6 +471,20 @@ Stripe session: ${trial.stripe_session_id}
           `:`,
         body.id,
       );
+      // Bootstrap audit log so we don't depend on Resend's webhook to know
+      // this email was sent. See logEmailSentInline definition for context.
+      const supabaseLog = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      );
+      await logEmailSentInline(supabaseLog, {
+        resend_id:    body?.id ?? null,
+        send_path:    "stripe_owner_email",
+        from_addr:    "trials@betterbodybootcamp.com",
+        to_addrs:     recipients,
+        subject:      staffOverrideNotice ? `[QA] ${subject}` : subject,
+        studio_slug:  studioSlug,
+      });
     }
   } catch (e) {
     console.error("Resend send exception:", e);
@@ -340,10 +505,38 @@ async function sendTrialWelcomeSms(
   studioSlug: string,
   studioName: string,
   variant: Variant,
-  trial: { name: string; phone: string },
+  trial: { name: string; phone: string; payment_date?: string },
   supabase: any,
   trialSignupId: string,
 ) {
+  // ── Double-gate guardrail (2026-06-02) ────────────────────────────────────
+  // Justin pulled approval for automated SMS sends after realizing the
+  // env-var allowlist gave too coarse a permission. To re-arm automated
+  // customer SMS, BOTH of these must be set to "true":
+  //   1. stripe_customer_welcome_sms in BBB_SEND_PATHS_ENABLED  (path gate)
+  //   2. BBB_SMS_AUTO_SEND_ENABLED = "true"                     (master gate)
+  // The master gate is intentionally separate so a path-list edit can't
+  // accidentally fire SMS to customers. Default: OFF.
+  if (Deno.env.get("BBB_SMS_AUTO_SEND_ENABLED") !== "true") {
+    console.log(`sendTrialWelcomeSms BLOCKED — BBB_SMS_AUTO_SEND_ENABLED not set to "true" (master gate)`);
+    return;
+  }
+  // ── Backfill / replay guard (matches sendTrialEmail — 1h threshold) ──
+  try {
+    if (trial.payment_date) {
+      const ageMs = Date.now() - new Date(trial.payment_date).getTime();
+      if (Number.isFinite(ageMs) && ageMs > 60 * 60 * 1000) {
+        console.warn(`sendTrialWelcomeSms SKIPPED — payment_date is ${Math.round(ageMs / 60000)}min old (replay/backfill suspected). studio=${studioSlug}`);
+        return;
+      }
+    }
+  } catch (e) {
+    console.warn(`sendTrialWelcomeSms age check failed (continuing): ${(e as Error).message}`);
+  }
+  if (!isSendPathEnabled("stripe_customer_welcome_sms")) {
+    console.log(`sendTrialWelcomeSms SKIPPED — path "stripe_customer_welcome_sms" not in BBB_SEND_PATHS_ENABLED (studio=${studioSlug})`);
+    return;
+  }
   const sid = Deno.env.get("TWILIO_ACCOUNT_SID");
   const token = Deno.env.get("TWILIO_AUTH_TOKEN");
   const from = Deno.env.get("TWILIO_FROM_NUMBER");
@@ -368,7 +561,17 @@ async function sendTrialWelcomeSms(
     ? `[QA→${realTo ?? "no#"}] `
     : "";
   const firstName = (trial.name || "").trim().split(/\s+/)[0] || "there";
-  const studioUrl = `https://betterbodybootcamp.com/schedule/${studioSlug}`;
+  // SMS goes straight to MindBody — booking happens there, and a working
+  // direct URL beats our own /schedule page (which iframes MB anyway and
+  // adds an extra hop). Falls back to our page if we ever add a 5th studio
+  // without populating the MB map.
+  const MB_LOC_BY_SLUG_SMS: Record<string, number> = {
+    "astoria": 2, "bayside": 6, "fresh-meadows": 3, "williamsburg": 1,
+  };
+  const mbLocIdSms = MB_LOC_BY_SLUG_SMS[studioSlug] ?? 0;
+  const studioUrl = mbLocIdSms
+    ? `https://clients.mindbodyonline.com/classic/ws?studioid=5733997&stype=-7&sLoc=${mbLocIdSms}`
+    : `https://betterbodybootcamp.com/schedule/${studioSlug}`;
   const cfg = variantConfig(variant);
   // Single 160-char SMS segment when possible.
   const body = smsOverridePrefix + cfg.smsBody(firstName, studioName, studioUrl);
@@ -405,6 +608,24 @@ async function sendTrialWelcomeSms(
           welcome_sms_error: null,
         })
         .eq("id", trialSignupId);
+      // Bootstrap audit log to sms_messages so /homebase's per-customer
+      // thread shows the welcome SMS. Independent of the Twilio status
+      // webhook — even if that's broken, we still see the send happened.
+      try {
+        await supabase.from("sms_messages").insert({
+          trial_signup_id: trialSignupId,
+          studio_slug:     studioSlug,
+          direction:       "outbound",
+          from_phone:      from,
+          to_phone:        to,
+          body,
+          twilio_sid:      respBody?.sid ?? null,
+          status:          respBody?.status ?? "queued",
+          sent_by:         "stripe_customer_welcome_sms",
+        });
+      } catch (logErr) {
+        console.error("sms_messages welcome insert failed:", (logErr as Error).message);
+      }
     }
   } catch (e) {
     const msg = (e as Error).message || String(e);
@@ -427,16 +648,28 @@ async function notifyOwnersOfSignup(
   variant: Variant,
   trial: { name: string; email: string; phone: string; payment_date?: string },
   supabase: any,
+  trialSignupId: string | null,
 ) {
   if (!locationId) return;
-  // ── Backfill / replay guard (matches sendTrialEmail) ─────────────────
+  // ── Double-gate guardrail — see sendTrialWelcomeSms. Master switch off
+  // by default. Even when stripe_owner_sms is allowlisted, no SMS fires
+  // unless BBB_SMS_AUTO_SEND_ENABLED is explicitly "true".
+  if (Deno.env.get("BBB_SMS_AUTO_SEND_ENABLED") !== "true") {
+    console.log(`notifyOwnersOfSignup BLOCKED — BBB_SMS_AUTO_SEND_ENABLED not set to "true" (master gate)`);
+    return;
+  }
+  if (!isSendPathEnabled("stripe_owner_sms")) {
+    console.log(`notifyOwnersOfSignup SKIPPED — path "stripe_owner_sms" not in BBB_SEND_PATHS_ENABLED (studio=${studioName})`);
+    return;
+  }
+  // ── Backfill / replay guard (matches sendTrialEmail — 1h threshold) ──
   // 2026-05-31: lock down owner SMS from any payment older than 24h. A real
   // new paid trial fires within seconds of payment; anything older = replay.
   try {
     if (trial.payment_date) {
       const ageMs = Date.now() - new Date(trial.payment_date).getTime();
-      if (Number.isFinite(ageMs) && ageMs > 24 * 60 * 60 * 1000) {
-        console.warn(`notifyOwnersOfSignup SKIPPED — payment_date is ${Math.round(ageMs / 3600000)}h old (replay/backfill suspected). studio=${studioName}`);
+      if (Number.isFinite(ageMs) && ageMs > 60 * 60 * 1000) {
+        console.warn(`notifyOwnersOfSignup SKIPPED — payment_date is ${Math.round(ageMs / 60000)}min old (replay/backfill suspected). studio=${studioName}`);
         return;
       }
     }
@@ -490,6 +723,28 @@ async function notifyOwnersOfSignup(
         console.error(`Owner SMS to ${owner.owner_name} (${sendTo}) failed: ${respBody?.message || r.status}`);
       } else {
         console.log(`Owner SMS sent to ${owner.owner_name} (${sendTo}) sid=${respBody?.sid}`);
+        // Bootstrap audit log to sms_messages. Owner notifications are
+        // outbound + sent_by='stripe_owner_sms' so the /ops comms-health
+        // card can count them. trial_signup_id can be NULL here — these
+        // are studio-internal pings about a customer, not to the customer.
+        try {
+          await supabase.from("sms_messages").insert({
+            // Was previously null — that orphaned every owner ping from the
+            // customer card on /homebase. Tag with the customer's trial id
+            // so the comms history modal can surface owner fan-outs.
+            trial_signup_id: trialSignupId,
+            studio_slug:     studioName.toLowerCase().replace(/\s+/g, "-"),
+            direction:       "outbound",
+            from_phone:      from,
+            to_phone:        sendTo,
+            body:            bodyOut,
+            twilio_sid:      respBody?.sid ?? null,
+            status:          respBody?.status ?? "queued",
+            sent_by:         "stripe_owner_sms",
+          });
+        } catch (logErr) {
+          console.error("sms_messages owner-notify insert failed:", (logErr as Error).message);
+        }
       }
     } catch (e) {
       console.error(`Owner SMS exception for ${owner.owner_name}:`, (e as Error).message);
@@ -504,8 +759,37 @@ async function sendCustomerConfirmationEmail(
   studioSlug: string,
   studioName: string,
   variant: Variant,
-  trial: { name: string; email: string; phone: string },
+  trial: { name: string; email: string; phone: string; payment_date?: string },
+  trialSignupId: string | null,
+  // 2026-06-26: data_source drives whether the email tells the customer to
+  // look for a MindBody password email or a Mariana Tek password email.
+  // Default 'mindbody' for backward-compat with old callers.
+  dataSource: 'mindbody' | 'mariana_tek' | 'dual' = 'mindbody',
 ) {
+  if (!isSendPathEnabled("stripe_customer_welcome_email")) {
+    console.log(`sendCustomerConfirmationEmail SKIPPED — path "stripe_customer_welcome_email" not in BBB_SEND_PATHS_ENABLED (studio=${studioSlug})`);
+    return;
+  }
+  // ── Backfill / replay guard (matches sendTrialEmail — 1h threshold) ──
+  // Real welcomes fire <30s after payment. Anything older is a replay.
+  try {
+    if (trial.payment_date) {
+      const ageMs = Date.now() - new Date(trial.payment_date).getTime();
+      if (Number.isFinite(ageMs) && ageMs > 60 * 60 * 1000) {
+        console.warn(`sendCustomerConfirmationEmail SKIPPED — payment_date is ${Math.round(ageMs / 60000)}min old (replay/backfill suspected). studio=${studioSlug}`);
+        return;
+      }
+    }
+  } catch (e) {
+    console.warn(`sendCustomerConfirmationEmail age check failed (continuing): ${(e as Error).message}`);
+  }
+  // ── No artificial delay ────────────────────────────────────────────────
+  // Earlier draft staggered this 30s behind the MB password email so it
+  // landed first in the inbox. Reverted: a sleep here blocks the webhook
+  // response past Stripe's ~30s timeout, which would trigger retries and
+  // double-fire welcomes + owner SMS. Instead, the email body itself now
+  // teaches the customer to look for the MB password email regardless of
+  // arrival order — order isn't deterministic across mail providers anyway.
   if (!trial.email) {
     console.log("Customer confirmation email skipped — no email on record");
     return;
@@ -519,6 +803,33 @@ async function sendCustomerConfirmationEmail(
   const firstName = (trial.name || "").trim().split(/\s+/)[0] || "there";
   const scheduleUrl = `https://betterbodybootcamp.com/schedule/${studioSlug}`;
   const studioInfoUrl = `https://betterbodybootcamp.com/locations/${studioSlug}`;
+  // Always-works MindBody fallback URL, in case our embedded schedule widget
+  // is slow / fails on the customer's network. Site ID 5733997 is BBB org-wide;
+  // sLoc is the per-studio MB location ID (confirmed from /sites endpoint).
+  const MB_LOC_BY_SLUG: Record<string, number> = {
+    "astoria": 2, "bayside": 6, "fresh-meadows": 3, "williamsburg": 1,
+  };
+  const mbLocId = MB_LOC_BY_SLUG[studioSlug] ?? 0;
+  const mbDirectScheduleUrl = mbLocId
+    ? `https://clients.mindbodyonline.com/classic/ws?studioid=5733997&stype=-7&sLoc=${mbLocId}`
+    : scheduleUrl; // graceful degrade if we somehow get an unknown slug
+  // 2026-07-11 FIX (Justin, ASAP): the "Book My First Class" button was pointing
+  // at the raw MT tenant root (https://betterbodybootcamp.marianatek.com/) which
+  // does NOT resolve to a usable customer booking page — new clients hit a dead
+  // link. Point it at OUR OWN live schedule page instead: it lists this studio's
+  // MT classes and books them natively (NativeClassList + MTBookingModal, signed
+  // in with the MT password from step 1). Same domain, guaranteed to load.
+  const mtPortalUrl = scheduleUrl;  // https://betterbodybootcamp.com/schedule/<slug>
+  // Pick the booking URL based on which membership system this studio runs on.
+  const isMT = dataSource === 'mariana_tek';
+  const bookingUrl = isMT ? mtPortalUrl : mbDirectScheduleUrl;
+  const bookingSystemName = isMT ? 'Mariana Tek' : 'MindBody';
+  const bookingSenderHint = isMT
+    ? 'an email from Mariana Tek (sender: <em>no-reply@marianatek.com</em>)'
+    : 'an email from MindBody (sender: <em>no-reply@mindbodyonline.com</em>)';
+  const bookingSenderHintPlain = isMT
+    ? 'an email from Mariana Tek (no-reply@marianatek.com)'
+    : 'an email from MindBody (no-reply@mindbodyonline.com)';
   const studioMail = studioMailbox(studioSlug);
   const intro = variant === "special"
     ? `Welcome back to Better Body Bootcamp ${studioName}. Your 30-day comeback is locked in.`
@@ -540,11 +851,45 @@ async function sendCustomerConfirmationEmail(
         <h1 style="margin:0;font-size:28px;font-weight:800;letter-spacing:-0.02em;line-height:1.1">${greeting}.</h1>
       </div>
       <div style="padding:28px">
-        <p style="margin:0 0 18px;font-size:16px;line-height:1.55;color:#222">${intro}</p>
-        <p style="margin:0 0 22px;font-size:15px;line-height:1.6;color:#444">You'll get the most out of this if you book your <strong>first class today</strong>. The schedule updates live — pick a time that fits and we'll see you on the floor.</p>
-        <div style="text-align:center;margin:26px 0 28px">
-          <a href="${scheduleUrl}" style="background:${cfg.heroHex};color:#fff;text-decoration:none;font-weight:700;padding:14px 28px;border-radius:999px;display:inline-block;font-size:15px;letter-spacing:0.01em">Book My First Class →</a>
+        <p style="margin:0 0 22px;font-size:16px;line-height:1.55;color:#222">${intro}</p>
+
+        <!-- TWO-STEP SETUP — branches on dataSource. MT-flavored when the
+             studio is post-cutover, MindBody-flavored otherwise. Step 2
+             always = "book your first class" regardless of system. -->
+        <div style="background:#fffaf5;border:2px solid ${cfg.heroHex};border-radius:12px;padding:20px 22px;margin:0 0 24px">
+          <div style="font-size:11px;font-weight:800;color:${cfg.heroHex};text-transform:uppercase;letter-spacing:0.12em;margin-bottom:12px">Two-step setup · takes 60 seconds</div>
+
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-bottom:14px;width:100%">
+            <tr>
+              <td style="width:40px;vertical-align:top;padding-right:14px">
+                <div style="background:${cfg.heroHex};color:#fff;font-weight:800;font-size:14px;width:26px;height:26px;line-height:26px;border-radius:13px;text-align:center;display:inline-block">1</div>
+              </td>
+              <td style="vertical-align:top;font-size:14px;line-height:1.55;color:#222">
+                <strong>Check your inbox for ${bookingSenderHint}.</strong>
+                Click the link inside to set your password.
+                <div style="font-size:12px;color:#888;margin-top:4px">It usually lands within a minute or two of this email. Look in Spam / Promotions if you don't see it.</div>
+              </td>
+            </tr>
+          </table>
+
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%">
+            <tr>
+              <td style="width:40px;vertical-align:top;padding-right:14px">
+                <div style="background:${cfg.heroHex};color:#fff;font-weight:800;font-size:14px;width:26px;height:26px;line-height:26px;border-radius:13px;text-align:center;display:inline-block">2</div>
+              </td>
+              <td style="vertical-align:top;font-size:14px;line-height:1.55;color:#222">
+                <strong>Book your first class.</strong>
+                The button below takes you straight to the schedule — sign in with the password you just set.
+              </td>
+            </tr>
+          </table>
         </div>
+
+        <!-- Single CTA → booking URL (MT or MB depending on studio). -->
+        <div style="text-align:center;margin:0 0 28px">
+          <a href="${bookingUrl}" style="background:${cfg.heroHex};color:#fff;text-decoration:none;font-weight:700;padding:14px 28px;border-radius:999px;display:inline-block;font-size:15px;letter-spacing:0.01em">Book My First Class →</a>
+        </div>
+
         <div style="background:#fafafa;border:1px solid #eee;border-radius:12px;padding:18px 20px;margin-bottom:22px">
           <div style="font-size:12px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px">What you've got</div>
           <table style="width:100%;border-collapse:collapse;font-size:14px">
@@ -555,11 +900,11 @@ async function sendCustomerConfirmationEmail(
         </div>
         <div style="font-size:14px;color:#444;line-height:1.55">
           <p style="margin:0 0 10px"><strong>First class tips:</strong> show up 10 minutes early, wear sneakers, bring water. Coach will get you set up.</p>
-          <p style="margin:0 0 10px">Questions? Just reply to this email — it goes straight to your studio.</p>
+          <p style="margin:0 0 10px">Can't find the password-setup email or having trouble logging in? Just reply to this email — we'll get you sorted.</p>
         </div>
         <div style="border-top:1px solid #eee;margin-top:24px;padding-top:18px;font-size:12px;color:#888;text-align:center">
           <a href="${studioInfoUrl}" style="color:#888;text-decoration:underline">Studio info & directions</a>
-          &nbsp;·&nbsp; <a href="${scheduleUrl}" style="color:#888;text-decoration:underline">Class schedule</a>
+          &nbsp;·&nbsp; <a href="${bookingUrl}" style="color:#888;text-decoration:underline">Class schedule</a>
         </div>
       </div>
     </div>
@@ -568,8 +913,14 @@ async function sendCustomerConfirmationEmail(
 
 ${intro}
 
-Book your first class today — schedule updates live:
-${scheduleUrl}
+TWO-STEP SETUP — takes 60 seconds:
+
+1. CHECK YOUR INBOX for ${bookingSenderHintPlain}.
+   Click the link inside to set your password. Look in Spam / Promotions if you don't see it within a minute or two.
+
+2. BOOK YOUR FIRST CLASS — sign in with the password you just set.
+
+Book your first class: ${bookingUrl}
 
 What you've got:
 - Offer: ${cfg.priceLabel} · ${cfg.durationLabel}
@@ -578,9 +929,22 @@ What you've got:
 
 Tips: show up 10 minutes early, wear sneakers, bring water.
 
-Questions? Reply to this email and it goes straight to your studio.
+Can't find the password-setup email or having trouble logging in? Reply to this email and we'll get you sorted.
 
 — Better Body Bootcamp`;
+  // ─── Tags ────────────────────────────────────────────────────────────────
+  // Resend echoes these back on every webhook event (sent / delivered /
+  // opened / bounced / etc.) so resend-webhook can thread the email to the
+  // customer card on /homebase. Tag names/values are constrained to
+  // [a-zA-Z0-9_-]; UUIDs satisfy this.
+  const tags: Array<{ name: string; value: string }> = [
+    { name: "send_path", value: "stripe_customer_welcome_email" },
+    { name: "studio_slug", value: studioSlug },
+    { name: "variant", value: variant },
+  ];
+  if (trialSignupId) {
+    tags.push({ name: "trial_signup_id", value: trialSignupId });
+  }
   try {
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -597,6 +961,7 @@ Questions? Reply to this email and it goes straight to your studio.
           : html,
         text: overrideNotice ? `${overrideNotice}\n\n${text}` : text,
         reply_to: studioMail,
+        tags,
       }),
     });
     if (!r.ok) {
@@ -609,6 +974,20 @@ Questions? Reply to this email and it goes straight to your studio.
           `:`,
         body.id,
       );
+      // Bootstrap audit log. See logEmailSentInline definition for context.
+      const supabaseLog = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      );
+      await logEmailSentInline(supabaseLog, {
+        resend_id:       body?.id ?? null,
+        send_path:       "stripe_customer_welcome_email",
+        from_addr:       studioMail,
+        to_addrs:        [recipient],
+        subject:         overrideNotice ? `${cfg.customerSubject} [QA TEST]` : cfg.customerSubject,
+        trial_signup_id: trialSignupId ?? null,
+        studio_slug:     studioSlug,
+      });
     }
   } catch (e) {
     console.error("Customer confirmation email exception:", e);
@@ -1658,6 +2037,7 @@ Deno.serve(async (req: Request) => {
           studioName,
           testVariant,
           { name: sample.name, email: sample.email, phone: sample.phone },
+          null, // diagnostic path — no real trial_signup to thread to
         );
         await sendStaffSms(studioSlug, studioName, testVariant, {
           name: sample.name, phone: sample.phone, email: sample.email,
@@ -1725,7 +2105,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: location, error: locationError } = await supabase
       .from("locations")
-      .select("stripe_secret_key, stripe_webhook_secret, gohighlevel_webhook_url, gohighlevel_api_key, name")
+      .select("stripe_secret_key, stripe_webhook_secret, gohighlevel_webhook_url, gohighlevel_api_key, name, data_source")
       .eq("id", locationId)
       .maybeSingle();
 
@@ -1777,8 +2157,13 @@ Deno.serve(async (req: Request) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    // NOTE 2026-06-04: must use constructEventAsync in Deno edge runtime.
+    // The synchronous constructEvent depends on Node's crypto.createHmac which
+    // throws under Deno when Stripe SDK 17.x hardened its Node-only path.
+    // Symptom: 100% signature failures across all 4 studios from June 1 onward,
+    // even though the stored whsec_ matched Stripe's UI byte-for-byte.
     try {
-      event = stripe.webhooks.constructEvent(
+      event = await stripe.webhooks.constructEventAsync(
         body,
         signature,
         location.stripe_webhook_secret,
@@ -1786,20 +2171,52 @@ Deno.serve(async (req: Request) => {
     } catch (err) {
       console.error("BLOCKED: webhook signature verification failed for locationId", locationId, (err as Error).message);
       return new Response(
-        JSON.stringify({ received: false, error: "invalid signature" }),
+        JSON.stringify({ received: false, error: "invalid signature", detail: (err as Error).message }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     console.log("Received Stripe event:", event.type, "for location:", locationId);
 
+    // ── Replay/backfill detection — Stripe's event.created is IMMUTABLE across
+    // webhook retries, while Date.now() drifts on every retry. Use this for
+    // age guards so backlog drains don't fire welcomes for old paid trials.
+    const eventCreatedMs = (event.created && Number.isFinite(event.created))
+      ? event.created * 1000
+      : Date.now();
+
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
       const metadata = session.metadata || {};
 
-      // Variant flows through Checkout metadata. 'special' = $129 comeback,
-      // everything else (including missing) defaults to the $49 trial path.
+      // Variant flows through Checkout metadata.
+      //   'special'  = $129 / 30-day comeback (legacy)
+      //   'comeback' = $29  / 1-week comeback offer (2026-06-11)
+      //   else       = $49  / 2-week standard trial
       const variant: Variant = metadata.priceVariant === "special" ? "special" : "trial";
+      const isComeback = metadata.priceVariant === "comeback";
+
+      // For the $29 comeback flow, stamp comeback_converted_at on the ORIGINAL
+      // abandoned trial_signups row so the dashboard can attribute the conversion
+      // back to its first-touch lead. Best-effort — never block the webhook.
+      const comebackOriginalSignupId =
+        typeof metadata.comebackOriginalSignupId === "string" && metadata.comebackOriginalSignupId.length === 36
+          ? metadata.comebackOriginalSignupId
+          : null;
+      if (isComeback && comebackOriginalSignupId) {
+        try {
+          await supabase
+            .from("trial_signups")
+            .update({
+              comeback_converted_at: new Date(eventCreatedMs).toISOString(),
+              comeback_stripe_session_id: session.id,
+            })
+            .eq("id", comebackOriginalSignupId);
+          console.log(`comeback conversion stamped on original signup ${comebackOriginalSignupId}`);
+        } catch (e) {
+          console.error("comeback attribution stamp failed:", (e as Error).message);
+        }
+      }
 
       const trialData = {
         name: metadata.customerName || "",
@@ -1813,7 +2230,19 @@ Deno.serve(async (req: Request) => {
         location_id: metadata.locationId || null,
         stripe_session_id: session.id,
         payment_status: "completed",
-        payment_date: new Date().toISOString(),
+        // Use Stripe's event.created (immutable across retries) so payment_date
+        // reflects the REAL payment time and the age guards below work right.
+        payment_date: new Date(eventCreatedMs).toISOString(),
+        // NEVER leave source_category NULL on insert. If a downstream filter
+        // ever does `.neq("source_category", "x")`, Postgres 3-valued logic
+        // would silently drop every NULL row. That bug hid 25 paid leads
+        // across all 4 studios on 2026-06-01. Tag every insert with a
+        // non-null sentinel so the failure mode is structurally impossible.
+        // 'stripe_checkout' here = paid via Stripe Checkout but no prior
+        // pending row (i.e. external Payment Link, never touched our form).
+        // The form path through create-trial-checkout tags 'trial_form'.
+        // Comeback flow tags as 'comeback_form' for attribution.
+        source_category: isComeback ? "comeback_form" : "stripe_checkout",
         // UTM tags — used only by the fallback INSERT below. The normal path
         // UPDATEs the pending row, which already carries UTMs from checkout.
         utm_source: metadata.utm_source || null,
@@ -1870,6 +2299,40 @@ Deno.serve(async (req: Request) => {
 
       console.log("Trial signup saved:", data);
 
+      // ─── Mirror to stripe_paid_mirror (single source of truth) ──────────
+      // Real-time mirror write so the dashboard's count_paid_canonical can
+      // see this purchase immediately, not on the next 5-min cron tick.
+      // Idempotent — sync-stripe-paid-mirror also writes the same row.
+      //
+      // 2026-06-04: paid_at must come from event.created (Stripe's immutable
+      // event timestamp), NOT new Date(). On a replay 3 days later, the old
+      // code set paid_at to "now" and the customer showed up as "paid today"
+      // on the dashboard. Real-world impact: bulk-resends after the 6/1–6/4
+      // webhook outage made Misbah and Yissel show as "Paid today" on the
+      // Daily Pulse tiles. eventCreatedMs is the event's true charge time.
+      try {
+        const studioSlugMirror = (location?.name ?? "").toLowerCase().replace(/\s+/g, "-");
+        const pi = (session.payment_intent as string) || null;
+        if (pi && studioSlugMirror) {
+          await supabase.from("stripe_paid_mirror").upsert({
+            stripe_payment_intent_id: pi,
+            studio_slug:              studioSlugMirror,
+            location_id:              metadata.locationId || null,
+            amount_cents:             session.amount_total ?? 4900,
+            currency:                 (session.currency || "usd").toLowerCase(),
+            paid_at:                  new Date(eventCreatedMs).toISOString(),
+            customer_email:           trialData.email || null,
+            customer_name:            trialData.name  || null,
+            customer_phone:           trialData.phone || null,
+            stripe_customer_id:       (typeof session.customer === "string" ? session.customer : null),
+            stripe_charge_id:         null,
+            raw:                      { source: "stripe-webhook checkout.session.completed", session_id: session.id },
+          }, { onConflict: "stripe_payment_intent_id" });
+        }
+      } catch (e) {
+        console.error("stripe_paid_mirror upsert failed:", (e as Error).message);
+      }
+
       // ─── Mirror to BBB ERP leads table ───────────────────────────────────
       // Lead was inserted into `leads` with stage='pending_checkout' when the
       // form submitted. Now that the trial is paid, flip stage='converted' so
@@ -1916,12 +2379,20 @@ Deno.serve(async (req: Request) => {
       // ─── Customer confirmation email via Resend ──────────────────────────
       // Branded "you're in / welcome back" with booking CTA and tips. Stripe's
       // receipt is plain — this is the BBB-voiced one.
+      //
+      // trialSignupId flows through Resend tags so resend-webhook can thread
+      // every send/delivered/opened event to the customer card on /homebase.
+      // `data[0].id` is the trial_signups row produced by the upsert above.
       try {
         await sendCustomerConfirmationEmail(
           studioSlug,
           studioName,
           variant,
-          { name: trialData.name, email: trialData.email, phone: trialData.phone },
+          { name: trialData.name, email: trialData.email, phone: trialData.phone, payment_date: trialData.payment_date },
+          (data && data[0] && data[0].id) ? String(data[0].id) : null,
+          // 2026-06-26: pass data_source so the email body picks MT vs MB
+          // password-setup wording + booking URL.
+          ((location as any).data_source || 'mindbody') as 'mindbody' | 'mariana_tek' | 'dual',
         );
       } catch (e) {
         console.error("customer confirmation email exception:", e);
@@ -1930,10 +2401,22 @@ Deno.serve(async (req: Request) => {
       // ─── Meta Conversions API — server-side Purchase event ───────────────
       // Reports the conversion to Meta so the dashboard's CPP / Funnel% / Paid
       // Trials stop reading zero. Uses the real amount Stripe charged.
+      //
+      // 2026-06-05: pull client_ip + client_user_agent + fbp + fbc off the
+      // upserted row instead of trusting only Stripe metadata. The row is the
+      // canonical capture (create-trial-checkout writes IP/UA from the request
+      // headers + the fb cookies from the form body). Stripe metadata is the
+      // fallback for the edge case where the row isn't found (no create-trial-
+      // checkout call, e.g. external payment-link checkouts).
       try {
         const purchaseValue = session.amount_total
           ? session.amount_total / 100
           : (variant === "special" ? 129 : 49);
+        const row = (data && data[0]) ? data[0] as Record<string, unknown> : {};
+        const rowIp  = typeof row.client_ip          === "string" ? row.client_ip          : "";
+        const rowUa  = typeof row.client_user_agent  === "string" ? row.client_user_agent  : "";
+        const rowFbp = typeof row.fbp                === "string" ? row.fbp                : "";
+        const rowFbc = typeof row.fbc                === "string" ? row.fbc                : "";
         await sendMetaPurchaseEvent(
           supabase,
           studioSlug,
@@ -1941,8 +2424,10 @@ Deno.serve(async (req: Request) => {
           { name: trialData.name, email: trialData.email, phone: trialData.phone },
           session.id,
           purchaseValue,
-          metadata.fbp || "",
-          metadata.fbc || "",
+          rowFbp || metadata.fbp || "",
+          rowFbc || metadata.fbc || "",
+          rowIp,
+          rowUa,
         );
       } catch (e) {
         console.error("Meta CAPI purchase exception:", e);
@@ -1967,7 +2452,7 @@ Deno.serve(async (req: Request) => {
             studioSlug,
             studioName,
             variant,
-            { name: trialData.name, phone: trialData.phone },
+            { name: trialData.name, phone: trialData.phone, payment_date: trialData.payment_date },
             supabase,
             data[0].id,
           );
@@ -1986,9 +2471,127 @@ Deno.serve(async (req: Request) => {
           variant,
           { name: trialData.name, email: trialData.email, phone: trialData.phone, payment_date: trialData.payment_date },
           supabase,
+          (data && data[0] && data[0].id) ? String(data[0].id) : null,
         );
       } catch (e) {
         console.error("owner notification SMS exception:", e);
+      }
+
+      // ─── Booking-system account creation — fire-and-forget ─────────────
+      // 2026-06-09: this is the missing link that broke EVERY trial since
+      // launch. The welcome email above tells the customer to look for a
+      // password-setup email, but until 6/9 nobody actually created their
+      // booking-system account — so the system never sent the password
+      // email, and /schedule/[studio] couldn't authenticate them.
+      //
+      // 2026-06-23 Mariana Tek cutover: route this to MT or MB based on
+      // the studio's `data_source`. Pre-cutover (`mindbody` or `dual`) →
+      // MindBody. Post-cutover (`mariana_tek`) → Mariana Tek.
+      //
+      // Both functions run OUTSIDE the webhook response so we don't push
+      // past Stripe's ~30s timeout (AddClient + Checkout can take 8-15s
+      // combined). Errors are logged but never block.
+      if (data && data[0]) {
+        const trialSignupIdForBooking = data[0].id;
+        // location.data_source is read into scope earlier in this handler
+        // alongside other location fields. Default to "mindbody" if absent.
+        const studioDataSource = (location as any).data_source || "mindbody";
+        const targetFn = studioDataSource === "mariana_tek"
+          ? "mariana-tek-create-trial-client"
+          : "mindbody-create-trial-client";
+        // 2026-06-26 — Now persists outcome to trial_signups (mt_create_status,
+        // mt_create_attempted_at, mt_create_response) so we can monitor + retry
+        // failures. Migration: 20260626_mt_create_status.sql adds the columns.
+        const bookingCreateTask = (async () => {
+          const startedAt = new Date().toISOString();
+          try {
+            const r = await fetch(
+              `${Deno.env.get("SUPABASE_URL")}/functions/v1/${targetFn}`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                  // MT function gates on x-bbb-secret; MB function ignores it.
+                  "x-bbb-secret": Deno.env.get("BBB_ADMIN_SECRET") || "bbb-test-2026-05-27",
+                },
+                body: JSON.stringify({ trial_signup_id: trialSignupIdForBooking }),
+              },
+            );
+            const body = await r.json().catch(() => ({}));
+            const firstResult = Array.isArray(body?.results) ? body.results[0] : null;
+            const resultStatus = firstResult?.status ?? (r.ok ? "unknown" : "http_error");
+
+            // Persist outcome — surfaces in /ops + lets paid-trials-realtime-monitor retry.
+            // Wrapped in try/catch so a DB write failure doesn't blow up the webhook.
+            try {
+              await supabase
+                .from("trial_signups")
+                .update({
+                  mt_create_status: resultStatus,
+                  mt_create_attempted_at: startedAt,
+                  mt_create_response: { http: r.status, body: body },
+                  mt_create_function: targetFn,
+                } as any)
+                .eq("id", trialSignupIdForBooking);
+            } catch (persistErr) {
+              console.error(`mt_create_status persist failed:`, (persistErr as Error).message);
+            }
+
+            if (!r.ok || resultStatus === "failed") {
+              console.error(
+                `${targetFn} FAILED for trial=${trialSignupIdForBooking}:`,
+                JSON.stringify(body).slice(0, 600),
+              );
+              // Loud failure → SMS Justin so we know about it.
+              // Owner alert via existing twilio-outbound-sms function.
+              try {
+                await fetch(
+                  `${Deno.env.get("SUPABASE_URL")}/functions/v1/twilio-outbound-sms`,
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                      "x-bbb-secret": Deno.env.get("BBB_ADMIN_SECRET") || "bbb-test-2026-05-27",
+                    },
+                    body: JSON.stringify({
+                      to: "+19178709801", // Justin
+                      body: `[BBB ALERT] ${targetFn} failed for paid trial ${trialSignupIdForBooking}. Check /ops or trial_signups.mt_create_response.`,
+                      send_path: "owner_create_client_failed",
+                      skip_brand_header: true,
+                    }),
+                  },
+                );
+              } catch (alertErr) {
+                console.error("owner alert SMS failed:", (alertErr as Error).message);
+              }
+            } else {
+              console.log(`${targetFn} OK for trial=${trialSignupIdForBooking}:`, JSON.stringify(body).slice(0, 200));
+            }
+          } catch (bookingErr) {
+            console.error(`${targetFn} exception:`, (bookingErr as Error).message);
+            try {
+              await supabase
+                .from("trial_signups")
+                .update({
+                  mt_create_status: "exception",
+                  mt_create_attempted_at: startedAt,
+                  mt_create_response: { exception: (bookingErr as Error).message },
+                  mt_create_function: targetFn,
+                } as any)
+                .eq("id", trialSignupIdForBooking);
+            } catch {}
+          }
+        })();
+        // @ts-ignore — EdgeRuntime is provided by Supabase edge runtime
+        if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
+          // @ts-ignore
+          EdgeRuntime.waitUntil(bookingCreateTask);
+        } else {
+          // Local dev fallback — await directly so dev tests don't lose the task
+          await bookingCreateTask;
+        }
       }
 
       if (data && data[0] && location.gohighlevel_webhook_url) {
@@ -2079,7 +2682,12 @@ Deno.serve(async (req: Request) => {
               stripe_session_id: pi.id,  // PI id stored here so audit dedupes
               payment_status: "completed",
               payment_date: new Date(pi.created * 1000).toISOString(),
-              source_category: "legacy_archived",  // tag so dashboard can include/exclude
+              // Live $49 paid via raw PI (no Checkout Session) — Payment Link
+              // / Stripe Dashboard / direct API. Must be visible on /homebase
+              // and dashboard, so tag as a live path, NOT 'legacy_archived'.
+              // Previously this was 'legacy_archived' which silently hid real
+              // recent purchases. Source: post-mortem on 2026-06-02.
+              source_category: "stripe_payment_intent",
             }])
             .select();
           if (piInsertErr) {

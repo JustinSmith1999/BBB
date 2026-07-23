@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Mail, Linkedin, Twitter } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface TeamMember {
@@ -82,18 +81,11 @@ export default function OurTeam() {
                 </div>
                 <div className="p-6">
                   <h3 className="text-2xl font-bold mb-2 text-black">{member.name}</h3>
-                  <p className="text-red-600 font-bold mb-4">{member.title}</p>
-                  <div className="flex space-x-4">
-                    <button className="text-gray-400 hover:text-red-600 transition-colors">
-                      <Mail className="w-5 h-5" />
-                    </button>
-                    <button className="text-gray-400 hover:text-red-600 transition-colors">
-                      <Linkedin className="w-5 h-5" />
-                    </button>
-                    <button className="text-gray-400 hover:text-red-600 transition-colors">
-                      <Twitter className="w-5 h-5" />
-                    </button>
-                  </div>
+                  <p className="text-red-600 font-bold mb-2">{member.title}</p>
+                  {/* 2026-06-30: Removed Mail/LinkedIn/Twitter buttons — they had
+                      no onClick or href and the TeamMember interface has no
+                      email/linkedin_url/twitter_url fields to wire them to.
+                      Broken buttons on a trust page hurt more than no buttons. */}
                 </div>
               </div>
             ))}

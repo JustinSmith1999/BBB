@@ -70,7 +70,7 @@ export default function Privacy() {
             <Shield className="w-4 h-4" />
             Legal Document
           </div>
-          <h1 className="text-[clamp(2.5rem,7vw,6rem)] font-black mb-4 leading-none tracking-tight">
+          <h1 className="text-[clamp(2rem,4.5vw,4rem)] font-black mb-4 leading-none tracking-tight">
             Privacy <span className="text-red-500">Policy</span>
           </h1>
           <p className="text-gray-400 text-sm">Last updated: May 16, 2026</p>
@@ -136,7 +136,7 @@ export default function Privacy() {
                     </div>
                     <div className="space-y-2">
                       <SubHead>Information from Third Parties</SubHead>
-                      <p>We may receive information about you from Mindbody (class booking), Stripe (payment processing), and analytics platforms. Information received from these services is governed by their respective privacy policies.</p>
+                      <p>We may receive information about you from Mariana Tek (class booking and member management), Stripe (payment processing), and analytics platforms. Information received from these services is governed by their respective privacy policies.</p>
                     </div>
                   </div>
                 </div>
@@ -167,7 +167,7 @@ export default function Privacy() {
                     <p>We do not sell or trade your personal information. We share data with the following categories of trusted service providers, each of whom is contractually required to keep your information confidential and use it only to deliver services on our behalf:</p>
                     <div className="space-y-2">
                       <SubHead>Payments &amp; Membership</SubHead>
-                      <p><strong className="text-gray-900">Stripe</strong> (payment processing), <strong className="text-gray-900">MindBody</strong> (class scheduling, membership management, attendance).</p>
+                      <p><strong className="text-gray-900">Stripe</strong> (payment processing), <strong className="text-gray-900">Mariana Tek</strong> (class scheduling, membership management, attendance).</p>
                     </div>
                     <div className="space-y-2">
                       <SubHead>Communications</SubHead>
@@ -305,7 +305,7 @@ export default function Privacy() {
               </SectionCard>
 
               <SectionCard number="09" title="Third-Party Links">
-                <p>Our website may contain links to third-party websites including Mindbody and our social media pages. We are not responsible for the privacy practices of external sites. We encourage you to review their privacy policies before providing any personal information.</p>
+                <p>Our website may contain links to third-party websites including Mariana Tek and our social media pages. We are not responsible for the privacy practices of external sites. We encourage you to review their privacy policies before providing any personal information.</p>
               </SectionCard>
 
               <SectionCard number="10" title="Marketing Communications">

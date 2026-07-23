@@ -30,6 +30,14 @@ const LINKS: Record<
   "flyer-bayside":        { studio: "bayside",       source: "flyer", medium: "print" },
   "flyer-fresh-meadows":  { studio: "fresh-meadows", source: "flyer", medium: "print" },
   "flyer-williamsburg":   { studio: "williamsburg",  source: "flyer", medium: "print" },
+  // Google Business Profile post button → /gbp/<studio>. Source 'gbp-post'
+  // so the Trial Sources widget on the dashboard separates GBP traffic
+  // from Google Search / Google Ads. Medium 'organic' because these are
+  // unpaid clicks from a free GBP listing.
+  "gbp-astoria":          { studio: "astoria",       source: "gbp-post", medium: "organic", content: "post-cta" },
+  "gbp-bayside":          { studio: "bayside",       source: "gbp-post", medium: "organic", content: "post-cta" },
+  "gbp-fresh-meadows":    { studio: "fresh-meadows", source: "gbp-post", medium: "organic", content: "post-cta" },
+  "gbp-williamsburg":     { studio: "williamsburg",  source: "gbp-post", medium: "organic", content: "post-cta" },
 };
 
 // Link-preview crawlers (iMessage, Slack, WhatsApp, Facebook, etc.) hit the URL

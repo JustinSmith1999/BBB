@@ -13,9 +13,12 @@
 //     dry_run?: boolean }     // log results, don't write
 //
 // Action types we count in Meta's response:
-//   - "lead"                         → Lead events (form submit pre-Stripe)
-//   - "offsite_conversion.fb_pixel_lead"
-//   - "purchase" / "offsite_conversion.fb_pixel_purchase"
+//   - "omni_lead"    (preferred — matches Ads Manager default "Leads" column)
+//     with fallback to "lead" / "offsite_conversion.fb_pixel_lead" /
+//     "onsite_conversion.lead_grouped" for older ads.
+//   - "omni_purchase" (preferred — matches Ads Manager default "Purchases" column)
+//     with fallback to "purchase" / "offsite_conversion.fb_pixel_purchase" /
+//     "onsite_web_purchase" / "onsite_web_app_purchase" / "web_in_store_purchase".
 //   - "initiate_checkout" / "offsite_conversion.fb_pixel_initiate_checkout"
 
 // deno-lint-ignore-file
@@ -67,6 +70,49 @@ function sumActions(actions: ActionRow[] | undefined, types: string[]): number {
     .filter((a) => types.includes(a.action_type))
     .reduce((s, a) => s + Number(a.value || 0), 0);
 }
+
+// 2026-07-01: Meta reports the same conversion under multiple action_types
+// depending on how it was captured (web pixel, CAPI, on-Facebook app, in-store).
+// Ads Manager's default "Purchases" / "Leads" columns show the aggregated
+// `omni_*` variants. Our previous sum-of-components approach missed everything
+// reported under `omni_purchase` alone, causing 0 purchases in the DB while
+// Ads Manager showed the true count.
+//
+// Fix: prefer `omni_*` when present (matches Ads Manager), fall back to the
+// componentized list for older ads that don't report the omni aggregate.
+// max() avoids both undercount AND double-count when both are populated
+// (they should be equal totals — omni is the sum of components).
+function sumActionsAggregate(
+  actions: ActionRow[] | undefined,
+  omniType: string,
+  componentTypes: string[]
+): number {
+  if (!actions) return 0;
+  let omni = 0;
+  let components = 0;
+  for (const a of actions) {
+    const v = Number(a.value || 0);
+    if (a.action_type === omniType) omni += v;
+    else if (componentTypes.includes(a.action_type)) components += v;
+  }
+  return Math.max(omni, components);
+}
+
+// Componentized action_types that make up `omni_purchase` in Meta's reporting.
+const PURCHASE_COMPONENTS = [
+  'purchase',
+  'offsite_conversion.fb_pixel_purchase',
+  'onsite_web_purchase',
+  'onsite_web_app_purchase',
+  'web_in_store_purchase',
+];
+
+// Componentized action_types that make up `omni_lead`.
+const LEAD_COMPONENTS = [
+  'lead',
+  'offsite_conversion.fb_pixel_lead',
+  'onsite_conversion.lead_grouped',
+];
 
 const FIELDS = [
   'date_start', 'date_stop', 'spend', 'impressions', 'reach', 'clicks',
@@ -167,6 +213,7 @@ type AdObject = {
   id: string;
   name?: string;
   status?: string;
+  effective_status?: string;
   adset?: { name?: string };
   campaign?: { name?: string };
   creative?: {
@@ -187,7 +234,7 @@ async function fetchAdCreatives(
   accessToken: string
 ): Promise<AdObject[]> {
   const fields =
-    'id,name,status,adset{name},campaign{name},' +
+    'id,name,status,effective_status,adset{name},campaign{name},' +
     'creative{id,thumbnail_url,image_url,title,body,video_id,object_story_spec}';
   const out: AdObject[] = [];
   let url: string | null =
@@ -223,6 +270,15 @@ function extractCreative(ad: AdObject) {
   const thumb =
     c.thumbnail_url || c.image_url || link.picture || video.image_url || tmpl.picture || '';
   const videoId = c.video_id || video.video_id || link.video_id || null;
+  // Where the ad's click sends the visitor. If this is wrong (e.g. /locations
+  // instead of /trial), clicks rack up but signups don't — the classic
+  // misrouted-ad pattern.
+  const destUrl =
+    link.link ||
+    link.call_to_action?.value?.link ||
+    video.call_to_action?.value?.link ||
+    tmpl.link ||
+    null;
   return {
     creative_id: c.id ?? null,
     image_url: image ? String(image) : null,
@@ -230,6 +286,7 @@ function extractCreative(ad: AdObject) {
     headline: headline ? String(headline).slice(0, 500) : null,
     body: bodyText ? String(bodyText).slice(0, 2000) : null,
     video_id: videoId ? String(videoId) : null,
+    destination_url: destUrl ? String(destUrl) : null,
   };
 }
 
@@ -253,6 +310,30 @@ async function fetchVideoSource(
   }
 }
 
+// Meta's ad-preview iframe — the reliable way to actually render an ad with
+// its video playing inline (Meta no longer exposes raw video source URLs for
+// ad videos). Returns the iframe's src URL; refreshed every sync.
+async function fetchAdPreview(
+  baseUrl: string,
+  adId: string,
+  accessToken: string
+): Promise<string | null> {
+  try {
+    const r = await fetch(
+      `${baseUrl}/${adId}/previews?ad_format=MOBILE_FEED_STANDARD`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (!r.ok) return null;
+    const b = await r.json();
+    const body = b?.data?.[0]?.body as string | undefined;
+    if (!body) return null;
+    const m = body.match(/src="([^"]+)"/);
+    return m ? m[1].replace(/&amp;/g, '&') : null;
+  } catch {
+    return null;
+  }
+}
+
 // Sync per-ad metrics + creatives for one studio. Isolated from the
 // account-level sync so a creative hiccup never blocks the main dashboard data.
 async function syncAdLevel(
@@ -269,8 +350,8 @@ async function syncAdLevel(
   const adInsightUpserts = adRows
     .filter((r) => r.ad_id)
     .map((r) => {
-      const leads = sumActions(r.actions, ['lead', 'offsite_conversion.fb_pixel_lead']);
-      const purchases = sumActions(r.actions, ['purchase', 'offsite_conversion.fb_pixel_purchase']);
+      const leads = sumActionsAggregate(r.actions, 'omni_lead', LEAD_COMPONENTS);
+      const purchases = sumActionsAggregate(r.actions, 'omni_purchase', PURCHASE_COMPONENTS);
       return {
         ad_id: r.ad_id,
         studio_slug: acc.studio_slug,
@@ -292,20 +373,30 @@ async function syncAdLevel(
   // 2. ad identity + creative content (+ a playable MP4 URL for video ads)
   const ads = await fetchAdCreatives(baseUrl, acc.ad_account_id, acc.access_token);
   const adUpserts: Record<string, unknown>[] = [];
+  const adRosterMeta: Array<{ name: string | null; status: string | null; destination: string | null }> = [];
   for (const ad of ads) {
     const cr = extractCreative(ad);
-    // Video ad? Resolve its video_id to an actual MP4 source URL.
+    // Legacy MP4 source (kept as a fallback; Meta returns null for most ads).
     let videoUrl: string | null = null;
     if (cr.video_id) {
       videoUrl = await fetchVideoSource(baseUrl, cr.video_id, acc.access_token);
     }
+    // Meta ad-preview iframe — renders the real ad, video plays inline.
+    const previewUrl = await fetchAdPreview(baseUrl, ad.id, acc.access_token);
+    adRosterMeta.push({
+      name: ad.name ?? null,
+      status: (ad.effective_status ?? ad.status) ?? null,
+      destination: cr.destination_url,
+    });
     adUpserts.push({
       ad_id: ad.id,
       studio_slug: acc.studio_slug,
       ad_name: ad.name ?? null,
       adset_name: ad.adset?.name ?? null,
       campaign_name: ad.campaign?.name ?? null,
-      status: ad.status ?? null,
+      // effective_status is the TRUE delivery state (accounts for paused
+      // ad sets / campaigns); fall back to the ad's own switch.
+      status: ad.effective_status ?? ad.status ?? null,
       creative_id: cr.creative_id,
       image_url: cr.image_url,
       thumbnail_url: cr.thumbnail_url,
@@ -313,6 +404,7 @@ async function syncAdLevel(
       body: cr.body,
       media_type: cr.video_id ? 'video' : 'image',
       video_url: videoUrl,
+      preview_url: previewUrl,
       updated_at: new Date().toISOString(),
     });
   }
@@ -320,7 +412,16 @@ async function syncAdLevel(
   result.ad_rows_returned = adRows.length;
   result.ads_returned = ads.length;
 
+  // Status breakdown — answers "how many ads are ACTIVE" straight from Meta.
+  const byStatus: Record<string, number> = {};
+  for (const a of adUpserts) {
+    const st = String(a.status || 'UNKNOWN');
+    byStatus[st] = (byStatus[st] || 0) + 1;
+  }
+  result.ads_by_status = byStatus;
+
   if (dryRun) {
+    result.ad_roster = adRosterMeta;
     result.dry_run_ad_sample = adUpserts.slice(0, 2);
     result.dry_run_ad_insight_sample = adInsightUpserts.slice(0, 2);
     return;
@@ -396,19 +497,10 @@ serve(async (req) => {
         const cpmCents = Math.round(Number(row.cpm ?? 0) * 100);
         const frequency = Number(row.frequency ?? 0);
 
-        const leads = sumActions(row.actions, [
-          'lead',
-          'offsite_conversion.fb_pixel_lead',
-        ]);
-        const purchases = sumActions(row.actions, [
-          'purchase',
-          'offsite_conversion.fb_pixel_purchase',
-        ]);
+        const leads = sumActionsAggregate(row.actions, 'omni_lead', LEAD_COMPONENTS);
+        const purchases = sumActionsAggregate(row.actions, 'omni_purchase', PURCHASE_COMPONENTS);
         const purchaseValueCents = Math.round(
-          sumActions(row.action_values, [
-            'purchase',
-            'offsite_conversion.fb_pixel_purchase',
-          ]) * 100
+          sumActionsAggregate(row.action_values, 'omni_purchase', PURCHASE_COMPONENTS) * 100
         );
         const cplCents = leads > 0 ? Math.round(spendCents / leads) : 0;
         const cppCents = purchases > 0 ? Math.round(spendCents / purchases) : 0;
@@ -460,6 +552,27 @@ serve(async (req) => {
     } catch (e: unknown) {
       result.ok = false;
       result.error = String((e as Error).message ?? e);
+    }
+
+    // Persist this run so silent ad_sync_error failures stop being silent.
+    // Best-effort — never let logging itself break the sync response.
+    if (!dryRun) {
+      try {
+        await sb.from('meta_sync_runs').insert({
+          studio_slug: acc.studio_slug,
+          ok: result.ok === true && !result.ad_sync_error,
+          window_days: windowDays,
+          account_rows: typeof result.rows_synced === 'number' ? result.rows_synced : null,
+          ad_rows: typeof result.ad_rows_synced === 'number' ? result.ad_rows_synced : null,
+          ads_returned: typeof result.ads_returned === 'number' ? result.ads_returned : null,
+          error: result.error ?? null,
+          ad_sync_error: result.ad_sync_error ?? null,
+          raw: result as unknown as Record<string, unknown>,
+        });
+      } catch (logErr) {
+        // Surface but don't throw — diagnostic logging must never block the sync.
+        console.error('meta_sync_runs insert failed:', (logErr as Error).message);
+      }
     }
 
     summary.push(result);

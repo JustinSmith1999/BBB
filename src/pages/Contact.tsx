@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { MapPin, Phone, Mail, ArrowRight, CheckCircle } from 'lucide-react';
-import { supabase, Location, ContactSubmission } from '../lib/supabase';
+import { supabase, LOCATION_PUBLIC_COLUMNS, Location, ContactSubmission } from '../lib/supabase';
+import { getUtmParams } from '../lib/utm';
 import SEOHead from '../components/SEOHead';
 
 export default function ContactPage() {
@@ -16,7 +17,7 @@ export default function ContactPage() {
   useEffect(() => {
     supabase
       .from('locations')
-      .select('*')
+      .select(LOCATION_PUBLIC_COLUMNS)
       .eq('is_active', true)
       .order('display_order')
       .then(({ data }) => setLocations(data || []));
@@ -50,6 +51,7 @@ export default function ContactPage() {
           location: selectedLocation?.name || 'Not specified',
           locationEmail: selectedLocation?.contact_email,
           message: formData.message,
+          ...(() => { const u = getUtmParams(); return { utm_source: u.utmSource, utm_medium: u.utmMedium, utm_campaign: u.utmCampaign, utm_content: u.utmContent }; })(),
         }),
       });
 
@@ -105,7 +107,7 @@ export default function ContactPage() {
             <p className="eyebrow mb-5" style={{ letterSpacing: '0.2em' }}>WE'D LOVE TO HEAR FROM YOU</p>
             <h1
               className="font-display font-black uppercase"
-              style={{ fontSize: 'clamp(2.75rem, 6vw, 5.5rem)', lineHeight: '0.92', letterSpacing: '-0.01em', color: 'var(--text-primary)' }}
+              style={{ fontSize: 'clamp(2.25rem, 4.5vw, 4rem)', lineHeight: '0.92', letterSpacing: '-0.01em', color: 'var(--text-primary)' }}
             >
               LET'S <span style={{ color: 'var(--brand-red)' }}>TALK</span>
             </h1>

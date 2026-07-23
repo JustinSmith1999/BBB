@@ -4,6 +4,7 @@ import { CheckCircle, Calendar, ArrowRight } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
 
 const APP_STORE_URL = 'https://apps.apple.com/us/app/better-body-studios/id6778182425';
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.marianatek.betterbodybootcamp';
 
 // 2026-06-26: MT Web Integrations class-type id for the daily schedule widget
 // (same one the pre-NativeClassList schedule pages used). The booking widget
@@ -211,6 +212,20 @@ export default function TrialSuccess() {
                 <span className="flex flex-col leading-tight items-start text-left">
                   <span className="text-[10px] text-white/70 uppercase tracking-wide">Download on the</span>
                   <span className="text-base font-black text-white">App Store</span>
+                </span>
+              </a>
+              <a
+                href={PLAY_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Get Better Body Bootcamp on Google Play"
+                className="inline-flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-bold transition-all hover:scale-[1.02]"
+                style={{ backgroundColor: '#000', color: '#fff', border: '1px solid #1f2937' }}
+              >
+                <svg width="20" height="22" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M4 2.5v19a1 1 0 0 0 1.53.85l15.5-9.5a1 1 0 0 0 0-1.7L5.53 1.65A1 1 0 0 0 4 2.5z"/></svg>
+                <span className="flex flex-col leading-tight items-start text-left">
+                  <span className="text-[10px] text-white/70 uppercase tracking-wide">Get it on</span>
+                  <span className="text-base font-black text-white">Google Play</span>
                 </span>
               </a>
             </div>

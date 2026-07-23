@@ -4,7 +4,25 @@
 **Read this at the start of every session before touching anything that can email or text.**
 **If a function isn't here, it doesn't exist. If you deploy something new, add it here in the same PR.**
 
-Last full audit: **2026-05-31** (after the funnel-recovery spam incident).
+Last full audit: **2026-06-01** (added CAPI monitoring, daily digest, membership conversion infra).
+
+## Send-path allowlist (BBB_SEND_PATHS_ENABLED)
+
+Every function that emails or texts checks `BBB_SEND_PATHS_ENABLED` env var (comma-separated). If its send path isn't in the list, the function no-ops.
+
+**Default (production, set on stripe-webhook + bbb-send-paths-status + every send-capable function):**
+```
+stripe_owner_sms,stripe_customer_welcome_email
+```
+
+| Send path | Function | What it sends | Default | How to enable |
+|---|---|---|---|---|
+| `stripe_owner_email` | stripe-webhook | Owner inbox email per paid trial | OFF | Add to env var on stripe-webhook |
+| `stripe_owner_sms` | stripe-webhook | Owner SMS per paid trial | **ON** | (default) |
+| `stripe_customer_welcome_email` | stripe-webhook | Customer welcome email | **ON** | (default) |
+| `stripe_customer_welcome_sms` | stripe-webhook | Customer welcome SMS | OFF | Add to env var |
+| `justin_daily_digest` | daily-ops-digest | Justin@J20solutions.com 6am ET digest | OFF | Add to env var on all 3 functions (digest + webhook + paths-status) |
+| `trial_membership_nudge` | trial-membership-nudge | Customer SMS at day 12+ / 5+ classes asking them to convert to monthly | OFF — **DO NOT ENABLE WITHOUT JUSTIN'S EXPLICIT GO** | (1) Uncomment cron in `20260601_membership_conversion_infra.sql` and re-run; (2) add path to env vars on trial-membership-nudge + stripe-webhook + bbb-send-paths-status; (3) Justin manually invokes function with `{"dry_run":true}` to preview, then with `{}` for live |
 
 ---
 

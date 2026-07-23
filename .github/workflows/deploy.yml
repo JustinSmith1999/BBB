@@ -1,0 +1,117 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Auto-deploy on push to main:
+#   1. Deploy ALL changed Supabase Edge Functions (--no-verify-jwt)
+#   2. Run any new SQL migrations via `supabase db push`
+#   3. Netlify already auto-deploys from this repo (configured at the Netlify
+#      project level) — no step needed here.
+#
+# Required GitHub Secrets:
+#   SUPABASE_ACCESS_TOKEN  · personal access token from
+#                            https://supabase.com/dashboard/account/tokens
+#   SUPABASE_DB_PASSWORD   · the Postgres password for the project
+#                            (same one you'd use to `psql` in)
+#   SUPABASE_PROJECT_ID    · uracuwugpxqjfgtuobal
+#
+# Behavior:
+#   - Only deploys functions whose files changed since the last commit on main.
+#     This keeps deploys to ~10s instead of 4+ min for the whole tree.
+#   - Migrations run via the official supabase CLI so order is deterministic.
+#   - If a migration fails, the job fails and nothing else proceeds.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Deploy on push to main
+
+on:
+  push:
+    branches: [main]
+  # Allow re-running manually from GitHub Actions UI
+  workflow_dispatch:
+
+concurrency:
+  # If a new push lands while a deploy is in flight, queue it. Don't cancel —
+  # the in-flight migrations may have side effects we want to finish.
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout (with history so we can diff)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link Supabase project
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase link \
+            --project-ref ${{ secrets.SUPABASE_PROJECT_ID }} \
+            --password "${{ secrets.SUPABASE_DB_PASSWORD }}"
+
+      # ── Migrations: run any NEW SQL files ────────────────────────────────
+      # `supabase db push` checks remote schema_migrations and only runs the
+      # ones that haven't been applied. Idempotent.
+      - name: Push migrations
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -d supabase/migrations ] && [ -n "$(ls -A supabase/migrations 2>/dev/null)" ]; then
+            echo "Running new migrations..."
+            supabase db push --password "${{ secrets.SUPABASE_DB_PASSWORD }}"
+          else
+            echo "No migrations directory or it's empty — skipping."
+          fi
+
+      # ── Edge Functions: deploy only what changed ─────────────────────────
+      # On the first run after wiring this up, just deploy all functions so
+      # we have a known baseline. After that, only deploy ones touched in
+      # the latest push.
+      - name: Detect changed Edge Functions
+        id: changed
+        run: |
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            # First push / no prior commit — list all functions
+            CHANGED=$(ls supabase/functions/ 2>/dev/null | tr '\n' ' ')
+          else
+            CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}" \
+                      | grep '^supabase/functions/' \
+                      | awk -F/ '{print $3}' \
+                      | sort -u \
+                      | tr '\n' ' ')
+          fi
+          echo "list=$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "Changed functions: $CHANGED"
+
+      - name: Deploy changed Edge Functions
+        if: steps.changed.outputs.list != ''
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -e
+          for fn in ${{ steps.changed.outputs.list }}; do
+            if [ -d "supabase/functions/$fn" ]; then
+              echo "━━━ Deploying $fn ━━━"
+              supabase functions deploy "$fn" \
+                --no-verify-jwt \
+                --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+            fi
+          done
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Deploy summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Commit:** ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Functions deployed:** ${{ steps.changed.outputs.list }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Netlify:** auto-deployed via repo integration (separate job)" >> "$GITHUB_STEP_SUMMARY"

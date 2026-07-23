@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MapPin, Phone, ArrowRight } from 'lucide-react';
-import { supabase, Location } from '../lib/supabase';
+import { supabase, LOCATION_PUBLIC_COLUMNS, Location } from '../lib/supabase';
 import SEOHead from '../components/SEOHead';
 
 const locationImages: Record<string, string> = {
@@ -18,7 +18,7 @@ export default function LocationsPage() {
   useEffect(() => {
     supabase
       .from('locations')
-      .select('*')
+      .select(LOCATION_PUBLIC_COLUMNS)
       .eq('is_active', true)
       .order('display_order')
       .then(({ data }) => {
@@ -57,7 +57,7 @@ export default function LocationsPage() {
             <h1
               className="font-display font-black uppercase"
               style={{
-                fontSize: 'clamp(2.5rem, 6vw, 5.5rem)',
+                fontSize: 'clamp(2rem, 4.5vw, 4rem)',
                 lineHeight: '0.92',
                 letterSpacing: '-0.01em',
                 color: 'var(--text-primary)',

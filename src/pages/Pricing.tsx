@@ -130,13 +130,14 @@ export default function PricingPage() {
             <h1
               className="font-display font-black uppercase"
               style={{
-                fontSize: 'clamp(2.5rem, 6vw, 5.5rem)',
+                fontSize: 'clamp(2rem, 4.5vw, 4rem)',
                 lineHeight: '0.92',
                 letterSpacing: '-0.01em',
                 color: 'var(--text-primary)',
               }}
             >
-              INVEST IN{' '}
+              INVEST IN
+              <br />
               <span style={{ color: 'var(--brand-red)' }}>YOUR BODY</span>
             </h1>
             <p
@@ -321,7 +322,7 @@ export default function PricingPage() {
               className="text-center mt-8 text-sm"
               style={{ color: 'var(--text-secondary)' }}
             >
-              All memberships managed through Mindbody. Pricing may vary by location — contact your nearest studio for details.
+              Pricing may vary by location — contact your nearest studio for details.
             </p>
           </div>
         </section>

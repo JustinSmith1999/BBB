@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MapPin, Phone, ArrowRight } from 'lucide-react';
-import { supabase, Location } from '../lib/supabase';
+import { supabase, LOCATION_PUBLIC_COLUMNS, Location } from '../lib/supabase';
 
 const locationImages: Record<string, string> = {
   'Williamsburg': '/williamsburg-final.webp',
@@ -17,7 +17,7 @@ export default function Locations() {
   useEffect(() => {
     supabase
       .from('locations')
-      .select('*')
+      .select(LOCATION_PUBLIC_COLUMNS)
       .eq('is_active', true)
       .order('display_order')
       .then(({ data }) => {

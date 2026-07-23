@@ -96,6 +96,20 @@ serve(async (req) => {
     return json({ ok: false, error: 'Twilio env vars missing' }, 500);
   }
 
+  // 2026-06-24: US carriers don't allow alphanumeric sender IDs, and the
+  // shared TWILIO_FROM_NUMBER shows up on some customers' phones as "Justin"
+  // (his J20 Solutions contact name from prior interactions). Prepend a one-
+  // line BBB brand header so customers immediately see who's texting them,
+  // no matter what contact name their phone shows.
+  // Skip the prepend if staff already typed "BBB" anywhere in the first 30
+  // chars of the body — avoids double-branding when they wrote it manually.
+  const studioName = String((trial as any).locations?.name ?? '').trim();
+  const head30 = text.slice(0, 30).toUpperCase();
+  const alreadyBranded = head30.includes('BBB') || head30.includes('BETTER BODY');
+  const finalBody = (studioName && !alreadyBranded)
+    ? `— BBB ${studioName} —\n${text}`
+    : text;
+
   // Status webhook so we get queued → sent → delivered updates.
   const statusCallback = `${sbUrl}/functions/v1/twilio-status-webhook`;
 
@@ -110,7 +124,7 @@ serve(async (req) => {
       body: new URLSearchParams({
         From: fromPhone,
         To: toPhone,
-        Body: text,
+        Body: finalBody,
         StatusCallback: statusCallback,
       }),
     },
@@ -125,7 +139,7 @@ serve(async (req) => {
       direction: 'outbound',
       from_phone: fromPhone,
       to_phone: toPhone,
-      body: text,
+      body: finalBody,
       status: 'failed',
       error_code: String(twJson?.code ?? ''),
       error_message: twJson?.message ?? 'unknown',
@@ -141,7 +155,7 @@ serve(async (req) => {
     direction: 'outbound',
     from_phone: fromPhone,
     to_phone: toPhone,
-    body: text,
+    body: finalBody,
     twilio_sid: twJson.sid,
     status: twJson.status || 'queued',
     sent_by: sentBy,

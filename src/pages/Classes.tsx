@@ -1,8 +1,13 @@
 import { useState, useEffect } from 'react';
 import { MapPin } from 'lucide-react';
-import { supabase, Location } from '../lib/supabase';
+import { supabase, LOCATION_PUBLIC_COLUMNS, Location } from '../lib/supabase';
 import { Link } from 'react-router-dom';
 import SEOHead from '../components/SEOHead';
+import NativeClassList from '../components/NativeClassList';
+
+// 2026-06-26 v2: Iframe gone. NativeClassList hits the mt-public-classes
+// Supabase proxy and renders BBB-branded cards. Switches instantly when the
+// user picks a different studio tab.
 
 export default function Classes() {
   const [locations, setLocations] = useState<Location[]>([]);
@@ -17,7 +22,7 @@ export default function Classes() {
     try {
       const { data } = await supabase
         .from('locations')
-        .select('*')
+        .select(LOCATION_PUBLIC_COLUMNS)
         .eq('is_active', true)
         .order('display_order');
 
@@ -32,24 +37,25 @@ export default function Classes() {
     }
   };
 
-  const getWidgetConfig = (locationName: string) => {
-    const configs: { [key: string]: { type: string; id: string } } = {
-      'Williamsburg': { type: 'healcode', id: '7d20557070b3' },
-      'Fresh Meadows': { type: 'healcode', id: '7d20556770b3' },
-      'Bayside': { type: 'healcode', id: '7d20556570b3' },
-      'Astoria': { type: 'healcode', id: '7d20556270b3' }
-    };
-    return configs[locationName];
+  // 2026-06-26 v2: Native MT booking. Each studio name → its MT location ID
+  // inside the betterbodybootcamp tenant. NativeClassList pulls real-time
+  // availability via the mt-public-classes Supabase proxy.
+  const MT_LOCATION_IDS: Record<string, number> = {
+    Astoria: 48717,
+    Bayside: 48718,
+    'Fresh Meadows': 48719,
+    Williamsburg: 48720,
   };
 
-  const renderWidget = (locationName: string) => {
-    const config = getWidgetConfig(locationName);
-    if (!config) {
+  const renderSchedule = (locationName: string) => {
+    const mtLocationId = MT_LOCATION_IDS[locationName];
+    const slug = locationName.toLowerCase().replace(' ', '-');
+    if (!mtLocationId) {
       return (
         <div className="text-center py-12">
           <p className="text-gray-600 mb-4">Class schedule coming soon for this location.</p>
           <Link
-            to={`/locations/${locationName.toLowerCase().replace(' ', '-')}`}
+            to={`/locations/${slug}`}
             className="inline-block bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-full font-bold transition-all"
           >
             View Location Details
@@ -57,26 +63,14 @@ export default function Classes() {
         </div>
       );
     }
-
-    // Self-contained iframe — healcode.js loads fresh in the iframe document
-    // every visit, immune to SPA navigation / re-render races.
-    const srcDoc =
-      `<!doctype html><html><head><meta charset="utf-8"><base target="_blank">` +
-      `<style>html,body{margin:0;padding:0;background:#fff;` +
-      `font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}</style>` +
-      `</head><body>` +
-      `<healcode-widget data-type="schedules" data-widget-partner="object" ` +
-      `data-widget-id="${config.id}" data-widget-version="1"></healcode-widget>` +
-      `<script src="https://widgets.mindbodyonline.com/javascripts/healcode.js" type="text/javascript"><\/script>` +
-      `</body></html>`;
     return (
-      <iframe
-        key={config.id}
-        title={`${locationName} class schedule`}
-        srcDoc={srcDoc}
-        loading="lazy"
-        className="w-full rounded-xl border border-gray-100 bg-white"
-        style={{ height: '1400px', minHeight: '600px' }}
+      <NativeClassList
+        key={`mt-${mtLocationId}`}
+        mtLocationId={mtLocationId}
+        studioName={locationName}
+        studioSlug={slug}
+        days={7}
+        trialHref={`/trial/${slug}`}
       />
     );
   };
@@ -93,7 +87,7 @@ export default function Classes() {
     <div className="min-h-screen bg-white">
       <div className="bg-gradient-to-br from-black to-gray-900 text-white pt-24 pb-20">
         <div className="container mx-auto px-4 text-center">
-          <h1 className="text-[clamp(2.5rem,7vw,6rem)] font-bold mb-6">
+          <h1 className="text-[clamp(2rem,4.5vw,4rem)] font-bold mb-6">
             Class <span className="text-red-600">Schedule</span>
           </h1>
           <p className="text-xl md:text-2xl text-gray-300 max-w-3xl mx-auto">
@@ -157,7 +151,7 @@ export default function Classes() {
                 </div>
 
                 <div className="mt-6">
-                  {renderWidget(selectedLocationData.name)}
+                  {renderSchedule(selectedLocationData.name)}
                 </div>
               </div>
             )}
@@ -174,7 +168,7 @@ export default function Classes() {
             Join thousands of members who have transformed their lives at Better Body Bootcamp
           </p>
           <a
-            href="/#trial"
+            href="/trial"
             className="inline-block bg-red-600 hover:bg-red-700 text-white px-10 py-4 rounded-full text-lg font-bold transition-all transform hover:scale-105 shadow-lg"
           >
             Start Your Trial

@@ -116,7 +116,7 @@ BEGIN
       AND COALESCE(source_category, '') <> 'legacy_archived'
       AND COALESCE(email, '') NOT LIKE 'backfill-pi_%@no-email.bbb.local';
   v_checks := v_checks || jsonb_build_object('name','Paid trials in DB (launch filter)','status','ok','value',v_db_paid,
-    'detail','Stripe-reconciled count is 47 as of 2026-05-31; deviation >5% means the audit needs re-running.');
+    'detail','Filtered count of completed paid trials since launch (May 15). Should track Stripe within ±2; large gaps mean stripe-payment-audit needs to run.');
 
   SELECT MAX(t.payment_date) INTO v_last_paid_wb FROM trial_signups t JOIN locations l ON l.id = t.location_id
     WHERE l.name = 'Williamsburg' AND t.payment_status = 'completed' AND t.deleted_at IS NULL;

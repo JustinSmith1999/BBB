@@ -66,7 +66,7 @@ export default function Careers() {
     <div className="min-h-screen bg-white">
       <div className="bg-gradient-to-br from-black to-gray-900 text-white pt-24 pb-20">
         <div className="container mx-auto px-4 text-center">
-          <h1 className="text-[clamp(2.5rem,7vw,6rem)] font-bold mb-6">
+          <h1 className="text-[clamp(2rem,4.5vw,4rem)] font-bold mb-6">
             Join Our <span className="text-red-600">Team</span>
           </h1>
           <p className="text-xl md:text-2xl text-gray-300 max-w-3xl mx-auto">
@@ -139,7 +139,7 @@ export default function Careers() {
               and we'll keep you in mind for future opportunities.
             </p>
             <a
-              href="/#contact"
+              href="/contact"
               className="inline-block bg-white text-red-600 hover:bg-gray-100 px-10 py-4 rounded-full text-lg font-bold transition-all transform hover:scale-105 shadow-lg"
             >
               Contact Us

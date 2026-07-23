@@ -9,6 +9,19 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// 2026-07-22 SECURITY: the browser must NEVER pull secret columns from the
+// locations table (stripe_secret_key, stripe_webhook_secret, *_api_key,
+// gbp_refresh_token). Using select('*') shipped those live keys to every
+// visitor. Always select this explicit safe column list instead of '*'.
+// Secret columns are only ever read server-side by edge functions using the
+// service-role key.
+export const LOCATION_PUBLIC_COLUMNS =
+  'id, name, address, city, state, zip, phone, contact_email, image_url, ' +
+  'schedule_url, is_active, display_order, created_at, updated_at, ' +
+  'stripe_publishable_key, stripe_price_id, stripe_special_price_id, ' +
+  'stripe_comeback_price_id, mindbody_widget_id, mariana_tek_subdomain, ' +
+  'mariana_tek_location_id, gbp_location_id, data_source';
+
 export interface Location {
   id: string;
   name: string;

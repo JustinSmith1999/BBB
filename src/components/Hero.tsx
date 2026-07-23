@@ -53,9 +53,12 @@ export default function Hero() {
         muted
         loop
         playsInline
+        preload="auto"
         className="absolute inset-0 w-full h-full"
-        style={{ objectFit: 'cover', zIndex: 0 }}
-        poster="/change-your-life.webp"
+        // 2026-06-12: removed poster image (was /change-your-life.webp).
+        // Background is dark so the brief moment before the video starts
+        // playing now just shows the page bg instead of the placeholder.
+        style={{ objectFit: 'cover', zIndex: 0, backgroundColor: 'var(--bg-primary)' }}
         onError={e => console.error('Hero video failed to load:', e, HERO_VIDEO)}
       >
         <source src={HERO_VIDEO} type="video/mp4" />

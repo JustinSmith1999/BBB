@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Calendar, Clock, MapPin, Users, ArrowLeft, Info } from 'lucide-react';
-import { supabase, Class, Location } from '../lib/supabase';
+import { supabase, LOCATION_PUBLIC_COLUMNS, Class, Location } from '../lib/supabase';
 import BookingModal from '../components/BookingModal';
 
 export default function ClassDetail() {
@@ -32,7 +32,7 @@ export default function ClassDetail() {
 
         const { data: locationData } = await supabase
           .from('locations')
-          .select('*')
+          .select(LOCATION_PUBLIC_COLUMNS)
           .eq('id', classData.location_id)
           .maybeSingle();
 

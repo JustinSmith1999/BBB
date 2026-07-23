@@ -270,6 +270,60 @@ serve(async (req) => {
     return json({ ok: r.ok, recent_messages: msgs, http: r.status });
   }
 
+  // ─── Test mode — owner notification for a specific trial_signup_id ────
+  // Mimics what stripe-webhook fires on a real paid trial: looks up the
+  // trial row + that location's owners, sends each owner a notification SMS.
+  // Idempotent — call as many times as needed during testing.
+  //   curl ... -d '{"test_owner_notify":"<trial_signup_id>"}'
+  if ((body as any).test_owner_notify) {
+    const trialId = String((body as any).test_owner_notify);
+    const sb2 = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+    // 1. Pull the trial row
+    const { data: trial, error: trialErr } = await sb2
+      .from('trial_signups')
+      .select('id, name, email, phone, location_id, payment_status, locations!inner(name)')
+      .eq('id', trialId)
+      .maybeSingle();
+    if (trialErr || !trial) return json({ ok: false, error: `trial_signup not found: ${trialErr?.message || 'no row'}` }, 404);
+    // 2. Pull the owners for that studio
+    const { data: owners, error: ownersErr } = await sb2
+      .from('location_owners')
+      .select('owner_name, phone')
+      .eq('location_id', trial.location_id)
+      .eq('notify_signups', true);
+    if (ownersErr) return json({ ok: false, error: `owners lookup failed: ${ownersErr.message}` }, 500);
+    if (!owners || !owners.length) return json({ ok: false, error: `no owners seeded for location_id ${trial.location_id} — re-paste 20260527_location_owners.sql`, trial }, 404);
+    // 3. Build + send identical body to what stripe-webhook would send
+    const studioName = (trial as any).locations?.name || 'Studio';
+    const body2 = `New $49 trial signup · ${studioName}\n` +
+                  `${trial.name || '(no name)'}\n` +
+                  `${trial.phone || ''}\n` +
+                  `${trial.email || ''}`.trimEnd();
+    const sent: any[] = [];
+    for (const owner of owners) {
+      const to = toE164(owner.phone);
+      if (!to) { sent.push({ owner: owner.owner_name, error: `bad phone: ${owner.phone}` }); continue; }
+      try {
+        const r = await fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,
+          {
+            method: 'POST',
+            headers: { Authorization: auth0, 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ From: from, To: to, Body: body2 }).toString(),
+          }
+        );
+        const rb = await r.json();
+        sent.push({ owner: owner.owner_name, to, sid: rb?.sid, status: rb?.status, ok: r.ok, error: r.ok ? null : (rb?.message || `HTTP ${r.status}`) });
+      } catch (e) {
+        sent.push({ owner: owner.owner_name, to, error: (e as Error).message });
+      }
+    }
+    return json({ ok: true, mode: 'test_owner_notify', trial_id: trialId, studio: studioName, body_preview: body2, owners_sent: sent });
+  }
+
   // ─── Test mode — send a single SMS to a specific number ───────────────
   // Use to QA both message templates without inserting fake data or paying.
   //   curl ... -d '{"test_phone":"6317086585","test_kind":"welcome"}'

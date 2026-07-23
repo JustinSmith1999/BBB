@@ -78,7 +78,7 @@ export default function FAQ() {
           { '@type': 'Question', name: 'What is Better Body Bootcamp?', acceptedAnswer: { '@type': 'Answer', text: "Better Body Bootcamp is New York's premier group training program, offering high-intensity interval training combined with body sculpting exercises. Since 2011, we've helped thousands of members achieve their fitness goals." } },
           { '@type': 'Question', name: 'Do I need to be in shape to start?', acceptedAnswer: { '@type': 'Answer', text: 'Not at all! Our program is designed for all fitness levels. Our expert trainers will modify exercises to match your current fitness level.' } },
           { '@type': 'Question', name: 'Can I try a class before committing?', acceptedAnswer: { '@type': 'Answer', text: 'Yes! We offer a 2-week trial pass for $49 so you can experience our program firsthand.' } },
-          { '@type': 'Question', name: 'What is your cancellation policy?', acceptedAnswer: { '@type': 'Answer', text: 'Classes must be cancelled through the Mindbody app only. Membership cancellations require 30 days written notice to your home location.' } },
+          { '@type': 'Question', name: 'What is your cancellation policy?', acceptedAnswer: { '@type': 'Answer', text: 'Classes must be cancelled through the Better Body Studios app only. Membership cancellations require 30 days written notice to your home location.' } },
           { '@type': 'Question', name: 'Can I freeze my membership?', acceptedAnswer: { '@type': 'Answer', text: 'Members with a 12-month membership may freeze one time for up to 30 days.' } },
         ],
       }}
@@ -86,7 +86,7 @@ export default function FAQ() {
     <div className="min-h-screen bg-white">
       <div className="bg-gradient-to-br from-black to-gray-900 text-white pt-24 pb-20">
         <div className="container mx-auto px-4 text-center">
-          <h1 className="text-[clamp(2.5rem,7vw,6rem)] font-bold mb-6">
+          <h1 className="text-[clamp(2rem,4.5vw,4rem)] font-bold mb-6">
             <span className="text-red-600">F.A.Q.</span>
           </h1>
           <p className="text-xl md:text-2xl text-gray-300 max-w-3xl mx-auto">
@@ -136,7 +136,7 @@ export default function FAQ() {
             Our team is here to help! Reach out and we'll get back to you as soon as possible.
           </p>
           <a
-            href="/#contact"
+            href="/contact"
             className="inline-block bg-white text-red-600 hover:bg-gray-100 px-10 py-4 rounded-full text-lg font-bold transition-all transform hover:scale-105 shadow-lg"
           >
             Contact Us

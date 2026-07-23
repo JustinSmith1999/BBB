@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Navigate } from 'react-router-dom';
 import { ArrowRight, CheckCircle, Clock, Users, Zap, MapPin, Phone, Lock, Star } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
-import { getUtmParams } from '../lib/utm';
+import { getUtmParams, captureUtmsFromUrl } from '../lib/utm';
 
 // ─── PER-GYM CONFIG ─────────────────────────────────────────────────────────
 type LocationConfig = {
@@ -13,7 +13,7 @@ type LocationConfig = {
 
 const LOCATIONS: Record<string, LocationConfig> = {
   'astoria':       { slug: 'astoria',       locationId: 'dcf94b47-dcc8-4176-96e9-f0cdd0fc6b45', name: 'Astoria',       badge: 'ASTORIA · QUEENS',         address: '31-18 Steinway Street',  city: 'Astoria',       state: 'NY', zip: '11103', phone: '(718) 704-9954', metaPixelId: '1291566006435758', heroImage: '/astoria-final.webp' },
-  'bayside':       { slug: 'bayside',       locationId: '5c0e8383-dd2f-4f8f-bfea-5cc477cec4c7', name: 'Bayside',       badge: 'BAYSIDE · QUEENS',         address: '34-47 Bell Boulevard',   city: 'Bayside',       state: 'NY', zip: '11361', phone: '(646) 566-8870', metaPixelId: '931144729719242',  heroImage: '/bayside-final.webp' },
+  'bayside':       { slug: 'bayside',       locationId: '5c0e8383-dd2f-4f8f-bfea-5cc477cec4c7', name: 'Bayside',       badge: 'BAYSIDE · QUEENS',         address: '3447 Bell Blvd',         city: 'Bayside',       state: 'NY', zip: '11361', phone: '(646) 566-8870', metaPixelId: '931144729719242',  heroImage: '/bayside-final.webp' },
   'fresh-meadows': { slug: 'fresh-meadows', locationId: '6bbbe077-bcc6-4d9d-a10b-7605c1484752', name: 'Fresh Meadows', badge: 'FRESH MEADOWS · QUEENS',   address: '76-46 164th Street',     city: 'Fresh Meadows', state: 'NY', zip: '11366', phone: '(646) 566-8207', metaPixelId: '979328851475276',  heroImage: '/freshmeadows-final.webp' },
   'williamsburg':  { slug: 'williamsburg',  locationId: '80536b45-df0e-42d1-880c-e9301372e1cf', name: 'Williamsburg',  badge: 'WILLIAMSBURG · BROOKLYN',  address: '487 Driggs Ave',         city: 'Brooklyn',      state: 'NY', zip: '11211', phone: '(718) 683-1864', metaPixelId: '2160299368182872', heroImage: '/williamsburg-final.webp' },
 };
@@ -31,6 +31,11 @@ export default function LocationResignSignup() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '', newsletter: false });
+
+  useEffect(() => {
+    // Persist any utm_* on the URL so attribution survives re-renders.
+    captureUtmsFromUrl();
+  }, [slug]);
 
   useEffect(() => {
     if (!location?.metaPixelId) return;
@@ -113,7 +118,7 @@ export default function LocationResignSignup() {
                   ❤ WELCOME BACK · {location.badge}
                 </span>
 
-                <h1 className="font-black leading-[0.95] tracking-[-0.025em] mb-5 text-[clamp(2.5rem,5.5vw,5rem)]">
+                <h1 className="font-black leading-[0.95] tracking-[-0.025em] mb-5 text-[clamp(2.25rem,4.5vw,4rem)]">
                   30 Days Back<br />
                   <span className="text-red-600">For ${OFFER_PRICE}.</span>
                 </h1>
@@ -229,6 +234,15 @@ export default function LocationResignSignup() {
                       </div>
                       <span className="text-3xl sm:text-4xl font-black text-red-500 leading-none">${OFFER_PRICE}</span>
                     </div>
+                    <p className="text-[10px] sm:text-xs text-zinc-400 mt-2 italic">
+                      You have 60 days to claim and start your trial.
+                    </p>
+                    <p className="text-xs sm:text-sm text-red-400 font-bold mt-2">
+                      Offer available only to New York City residents.
+                    </p>
+                    <p className="text-[9px] sm:text-[10px] text-zinc-500 mt-3 leading-tight">
+                      All trials non-refundable.
+                    </p>
                   </div>
                 </div>
               </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Mail, Phone, MapPin, ArrowRight, CheckCircle } from 'lucide-react';
-import { supabase, Location, ContactSubmission } from '../lib/supabase';
+import { supabase, LOCATION_PUBLIC_COLUMNS, Location, ContactSubmission } from '../lib/supabase';
+import { getUtmParams } from '../lib/utm';
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
@@ -40,7 +41,7 @@ export default function Contact() {
   useEffect(() => {
     supabase
       .from('locations')
-      .select('*')
+      .select(LOCATION_PUBLIC_COLUMNS)
       .eq('is_active', true)
       .order('display_order')
       .then(({ data }) => setLocations(data || []));
@@ -77,6 +78,7 @@ export default function Contact() {
           location: selectedLocation?.name || 'Not specified',
           locationEmail: selectedLocation?.contact_email,
           message: formData.message,
+          ...(() => { const u = getUtmParams(); return { utm_source: u.utmSource, utm_medium: u.utmMedium, utm_campaign: u.utmCampaign, utm_content: u.utmContent }; })(),
         }),
       });
 

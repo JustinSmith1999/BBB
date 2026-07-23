@@ -2,4 +2,29 @@ User-agent: *
 Allow: /
 Disallow: /our-team
 
+# ── AI / generative crawlers ───────────────────────────────────────────────
+# Explicitly allow Google-Extended so Google Search Generative Experience
+# (AI Overviews) is permitted to cite Better Body Bootcamp pages when
+# someone asks a question. Without this Google AI MAY still index, but
+# they document Google-Extended as the off-switch — we want it explicit.
+User-agent: Google-Extended
+Allow: /
+
+# Allow other major answer engines (Perplexity, ChatGPT, Claude, etc) to
+# read public pages — they can cite us in their answer boxes.
+User-agent: GPTBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
 Sitemap: https://betterbodybootcamp.com/sitemap.xml

@@ -56,7 +56,7 @@ export default function Blog() {
     <div className="min-h-screen bg-white">
       <div className="bg-gradient-to-br from-black to-gray-900 text-white pt-24 pb-20">
         <div className="container mx-auto px-4 text-center">
-          <h1 className="text-[clamp(2.5rem,7vw,6rem)] font-bold mb-6">
+          <h1 className="text-[clamp(2rem,4.5vw,4rem)] font-bold mb-6">
             Better Body <span className="text-red-600">Blog</span>
           </h1>
           <p className="text-xl md:text-2xl text-gray-300 max-w-3xl mx-auto">
@@ -127,7 +127,7 @@ export default function Blog() {
             Join thousands of members who have transformed their lives at Better Body Bootcamp
           </p>
           <a
-            href="/#trial"
+            href="/trial"
             className="inline-block bg-red-600 hover:bg-red-700 text-white px-10 py-4 rounded-full text-lg font-bold transition-all transform hover:scale-105 shadow-lg"
           >
             Start Your Trial

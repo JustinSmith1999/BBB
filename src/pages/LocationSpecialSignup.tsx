@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Navigate } from 'react-router-dom';
 import { ArrowRight, CheckCircle, Clock, Users, Zap, MapPin, Phone, Lock } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
-import { getUtmParams } from '../lib/utm';
+import { captureUtmsFromUrl, getUtmParams } from '../lib/utm';
 
 // ─── PER-GYM CONFIG ─────────────────────────────────────────────────────────
 // $129 win-back offer page. Same gym infrastructure as /trial/* but charges
@@ -131,6 +131,9 @@ export default function LocationSpecialSignup() {
     return undefined;
   }, [location?.metaPixelId]);
 
+  // Persist any utm_* on the URL so attribution survives re-renders / refresh.
+  useEffect(() => { captureUtmsFromUrl(); }, []);
+
   if (!location) return <Navigate to="/" replace />;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -220,7 +223,11 @@ export default function LocationSpecialSignup() {
       {/* HERO ─────────────────────────────────────────────────────────────── */}
       <div className="relative bg-gradient-to-br from-red-600 via-red-700 to-red-800 text-white pt-36 pb-10 sm:pt-32 sm:pb-16 lg:pt-36 lg:pb-20 overflow-hidden">
         <div className="absolute inset-0 bg-black/10"></div>
-        <div className="absolute inset-0 opacity-10">
+        {/* 2026-06-30: Hide giant blur radii on mobile — same iOS Safari
+            crash pattern as /locations/[slug] (task #500). Heavy
+            blur-3xl on inset-0 layers triggers a paint failure on
+            iPhone Safari and renders a black screen. */}
+        <div className="absolute inset-0 opacity-10 hidden lg:block">
           <div className="absolute top-20 left-10 w-72 h-72 bg-white rounded-full blur-3xl"></div>
           <div className="absolute bottom-10 right-10 w-96 h-96 bg-white rounded-full blur-3xl"></div>
         </div>
@@ -310,6 +317,15 @@ export default function LocationSpecialSignup() {
                     <div className="text-[10px] text-gray-500 mt-0.5">30 days of unlimited classes</div></div>
                   <span className="text-2xl sm:text-3xl font-black text-red-600">${OFFER_PRICE}</span>
                 </div>
+                <p className="text-[10px] sm:text-xs text-gray-500 mt-2 italic">
+                  You have 60 days to claim and start your trial.
+                </p>
+                <p className="text-xs sm:text-sm text-red-600 font-bold mt-2">
+                  Offer available only to New York City residents.
+                </p>
+                <p className="text-[9px] sm:text-[10px] text-gray-400 mt-3 leading-tight">
+                  All trials non-refundable.
+                </p>
               </div>
 
               <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 sm:p-5">

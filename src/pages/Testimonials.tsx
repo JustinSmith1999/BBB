@@ -71,7 +71,7 @@ export default function TestimonialsPage() {
             <p className="eyebrow mb-5">REAL RESULTS</p>
             <h1
               className="font-display font-black uppercase"
-              style={{ fontSize: 'clamp(48px, 8vw, 96px)', lineHeight: '0.9', letterSpacing: '-0.01em' }}
+              style={{ fontSize: 'clamp(40px, 5vw, 64px)', lineHeight: '0.95', letterSpacing: '-0.01em' }}
             >
               SUCCESS
               <br />

@@ -1,69 +1,166 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <!-- Top-level marketing pages -->
   <url>
     <loc>https://betterbodybootcamp.com/</loc>
-    <lastmod>2026-04-10</lastmod>
+    <lastmod>2026-05-28</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://betterbodybootcamp.com/about</loc>
-    <lastmod>2026-04-10</lastmod>
-    <changefreq>weekly</changefreq>
+    <lastmod>2026-05-28</lastmod>
+    <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://betterbodybootcamp.com/locations</loc>
-    <lastmod>2026-04-10</lastmod>
+    <lastmod>2026-05-28</lastmod>
     <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
+    <priority>0.9</priority>
   </url>
+
+  <!-- /queens hub: targets "gyms in queens" (generic, where the volume is).
+       Top priority — consolidates 3 Queens studios. Added 2026-06-19. -->
+  <url>
+    <loc>https://betterbodybootcamp.com/queens</loc>
+    <lastmod>2026-06-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+
+  <!-- Per-location pages: the SEO meat. priority 0.9 — these are the
+       pages we want ranking for "gyms in [neighborhood]" queries. -->
   <url>
     <loc>https://betterbodybootcamp.com/locations/astoria</loc>
-    <lastmod>2026-04-10</lastmod>
+    <lastmod>2026-05-28</lastmod>
     <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
+    <priority>0.9</priority>
   </url>
   <url>
     <loc>https://betterbodybootcamp.com/locations/bayside</loc>
-    <lastmod>2026-04-10</lastmod>
+    <lastmod>2026-05-28</lastmod>
     <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
+    <priority>0.9</priority>
   </url>
   <url>
     <loc>https://betterbodybootcamp.com/locations/fresh-meadows</loc>
-    <lastmod>2026-04-10</lastmod>
+    <lastmod>2026-05-28</lastmod>
     <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
+    <priority>0.9</priority>
   </url>
   <url>
     <loc>https://betterbodybootcamp.com/locations/williamsburg</loc>
-    <lastmod>2026-04-10</lastmod>
+    <lastmod>2026-05-28</lastmod>
     <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
+    <priority>0.9</priority>
+  </url>
+
+  <!-- Trial-signup pages (conversion targets — high priority for paid traffic) -->
+  <url>
+    <loc>https://betterbodybootcamp.com/trial</loc>
+    <lastmod>2026-05-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://betterbodybootcamp.com/pricing</loc>
-    <lastmod>2026-04-10</lastmod>
+    <loc>https://betterbodybootcamp.com/trial/astoria</loc>
+    <lastmod>2026-05-28</lastmod>
     <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://betterbodybootcamp.com/trial/bayside</loc>
+    <lastmod>2026-05-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://betterbodybootcamp.com/trial/fresh-meadows</loc>
+    <lastmod>2026-05-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://betterbodybootcamp.com/trial/williamsburg</loc>
+    <lastmod>2026-05-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <!-- Class info / schedule pages -->
+  <url>
+    <loc>https://betterbodybootcamp.com/classes</loc>
+    <lastmod>2026-05-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://betterbodybootcamp.com/schedule/astoria</loc>
+    <lastmod>2026-05-28</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://betterbodybootcamp.com/schedule/bayside</loc>
+    <lastmod>2026-05-28</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://betterbodybootcamp.com/schedule/fresh-meadows</loc>
+    <lastmod>2026-05-28</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://betterbodybootcamp.com/schedule/williamsburg</loc>
+    <lastmod>2026-05-28</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Secondary marketing pages -->
+  <url>
+    <loc>https://betterbodybootcamp.com/pricing</loc>
+    <lastmod>2026-05-28</lastmod>
+    <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://betterbodybootcamp.com/testimonials</loc>
-    <lastmod>2026-04-10</lastmod>
+    <lastmod>2026-05-28</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://betterbodybootcamp.com/contact</loc>
-    <lastmod>2026-04-10</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.6</priority>
+    <lastmod>2026-05-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
   </url>
   <url>
     <loc>https://betterbodybootcamp.com/faq</loc>
-    <lastmod>2026-04-10</lastmod>
+    <lastmod>2026-05-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://betterbodybootcamp.com/franchising</loc>
+    <lastmod>2026-05-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://betterbodybootcamp.com/careers</loc>
+    <lastmod>2026-05-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://betterbodybootcamp.com/blog</loc>
+    <lastmod>2026-05-28</lastmod>
     <changefreq>weekly</changefreq>
-    <priority>0.6</priority>
+    <priority>0.5</priority>
   </url>
 </urlset>

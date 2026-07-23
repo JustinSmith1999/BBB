@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase, Location } from '../lib/supabase';
+import { supabase, LOCATION_PUBLIC_COLUMNS, Location } from '../lib/supabase';
 
 const locationImages: Record<string, string> = {
   'Astoria': '/astoria-final.webp',
@@ -14,7 +14,7 @@ export default function TrialForm() {
   useEffect(() => {
     supabase
       .from('locations')
-      .select('*')
+      .select(LOCATION_PUBLIC_COLUMNS)
       .eq('is_active', true)
       .order('display_order')
       .then(({ data }) => setLocations(data || []));
@@ -58,7 +58,11 @@ export default function TrialForm() {
         </div>
 
         {/* Location cards grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 max-w-3xl mx-auto">
+        {/* 2026-06-30: Cards were postage-stamp size — 140px photo, 22px name,
+            text-sm address, 12px CTA, max-w-3xl container. Bumped to
+            max-w-5xl + 200px photo + 32px name + 16px address + 14px CTA so
+            each studio reads with real weight on this top-of-funnel section. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-5xl mx-auto">
           {locations.map(location => {
             const slug = location.name.toLowerCase().replace(/ /g, '-');
             const img = locationImages[location.name] || location.image_url || '';
@@ -70,7 +74,7 @@ export default function TrialForm() {
                 style={{
                   backgroundColor: 'var(--bg-elevated)',
                   border: '1px solid var(--divider)',
-                  padding: '24px',
+                  padding: '28px',
                 }}
                 onClick={() => handleLocationClick(slug)}
                 onMouseEnter={e => {
@@ -83,7 +87,7 @@ export default function TrialForm() {
                 }}
               >
                 {/* Photo */}
-                <div className="w-full overflow-hidden rounded-xl mb-5" style={{ height: '140px' }}>
+                <div className="w-full overflow-hidden rounded-xl mb-6" style={{ height: '200px' }}>
                   <img
                     src={img}
                     alt={location.name}
@@ -93,20 +97,20 @@ export default function TrialForm() {
 
                 {/* Info */}
                 <h3
-                  className="font-display font-black uppercase mb-1"
-                  style={{ fontSize: '22px', color: 'var(--text-primary)' }}
+                  className="font-display font-black uppercase mb-2"
+                  style={{ fontSize: '32px', lineHeight: '1', letterSpacing: '-0.01em', color: 'var(--text-primary)' }}
                 >
                   {location.name}
                 </h3>
-                <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
+                <p className="mb-5" style={{ fontSize: '16px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
                   {location.address}
                 </p>
 
                 {/* Text CTA */}
                 <span
-                  className="inline-flex items-center gap-1.5 font-semibold uppercase transition-colors duration-200"
+                  className="inline-flex items-center gap-2 font-bold uppercase transition-colors duration-200"
                   style={{
-                    fontSize: '12px',
+                    fontSize: '14px',
                     letterSpacing: '0.08em',
                     color: 'var(--brand-red)',
                   }}

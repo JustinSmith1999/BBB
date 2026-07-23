@@ -28,7 +28,7 @@ export default function TrialSignup() {
           <div className="absolute bottom-10 right-10 w-96 h-96 bg-white rounded-full blur-3xl"></div>
         </div>
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
-          <h1 className="text-[clamp(2.5rem,9vw,5rem)] font-black mb-5 leading-[1.05]">
+          <h1 className="text-[clamp(2.25rem,5vw,4rem)] font-black mb-5 leading-[1.05]">
             TWO WEEKS FOR $49
           </h1>
           <p className="text-lg sm:text-xl md:text-2xl font-medium leading-relaxed max-w-2xl mx-auto mb-8">
@@ -75,8 +75,17 @@ export default function TrialSignup() {
               </Link>
             ))}
           </div>
-          <p className="text-center text-sm text-gray-500 mt-8">
+          <p className="text-center text-xs text-gray-500 mt-6 italic">
+            You have 60 days to claim and start your trial.
+          </p>
+          <p className="text-center text-sm text-red-600 font-bold mt-2">
+            Two-week trial available only to New York City residents.
+          </p>
+          <p className="text-center text-sm text-gray-500 mt-3">
             Questions? <a href="/contact" className="text-red-600 hover:text-red-700 font-semibold">Contact us</a> anytime.
+          </p>
+          <p className="text-center text-[10px] text-gray-400 mt-4 leading-tight">
+            All trials non-refundable.
           </p>
         </div>
       </div>

@@ -29,7 +29,7 @@ const ALL_STUDIOS: { name: string; slug: string; address: string; borough: strin
   { name: 'Fresh Meadows', slug: 'fresh-meadows', address: '76-46 164th Street',    borough: 'Queens' },
   { name: 'Williamsburg',  slug: 'williamsburg',  address: '487 Driggs Ave',        borough: 'Brooklyn' },
 ];
-import { supabase, Location } from '../lib/supabase';
+import { supabase, LOCATION_PUBLIC_COLUMNS, Location } from '../lib/supabase';
 import SEOHead from '../components/SEOHead';
 import { STUDIO_SEO_EXTRAS } from '../lib/studioFaq';
 // 2026-06-26: Native (no-iframe) class list — same data as the old MT widget
@@ -318,7 +318,7 @@ export default function LocationDetailPage() {
 
       const { data, error } = await supabase
         .from('locations')
-        .select('*')
+        .select(LOCATION_PUBLIC_COLUMNS)
         .ilike('name', locationName)
         .eq('is_active', true)
         .maybeSingle();

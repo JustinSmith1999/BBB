@@ -1,0 +1,14 @@
+{
+  "task": "checkout-bug-recovery-tracking",
+  "campaign_send_utc": "2026-06-17T17:00:00Z",
+  "last_run_utc": "2026-06-21T20:47:00Z",
+  "estimated_run_number": 12,
+  "total_conversions_to_date": 0,
+  "cohort_sizes": { "trial_recovery_49": 25, "comeback_recovery_29": 24 },
+  "last_run_metrics": { "trial_paid": 0, "trial_rows_touched": 5, "comeback_paid": 0, "comeback_clicked": 0 },
+  "stop_question_surfaced": true,
+  "self_disable_after_utc": "2026-06-19T17:00:00Z",
+  "self_disabled": true,
+  "self_disabled_at_utc": "2026-06-21T20:47:00Z",
+  "notes": "Final run. 0 paid across both campaigns through the full 48h window. Task was past its self-disable deadline (missed runs, likely app closed); disabled now via update_scheduled_task enabled=false."
+}

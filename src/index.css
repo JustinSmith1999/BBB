@@ -2,11 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 2026-07-02 QA #14: font-display swap — both display fonts ship as raw TTF
+   and were render-blocking headline text until download completed. Swap shows
+   fallback text immediately; TTF→WOFF2 conversion tracked separately. */
 @font-face {
   font-family: 'BlackLives';
   src: url('/aBlackLives.ttf') format('truetype');
   font-weight: normal;
   font-style: normal;
+  font-display: swap;
 }
 
 @font-face {
@@ -14,6 +18,7 @@
   src: url('/SCREAM__.TTF') format('truetype');
   font-weight: normal;
   font-style: normal;
+  font-display: swap;
 }
 
 :root {

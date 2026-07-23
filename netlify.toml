@@ -103,8 +103,65 @@
   to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=flyer-williamsburg"
   status = 302
 
+# Google Business Profile post CTAs — paste these in the GBP post "Link for
+# your button" field instead of the raw /trial/<studio> URL. track-link logs
+# the click in link_clicks AND stamps the eventual trial_signup row with
+# utm_source=gbp-post so the dashboard attributes GBP traffic correctly.
+[[redirects]]
+  from   = "/gbp/astoria"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=gbp-astoria"
+  status = 302
+
+[[redirects]]
+  from   = "/gbp/bayside"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=gbp-bayside"
+  status = 302
+
+[[redirects]]
+  from   = "/gbp/fresh-meadows"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=gbp-fresh-meadows"
+  status = 302
+
+[[redirects]]
+  from   = "/gbp/williamsburg"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=gbp-williamsburg"
+  status = 302
+
+# Mariana Tek staging gate — basic auth on /staging/*. The edge function reads
+# STAGING_USERNAME and STAGING_PASSWORD from Netlify env vars. Without the
+# password set the staging pages return 503 (fail-closed).
+[[edge_functions]]
+  function = "staging-auth"
+  path     = "/staging/*"
+
+# Google review redirect — printed flyer QR scans land at /review/<studio>,
+# get logged in gbp_review_clicks, then 302 to the g.page review URL which
+# deep-links into Google Maps' "write a review" UI. SEPARATE from /gbp/*
+# (which sends people to the trial page from GBP posts) — this is the path
+# customers take to leave a Google review for the studio they attended.
+[[edge_functions]]
+  function = "review-redirect"
+  path     = "/review/*"
+
 # SPA fallback for everything else — React Router handles client-side routing.
 [[redirects]]
   from   = "/*"
   to     = "/index.html"
   status = 200
+
+# 2026-07-22: Standard HTTP security headers (the "set standard security
+# headers" item from the security review). These are the non-breaking set:
+# clickjacking protection, MIME-sniff protection, referrer minimization,
+# forced HTTPS for a year, and a locked-down permissions policy. A full
+# Content-Security-Policy is deliberately NOT set here yet — the SPA loads
+# Stripe, Supabase, Google fonts/analytics, and Meta pixel, so a CSP needs to
+# be built and tested in report-only mode first to avoid breaking checkout.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    Permissions-Policy = "geolocation=(), microphone=(), camera=(), payment=(self)"
+    Cross-Origin-Opener-Policy = "same-origin"

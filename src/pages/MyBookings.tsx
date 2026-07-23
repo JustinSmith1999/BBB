@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Clock, MapPin, X } from 'lucide-react';
-import { supabase, ClassBooking, Class, Location } from '../lib/supabase';
+import { supabase, LOCATION_PUBLIC_COLUMNS, ClassBooking, Class, Location } from '../lib/supabase';
 
 interface BookingWithDetails extends ClassBooking {
   class: Class;
@@ -50,7 +50,7 @@ export default function MyBookings() {
 
             const { data: locationData } = await supabase
               .from('locations')
-              .select('*')
+              .select(LOCATION_PUBLIC_COLUMNS)
               .eq('id', classData.location_id)
               .single();
 

@@ -41,7 +41,7 @@ export default function Legal() {
             <Scale className="w-4 h-4" />
             Legal & Policies
           </div>
-          <h1 className="text-[clamp(2.5rem,7vw,6rem)] font-black mb-5 leading-none tracking-tight">
+          <h1 className="text-[clamp(2rem,4.5vw,4rem)] font-black mb-5 leading-none tracking-tight">
             Legal <span className="text-red-500">Information</span>
           </h1>
           <p className="text-lg text-gray-400 max-w-2xl mx-auto leading-relaxed">
@@ -117,7 +117,7 @@ export default function Legal() {
                   ))}
                 </ul>
                 <p className="text-xs text-gray-400 italic border-t border-gray-200 pt-4">
-                  A full waiver must be signed before your first class. Digital signatures are accepted via the Mindbody booking system.
+                  A full waiver must be signed before your first class. Digital signatures are accepted via the Better Body Studios app.
                 </p>
               </div>
             </div>
