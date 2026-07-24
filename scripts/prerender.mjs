@@ -161,27 +161,6 @@ const EXTRA_ROUTES = [
     ],
   },
   {
-    path: '/services',
-    title: 'Services · Group & Personal Training, InBody, Nutrition | Better Body Bootcamp',
-    description:
-      'Better Body Bootcamp services: coach-led group training, small group training, 1-on-1 personal training, InBody body composition scans, and nutritional consultations across 4 NYC studios.',
-    body: [
-      'Better Body Bootcamp offers a full range of training and wellness services across our four New York studios in Astoria, Bayside, Fresh Meadows, and Williamsburg. Group training — our signature coach-led bootcamp, HIIT, strength, and conditioning classes — is available at all four locations for every fitness level.',
-      'Small group training (2–6 people) and 1-on-1 personal training are available at our Bayside and Fresh Meadows studios for members who want more focused, private coaching. InBody body composition scans and nutritional consultations are available at all four studios to help you track progress and eat toward your goals.',
-      'New to Better Body Bootcamp? Start with a 2-week trial for $49 and experience it for yourself.',
-    ],
-    faq: [
-      {
-        q: 'What services does Better Body Bootcamp offer?',
-        a: 'Group training, small group training, 1-on-1 personal training, InBody body composition scans, and nutritional consultations. Group training, InBody, and nutrition are offered at all four studios.',
-      },
-      {
-        q: 'Which studios offer personal training and small group training?',
-        a: 'One-on-one personal training and small group training are offered at our Bayside and Fresh Meadows studios. Group classes are available at all four locations.',
-      },
-    ],
-  },
-  {
     path: '/pricing',
     title: 'Pricing & Membership · 2-Week Trial for $49 | Better Body Bootcamp NYC',
     description:
