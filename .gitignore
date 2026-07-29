@@ -27,3 +27,4 @@ dist-ssr
 
 dist_tmp/
 vite.config.ts.timestamp-*.mjs
+dist_v2/

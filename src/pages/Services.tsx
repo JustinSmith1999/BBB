@@ -21,15 +21,15 @@ import SEOHead from '../components/SEOHead';
 // inbody + nutrition are intentionally blank until real photos arrive — a blank
 // src shows the clean branded fallback panel (never stock, never dev text).
 const MEDIA: Record<string, { type: 'image' | 'video'; src: string }> = {
-  'group-training':       { type: 'image', src: '/services/group-training.webp' },
-  'small-group-training': { type: 'image', src: '/services/small-group-training.webp' },
-  'personal-training':    { type: 'image', src: '/services/personal-training.webp' },
+  'group-training':       { type: 'video', src: '/services/group-training.mp4' },
+  'small-group-training': { type: 'video', src: '/services/small-group-training.mp4' },
+  'personal-training':    { type: 'video', src: '/services/personal-training.mp4' },
   'inbody':               { type: 'image', src: '' },
   'nutrition':            { type: 'image', src: '' },
 };
 
-// Hero background — a real group-training shot, darkened for legibility.
-const HERO_IMG = '/services/hero.webp';
+// Hero background — a real Astoria class loop (silent, looping), darkened for legibility.
+const HERO_IMG = '/services/hero.mp4';
 
 // 'all' = every active studio. An array = only those studios (matched by name).
 type StudioScope = 'all' | string[];
@@ -433,11 +433,15 @@ export default function ServicesPage() {
 
         {/* ── Full-bleed hero ── */}
         <div className="relative overflow-hidden" style={{ minHeight: '78vh' }}>
-          <img
+          <video
             src={HERO_IMG}
-            alt="Better Body Bootcamp training"
+            aria-label="Better Body Bootcamp training"
             className="absolute inset-0 w-full h-full object-cover"
             style={{ objectPosition: 'center 35%' }}
+            autoPlay
+            muted
+            loop
+            playsInline
           />
           <div
             className="absolute inset-0"
