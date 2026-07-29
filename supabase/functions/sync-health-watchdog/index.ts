@@ -58,7 +58,14 @@ type Watch = {
 // when the new pipe goes stale.
 const WATCHES: Watch[] = [
   { table: "mariana_tek_sales",   column: "synced_at",   max_age_minutes:  120, display: "Mariana Tek sales" },
-  { table: "stripe_paid_mirror",  column: "mirrored_at", max_age_minutes:   30, display: "Stripe paid mirror" },
+  // 2026-07-27: REMOVED the stripe_paid_mirror watch. Every studio moved onto
+  // Mariana Tek ~mid-July 2026 (Bayside was the last Stripe holdout), so there
+  // are no new Stripe payments to mirror — mirrored_at is now PERMANENTLY older
+  // than the 30-min threshold and the watchdog was firing a false "stale" SMS
+  // to Justin every hour (24+/day, 3 segments each) about a payment rail that
+  // is intentionally retired. Stripe is legacy; nothing to watch here anymore.
+  // Re-add only if the studios ever take Stripe payments again.
+  // { table: "stripe_paid_mirror",  column: "mirrored_at", max_age_minutes:   30, display: "Stripe paid mirror" },
   { table: "meta_insights_daily", column: "synced_at",   max_age_minutes:  240, display: "Meta ad insights" },
 ];
 
@@ -76,7 +83,7 @@ Deno.serve(async (req) => {
   const sb = createClient(Deno.env.get("SUPABASE_URL") ?? "", SR);
   const now = Date.now();
   const results: any[] = [];
-  const alertsToFire: { display: string; ageMin: number; threshold: number; table: string }[] = [];
+  const alertsToFire: { display: string; ageMin?: number; threshold?: number; table: string; body?: string }[] = [];
 
   for (const w of WATCHES) {
     // Pull the most recent timestamp from this table.
@@ -106,6 +113,43 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ── WELCOME-GAP CHECK (2026-07-27) ──────────────────────────────────────
+  // The exact silent failure that burned us: a paid trial that got a card but
+  // NO welcome text/email. If any paid trial is >30 min old with no welcome on
+  // record, the pipeline is dropping people — text Justin NOW. Bounded to the
+  // last 6h so we alarm on NEW gaps, not the historical backlog we agreed not
+  // to touch. This runs every 5 min (via the orchestrator), so a real gap
+  // surfaces within ~35 min instead of days.
+  try {
+    const sixHrsAgo    = new Date(now - 6 * 3600 * 1000).toISOString();
+    const thirtyMinAgo = new Date(now - 30 * 60 * 1000).toISOString();
+    const { data: gap } = await sb
+      .from("trial_signups")
+      .select("name, source_category, created_at")
+      .eq("payment_status", "completed")
+      .is("deleted_at", null)
+      .is("welcome_sms_sent_at", null)
+      .gt("created_at", sixHrsAgo)
+      .lt("created_at", thirtyMinAgo)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    const n = (gap ?? []).length;
+    results.push({ check: "welcome_gap", un_welcomed_last_6h: n });
+    if (n > 0) {
+      const eg = (gap as any[])[0];
+      alertsToFire.push({
+        display: "Un-welcomed trials",
+        table: "trial_signups",
+        body:
+          `🚨 BBB: ${n} paid trial${n > 1 ? "s" : ""} in the last 6h got a card but NO ` +
+          `welcome text/email (e.g. ${eg.name || "?"} · ${eg.source_category || "?"}). ` +
+          `The welcome pipeline may be down — check mt-orders-sync + manual-welcome-batch.`,
+      });
+    }
+  } catch (e) {
+    results.push({ check: "welcome_gap", error: (e as Error).message });
+  }
+
   // Rate-limit: don't re-alert in <60 min for the same table.
   const alertsSent: any[] = [];
   for (const a of alertsToFire) {
@@ -126,10 +170,10 @@ Deno.serve(async (req) => {
       continue;
     }
 
-    const body =
-      `🚨 BBB sync alert: "${a.display}" is ${a.ageMin} min stale ` +
+    const body = a.body ??
+      (`🚨 BBB sync alert: "${a.display}" is ${a.ageMin} min stale ` +
       `(threshold ${a.threshold}m). Table: ${a.table}. ` +
-      `Last sync was ${(a.ageMin/60).toFixed(1)}h ago. Investigate now.`;
+      `Last sync was ${((a.ageMin ?? 0)/60).toFixed(1)}h ago. Investigate now.`);
 
     try {
       const auth = btoa(`${TWILIO_SID}:${TWILIO_TOK}`);

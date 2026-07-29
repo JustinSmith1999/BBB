@@ -66,7 +66,7 @@ export default function Header() {
 
           {/* Desktop nav — visible at >= 900px */}
           <div className="nav-desktop">
-            {([['/', 'Home'], ['/about', 'About'], ['/locations', 'Locations'], ['/pricing', 'Pricing'], ['/testimonials', 'Testimonials'], ['/contact', 'Contact']] as [string, string][]).map(([path, label]) => (
+            {([['/', 'Home'], ['/about', 'About'], ['/locations', 'Locations'], ['/services', 'Services'], ['/pricing', 'Pricing'], ['/testimonials', 'Testimonials'], ['/contact', 'Contact']] as [string, string][]).map(([path, label]) => (
               <Link
                 key={path}
                 to={path}
@@ -123,7 +123,7 @@ export default function Header() {
 
         {mobileMenuOpen && (
           <div className="nav-mobile-menu mt-2 pb-3 space-y-0.5 max-w-content mx-auto">
-            {([['/', 'Home'], ['/about', 'About'], ['/locations', 'Locations'], ['/pricing', 'Pricing'], ['/testimonials', 'Testimonials'], ['/contact', 'Contact']] as [string, string][]).map(([path, label]) => (
+            {([['/', 'Home'], ['/about', 'About'], ['/locations', 'Locations'], ['/services', 'Services'], ['/pricing', 'Pricing'], ['/testimonials', 'Testimonials'], ['/contact', 'Contact']] as [string, string][]).map(([path, label]) => (
               <Link
                 key={path}
                 to={path}

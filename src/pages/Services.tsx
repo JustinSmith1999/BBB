@@ -17,17 +17,19 @@ import SEOHead from '../components/SEOHead';
    If an image ever fails to load, a clean branded panel shows — never
    developer text.
    ──────────────────────────────────────────────────────────────────────── */
-const PX = '?auto=compress&cs=tinysrgb&w=1600&h=1400&fit=crop';
+// Real BBB studio photos (Williamsburg shared-album footage, frame-grabbed).
+// inbody + nutrition are intentionally blank until real photos arrive — a blank
+// src shows the clean branded fallback panel (never stock, never dev text).
 const MEDIA: Record<string, { type: 'image' | 'video'; src: string }> = {
-  'group-training':       { type: 'image', src: `https://images.pexels.com/photos/6339401/pexels-photo-6339401.jpeg${PX}` },
-  'small-group-training': { type: 'image', src: `https://images.pexels.com/photos/14623747/pexels-photo-14623747.jpeg${PX}` },
-  'personal-training':    { type: 'image', src: `https://images.pexels.com/photos/13451904/pexels-photo-13451904.jpeg${PX}` },
-  'inbody':               { type: 'image', src: `https://images.pexels.com/photos/6629204/pexels-photo-6629204.jpeg${PX}` },
-  'nutrition':            { type: 'image', src: `https://images.pexels.com/photos/15319047/pexels-photo-15319047/free-photo-of-nutritionist-holding-broccoli-in-office.jpeg${PX}` },
+  'group-training':       { type: 'image', src: '/services/group-training.webp' },
+  'small-group-training': { type: 'image', src: '/services/small-group-training.webp' },
+  'personal-training':    { type: 'image', src: '/services/personal-training.webp' },
+  'inbody':               { type: 'image', src: '' },
+  'nutrition':            { type: 'image', src: '' },
 };
 
-// Hero background — the group-training shot, darkened for legibility.
-const HERO_IMG = `https://images.pexels.com/photos/6339401/pexels-photo-6339401.jpeg?auto=compress&cs=tinysrgb&w=2000&h=1100&fit=crop`;
+// Hero background — a real group-training shot, darkened for legibility.
+const HERO_IMG = '/services/hero.webp';
 
 // 'all' = every active studio. An array = only those studios (matched by name).
 type StudioScope = 'all' | string[];
@@ -425,7 +427,6 @@ export default function ServicesPage() {
         title="Services | Better Body Bootcamp NYC"
         description="Group training, small group training, 1-on-1 personal training, InBody body composition scans, and nutritional consultations across our NYC studios."
         canonical="/services"
-        noindex
       />
 
       <div style={{ backgroundColor: 'var(--bg-primary)' }}>

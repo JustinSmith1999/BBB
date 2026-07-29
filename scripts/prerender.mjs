@@ -197,6 +197,22 @@ const EXTRA_ROUTES = [
     ],
   },
   {
+    path: '/services',
+    title: 'Services · Group, Small Group & 1-on-1 Training, InBody & Nutrition | Better Body Bootcamp NYC',
+    description:
+      'Explore Better Body Bootcamp services: coach-led group training, small group training, 1-on-1 personal training, InBody body composition scans, and nutritional consultations across our Astoria, Bayside, Fresh Meadows, and Williamsburg studios.',
+    body: [
+      'Better Body Bootcamp offers more than one way to train. Our signature coach-led group classes blend HIIT, strength, and conditioning for every level. Small group training gives you a tighter setting with more coaching attention, and 1-on-1 personal training builds a plan entirely around your goals.',
+      'Beyond the workouts, InBody body composition scans track your real progress — muscle, fat, and more — and nutritional consultations help you fuel it. Small group and 1-on-1 personal training are available at our Bayside and Fresh Meadows studios; group training, InBody, and nutrition are offered across all four NYC locations.',
+    ],
+    faq: [
+      {
+        q: 'What services does Better Body Bootcamp offer?',
+        a: 'Coach-led group training, small group training, 1-on-1 personal training, InBody body composition scans, and nutritional consultations. Group training, InBody, and nutrition are available at all four studios; small group and 1-on-1 personal training are offered at Bayside and Fresh Meadows.',
+      },
+    ],
+  },
+  {
     path: '/about',
     title: 'About Better Body Bootcamp · NYC Group Fitness Since 2011',
     description:

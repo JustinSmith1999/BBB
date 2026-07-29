@@ -476,7 +476,15 @@ serve(async (req) => {
         continue;
       }
       summary.trial_inserts++;
-      if (ins?.id && email) {
+      // 2026-07-27 PAST-SEND GUARD: only queue a welcome for trials whose order
+      // is genuinely recent (< 3 hours old). A brand-new live purchase is always
+      // well inside this window, so real customers still get welcomed instantly.
+      // But any catch-up / backfill / re-scan that ingests an older order will
+      // put it on the board WITHOUT ever texting or emailing that customer about
+      // a trial they bought hours or days ago. A late blast is now impossible.
+      const orderAgeMs = Date.now() - new Date(dateIso).getTime();
+      const orderIsRecent = Number.isFinite(orderAgeMs) && orderAgeMs < 3 * 3600 * 1000;
+      if (ins?.id && email && orderIsRecent) {
         trialEmailsToWelcome.push({
           trial_id:   ins.id,
           email,
@@ -546,7 +554,7 @@ serve(async (req) => {
           // invalid phone, so this is safe for the phone-less MT signups too.
           send_customer_sms:   true,
           send_customer_email: true,
-          send_owner_sms:      false,  // owner alerts handled separately (opt-in digest)
+          send_owner_sms:      true,   // 2026-07-29: owner text on every new paid trial (reads location_owners.notify_signups)
           send_studio_email:   true,
           dry_run:             false,
         }),

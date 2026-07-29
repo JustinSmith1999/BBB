@@ -125,7 +125,8 @@ function customerSmsBody(firstName: string, studioShort: string, bookingUrl: str
 }
 // Customer email templates — mirror the stripe-webhook designed welcome
 // email so manual and automated paths look identical to the customer.
-const HERO_HEX = "#dc2626";
+const HERO_HEX = "#D83B3B"; // 2026-07-27: BBB brand red (was #dc2626 generic red)
+const LOGO_URL = "https://uracuwugpxqjfgtuobal.supabase.co/storage/v1/object/public/logos/0180_bbb_bbb-newtext_logo_new_black_1%20(1).png";
 function customerEmailSubject(_firstName: string, _studioShort: string): string {
   return `You're in — your 2-week trial at Better Body Bootcamp`;
 }
@@ -148,9 +149,10 @@ function customerEmailHtml(firstName: string, studioShort: string, bookingUrl: s
   const studioInfoUrl = `https://betterbodybootcamp.com/locations/${studioSlug}`;
   return `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:0;color:#111;background:#fff">
-      <div style="background:${HERO_HEX};color:#fff;padding:28px 28px 24px;text-align:center">
-        <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;opacity:0.85;margin-bottom:8px">Better Body Bootcamp · ${studioShort}</div>
-        <h1 style="margin:0;font-size:28px;font-weight:800;letter-spacing:-0.02em;line-height:1.1">You're in, ${firstName}.</h1>
+      <div style="background:${HERO_HEX};color:#fff;padding:26px 28px 24px;text-align:center">
+        <img src="${LOGO_URL}" alt="Better Body Bootcamp" width="160" style="max-width:160px;height:auto;margin:0 auto 14px;display:block" />
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;opacity:0.85;margin-bottom:8px">${studioShort}</div>
+        <h1 style="margin:0;font-size:28px;font-weight:800;letter-spacing:-0.02em;line-height:1.1;color:#fff">You're in, ${firstName}.</h1>
       </div>
       <div style="padding:28px">
         <p style="margin:0 0 18px;font-size:16px;line-height:1.55;color:#222">Welcome to Better Body Bootcamp ${studioShort}. Your 2-week trial is locked in.</p>
