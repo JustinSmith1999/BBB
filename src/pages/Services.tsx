@@ -146,6 +146,7 @@ function BandMedia({ slug, name, icon: Icon }: { slug: string; name: string; ico
       {!show && media.type === 'video' && (
         <video
           src={media.src}
+          poster={media.src.replace('.mp4', '-poster.webp')}
           className="absolute inset-0 w-full h-full object-cover"
           autoPlay muted loop playsInline
           onError={() => setFailed(true)}
@@ -435,6 +436,7 @@ export default function ServicesPage() {
         <div className="relative overflow-hidden" style={{ minHeight: '78vh' }}>
           <video
             src={HERO_IMG}
+            poster="/services/hero-poster.webp"
             aria-label="Better Body Bootcamp training"
             className="absolute inset-0 w-full h-full object-cover"
             style={{ objectPosition: 'center 35%' }}
@@ -445,7 +447,7 @@ export default function ServicesPage() {
           />
           <div
             className="absolute inset-0"
-            style={{ background: 'linear-gradient(180deg, rgba(14,15,19,0.72) 0%, rgba(14,15,19,0.62) 45%, rgba(14,15,19,0.92) 100%)' }}
+            style={{ background: 'linear-gradient(180deg, rgba(14,15,19,0.55) 0%, rgba(14,15,19,0.42) 45%, rgba(14,15,19,0.85) 100%)' }}
           />
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6" style={{ paddingTop: '80px' }}>
             <p className="eyebrow mb-5" style={{ letterSpacing: '0.24em' }}>WHAT WE OFFER</p>
