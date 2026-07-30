@@ -435,6 +435,65 @@ export default function LocationTrialSignup() {
     tryInit(20);
   }, [location?.mtLocationId]);
 
+  // ─── Attribution bridge (2026-07-30) ───────────────────────────────────
+  // ROOT-CAUSE FIX for "Meta sees 0 purchases": since the MT buy widget took
+  // over checkout, NO paid trial carries fbp/fbc — 53/53 trials since 7/1
+  // had zero browser signals, so every CAPI purchase goes out unattributable
+  // and Meta's algorithm can't optimize for buyers.
+  // The MT widget renders IN-DOM, so we listen for the email the customer
+  // types into it and store a soft-deleted "shadow" row in trial_signups
+  // carrying {email, fbp, fbc, UA, UTMs}. It is invisible everywhere
+  // (deleted_at set, payment_status!=completed) — but the CAPI purchase-sync
+  // joins trial_signups BY EMAIL with no filters and keeps the strongest
+  // signal row, so when this person's MT purchase syncs in, the event ships
+  // with fbc/fbp => action_source:website => ATTRIBUTABLE. Meta finally
+  // learns which ads produce buyers.
+  const attribSentRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!location) return;
+    const handler = (ev: Event) => {
+      const t = ev.target as HTMLInputElement | null;
+      if (!t || t.tagName !== 'INPUT') return;
+      // only inputs inside the MT widget container
+      if (!t.closest('[data-mariana-integrations]')) return;
+      const val = (t.value || '').trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) return;
+      if (attribSentRef.current.has(val)) return;
+      const { fbp, fbc } = getMetaClickIds();
+      const utms = getUtmParams();
+      // only worth storing if we actually have an ad/browser signal
+      if (!fbp && !fbc && !utms.utm_source) return;
+      attribSentRef.current.add(val);
+      fetch(`${SUPABASE_URL}/rest/v1/trial_signups`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'apikey': SUPABASE_ANON_KEY,
+          'Prefer': 'return=minimal',
+        },
+        body: JSON.stringify({
+          name: 'attribution-shadow',
+          email: val,
+          location_id: location.locationId,
+          source_category: 'web_organic', // (schema check constraint; row is invisible anyway)
+          payment_status: 'attribution_only',
+          fbp: fbp || null,
+          fbc: fbc || null,
+          client_user_agent: navigator.userAgent || null,
+          ...utms,
+          deleted_at: new Date().toISOString(), // invisible to board/sheets/comms
+        }),
+      }).catch(() => { /* attribution is best-effort; never block checkout */ });
+    };
+    document.addEventListener('focusout', handler, true);
+    document.addEventListener('change', handler, true);
+    return () => {
+      document.removeEventListener('focusout', handler, true);
+      document.removeEventListener('change', handler, true);
+    };
+  }, [location?.locationId]);
+
   // 2026-06-04: server-side PageView CAPI with hashed email when known.
   // 2026-06-11: REMOVED the email-required gate. Previously this only fired
   // for email-link visitors (?email=X), so Meta ad-driven traffic was
