@@ -5,7 +5,9 @@
 #   3. Netlify already auto-deploys from this repo (configured at the Netlify
 #      project level) — no step needed here.
 #
-# Required GitHub Secrets:
+# Optional GitHub Secrets (if NOT set, this workflow skips the Supabase steps
+# and passes — functions/migrations are then deployed manually via bbb.sh /
+# the SQL editor, which is the current workflow):
 #   SUPABASE_ACCESS_TOKEN  · personal access token from
 #                            https://supabase.com/dashboard/account/tokens
 #   SUPABASE_DB_PASSWORD   · the Postgres password for the project
@@ -44,12 +46,30 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Gate: only run the Supabase steps if the repo secrets are configured.
+      # Without this, every push fails at `supabase link` even though the
+      # site itself deploys fine via Netlify.
+      - name: Check Supabase secrets
+        id: gate
+        env:
+          SB_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SB_PROJECT: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          if [ -n "$SB_TOKEN" ] && [ -n "$SB_PROJECT" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Supabase secrets not set — skipping function/migration deploy (they are deployed manually via bbb.sh). Netlify auto-deploys the site regardless."
+          fi
+
       - name: Install Supabase CLI
+        if: steps.gate.outputs.configured == 'true'
         uses: supabase/setup-cli@v1
         with:
           version: latest
 
       - name: Link Supabase project
+        if: steps.gate.outputs.configured == 'true'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
@@ -61,6 +81,7 @@ jobs:
       # `supabase db push` checks remote schema_migrations and only runs the
       # ones that haven't been applied. Idempotent.
       - name: Push migrations
+        if: steps.gate.outputs.configured == 'true'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
@@ -76,6 +97,7 @@ jobs:
       # we have a known baseline. After that, only deploy ones touched in
       # the latest push.
       - name: Detect changed Edge Functions
+        if: steps.gate.outputs.configured == 'true'
         id: changed
         run: |
           BEFORE="${{ github.event.before }}"
@@ -93,7 +115,7 @@ jobs:
           echo "Changed functions: $CHANGED"
 
       - name: Deploy changed Edge Functions
-        if: steps.changed.outputs.list != ''
+        if: steps.gate.outputs.configured == 'true' && steps.changed.outputs.list != ''
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
