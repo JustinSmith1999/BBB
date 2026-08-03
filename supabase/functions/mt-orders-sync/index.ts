@@ -116,12 +116,7 @@ async function saveStored(access: string, refresh: string, expiresInSec: number)
   } catch { /* best-effort */ }
 }
 
-async function refreshAccessToken(): Promise<{ ok: boolean; token?: string; error?: string }> {
-  const stored = await readStored();
-  const refresh = stored.refresh || Deno.env.get('MT_OAUTH_REFRESH_TOKEN');
-  if (!refresh || !MT_CLIENT_ID) {
-    return { ok: false, error: 'no refresh_token / client_id — reseed the MT token' };
-  }
+async function tryRefresh(refresh: string): Promise<{ ok: boolean; token?: string; error?: string }> {
   const r = await fetch(MT_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -132,11 +127,36 @@ async function refreshAccessToken(): Promise<{ ok: boolean; token?: string; erro
   let parsed: any;
   try { parsed = JSON.parse(text); } catch { return { ok: false, error: `Bad JSON from token endpoint: ${text.slice(0, 200)}` }; }
   if (!parsed.access_token) return { ok: false, error: 'no access_token in token response' };
-  // THE FIX: persist the newly-rotated refresh token so next time it still works.
+  // Persist the newly-rotated refresh token so next time it still works.
   await saveStored(parsed.access_token, parsed.refresh_token || refresh, parsed.expires_in || 604800);
   cachedAccessToken = parsed.access_token;
   cachedExpiresAt   = Date.now() + ((parsed.expires_in || 604800) * 1000) - 60_000;
   return { ok: true, token: cachedAccessToken! };
+}
+
+async function refreshAccessToken(): Promise<{ ok: boolean; token?: string; error?: string }> {
+  // 2026-07-31: try the STORED (freshest) refresh token first; if that chain is
+  // dead (e.g. MT revoked the family when the admin session ended) AND the env
+  // seed is a DIFFERENT token (i.e. someone reseeded secrets manually), try the
+  // env one once as a fallback. Never blindly use env when it equals the stored
+  // token — replaying a consumed rotating token is what poisoned the chain.
+  const stored = await readStored();
+  const envRefresh = Deno.env.get('MT_OAUTH_REFRESH_TOKEN');
+  if (!MT_CLIENT_ID) return { ok: false, error: 'no MT_OAUTH_CLIENT_ID' };
+  if (!stored.refresh && !envRefresh) {
+    return { ok: false, error: 'no refresh_token anywhere — reseed the mt_oauth row' };
+  }
+  if (stored.refresh) {
+    const first = await tryRefresh(stored.refresh);
+    if (first.ok) return first;
+    if (envRefresh && envRefresh !== stored.refresh) {
+      const second = await tryRefresh(envRefresh);
+      if (second.ok) return second;
+      return { ok: false, error: `stored refresh failed (${first.error}); env fallback also failed (${second.error}). Reseed the mt_oauth row from a fresh MT admin login.` };
+    }
+    return { ok: false, error: `${first.error} — reseed the mt_oauth row from a fresh MT admin login.` };
+  }
+  return await tryRefresh(envRefresh!);
 }
 
 async function getAccessToken(): Promise<{ ok: boolean; token?: string; error?: string }> {
@@ -415,6 +435,13 @@ serve(async (req) => {
         .select('id, mariana_tek_id, source_category, payment_status, deleted_at')
         .eq('email', email)
         .eq('location_id', loc.id)
+        // 2026-07-31: the attribution bridge writes soft-deleted "shadow" rows
+        // (payment_status='attribution_only') per buyer email. Without this
+        // filter the dedupe matches the shadow (newest row), sees deleted_at,
+        // and refuses to link/mark-paid the REAL lead row — which is how
+        // Meghan Tillett's winback purchase left her card unlinked. Shadows
+        // are CAPI-only artifacts; never let them speak for the person.
+        .neq('payment_status', 'attribution_only')
         .order('created_at', { ascending: false })
         .limit(1);
       if (existing && existing.length) {
@@ -554,7 +581,10 @@ serve(async (req) => {
           // invalid phone, so this is safe for the phone-less MT signups too.
           send_customer_sms:   true,
           send_customer_email: true,
-          send_owner_sms:      true,   // 2026-07-29: owner text on every new paid trial (reads location_owners.notify_signups)
+          // 2026-07-31 (Justin): owner texts on every new paid trial — but if a
+          // catch-up sync lands MANY trials at once (post-outage), don't machine-gun
+          // the owners' phones; they'll see the batch on the board/sheets instead.
+          send_owner_sms:      trialEmailsToWelcome.length <= 3,
           send_studio_email:   true,
           dry_run:             false,
         }),

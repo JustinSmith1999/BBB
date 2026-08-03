@@ -64,6 +64,38 @@ const FRONT_DESK_EMAIL: Record<string, string> = {
 
 const TWIML_OK = '<?xml version="1.0" encoding="UTF-8"?><Response/>';
 
+// ─── 2026-08-03 · Instant auto-answers for common questions ────────────────
+// Winback texts produced replies like "Where?" that sat unanswered overnight.
+// When an inbound clearly asks address/schedule/price AND we know the studio,
+// reply instantly via TwiML. Anything ambiguous stays silent (humans are
+// already alerted via the owner-forward + front-desk email paths).
+// SAFETY: never fires on STOP/HELP (Twilio owns those) or YES (convert flow);
+// one reply per inbound by construction (TwiML responds to this message only).
+const STUDIO_INFO: Record<string, { addr: string; sched: string }> = {
+  'astoria':       { addr: '31-18 Steinway St, Astoria, NY 11103',      sched: 'betterbodybootcamp.com/schedule/astoria' },
+  'bayside':       { addr: '34-47 Bell Blvd, Bayside, NY 11361',        sched: 'betterbodybootcamp.com/schedule/bayside' },
+  'fresh-meadows': { addr: '76-46 164th St, Fresh Meadows, NY 11366',   sched: 'betterbodybootcamp.com/schedule/fresh-meadows' },
+  'williamsburg':  { addr: '487 Driggs Ave, Brooklyn, NY 11211',        sched: 'betterbodybootcamp.com/schedule/williamsburg' },
+};
+function xmlEscape(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function buildAutoReply(body: string, slug: string, studioName: string): string | null {
+  const info = STUDIO_INFO[slug];
+  if (!info) return null;
+  const b = body.toLowerCase();
+  if (/\bwhere\b|address|location|located|find you|directions/.test(b)) {
+    return `We're at ${info.addr} — Better Body Bootcamp ${studioName}. Class schedule: ${info.sched} — come by anytime!`;
+  }
+  if (/schedule|class(es)? (time|at)|what time|hours|when are/.test(b)) {
+    return `Here's the full ${studioName} class schedule: ${info.sched} — first class on your trial can be any of them!`;
+  }
+  if (/price|cost|how much|pricing/.test(b)) {
+    return `The 2-week trial is $49 flat — unlimited classes at ${studioName}, no commitment after. Grab it: betterbodybootcamp.com/trial/${slug}`;
+  }
+  return null;
+}
+
 function isYes(body: string): boolean {
   // 2026-05-31: tightened after the funnel-recovery spam incident. Was matching
   // OK/Y/SURE which fired "🔥 Convert YES" emails to all owners on casual
@@ -175,6 +207,7 @@ serve(async (req) => {
   let matchedTrialIdForGateway: string | null = null;
   let matchedLocationId: string | null = null;
   let matchedTrialName: string | null = null;
+  let autoReplyMsg: string | null = null; // 2026-08-03 instant answers
   try {
     const { data: mid } = await sb.rpc('match_trial_by_phone', { p_phone: from, p_studio_slug: null });
     matchedTrialIdForGateway = (mid as string | null) ?? null;
@@ -227,6 +260,21 @@ serve(async (req) => {
         const locLookup = await sb.from('locations').select('name').eq('id', matchedLocationId).maybeSingle();
         fwdStudioName = locLookup?.data?.name as string | undefined;
         fwdStudioSlug = (fwdStudioName ?? '').toLowerCase().replace(/\s+/g, '-');
+
+        // 2026-08-03 · instant auto-answer for clear info questions
+        if (!isStop(body) && !isYes(body)) {
+          autoReplyMsg = buildAutoReply(body, fwdStudioSlug, fwdStudioName ?? fwdStudioSlug);
+          if (autoReplyMsg) {
+            // Log it so the /homebase thread shows what the robot answered.
+            await sb.from('sms_messages').insert({
+              trial_signup_id: fwdTrial?.id ?? matchedTrialIdForGateway,
+              from_phone: to, to_phone: from,
+              body: autoReplyMsg,
+              direction: 'outbound', status: 'queued',
+              send_path: 'auto_reply', studio_slug: fwdStudioSlug,
+            }).then(({ error }) => { if (error) console.error('auto_reply log failed:', error.message); });
+          }
+        }
       }
 
       // If we couldn't tie the inbound to a studio, we can't route — log + bail.
@@ -474,7 +522,12 @@ serve(async (req) => {
     }
   }
 
-  // Always return empty TwiML so Twilio doesn't auto-reply.
+  // 2026-08-03: if we built an instant answer, send it via TwiML; otherwise
+  // stay silent as before (humans already alerted through forwards/email).
+  if (autoReplyMsg) {
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${xmlEscape(autoReplyMsg)}</Message></Response>`;
+    return new Response(twiml, { status: 200, headers: { ...cors, 'Content-Type': 'text/xml' } });
+  }
   return new Response(TWIML_OK, {
     status: 200,
     headers: { ...cors, 'Content-Type': 'text/xml' },

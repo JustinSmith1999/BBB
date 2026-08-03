@@ -252,6 +252,19 @@
         window.MT_CONFIG = {
           isCaptureUTMParamsActive: true,
           events: {
+            // 2026-08-03: telemetry for the sticker-shock fix — records which
+            // analytics events MT fires (esp. around the $49 overlay closing)
+            // so we can key the catalog-hiding panel on a VERIFIED signal.
+            // Zero side effects: ring buffer in sessionStorage + console only.
+            onTrackEvent: function (name, props) {
+              try {
+                var k = 'bbb_mt_events';
+                var arr = JSON.parse(sessionStorage.getItem(k) || '[]');
+                arr.push({ t: Date.now(), n: name });
+                if (arr.length > 50) arr = arr.slice(-50);
+                sessionStorage.setItem(k, JSON.stringify(arr));
+              } catch (e) {}
+            },
             onCreateAccountComplete: function (d) { lastEmail = d && d.emailAddress; shadow(lastEmail); },
             onLoginComplete: function (d) { lastEmail = d && d.emailAddress; shadow(lastEmail); },
             onCheckoutComplete: function (d) {
