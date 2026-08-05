@@ -82,9 +82,33 @@ class ChunkErrorBoundary extends Component<{ children: ReactNode }, { hasError: 
   componentDidCatch(error: Error, info: ErrorInfo) {
     // Surface to console + Sentry-equivalent if wired later
     console.error('[ChunkErrorBoundary] route crashed:', error, info);
+
+    // 2026-08-05: the #1 cause of this boundary tripping is a STALE CHUNK —
+    // after a deploy, Vite renames the lazy-loaded route chunks and deletes
+    // the old ones. A visitor whose page (or CDN cache) predates the deploy
+    // taps a location, the browser fetches the old chunk filename, gets a 404,
+    // and the dynamic import() rejects. That's why it's intermittent and why
+    // "reload usually fixes it." Detect that specific error and auto-reload
+    // ONCE (sessionStorage guard prevents any reload loop) so the customer
+    // sees a blink instead of an error screen. Genuine render bugs (non-chunk
+    // errors) still fall through to the manual UI below — no infinite reload.
+    const msg = String(error?.message || error || '');
+    const isChunkError =
+      /dynamically imported module|Importing a module script failed|ChunkLoadError|Failed to fetch|error loading dynamically imported/i.test(msg);
+    try {
+      if (isChunkError && !sessionStorage.getItem('bbb_chunk_reloaded')) {
+        sessionStorage.setItem('bbb_chunk_reloaded', '1');
+        window.location.reload();
+      }
+    } catch { /* sessionStorage unavailable — fall through to manual UI */ }
   }
   render() {
-    if (!this.state.hasError) return this.props.children;
+    if (!this.state.hasError) {
+      // A route rendered successfully → the reload (if any) worked. Clear the
+      // guard so a LATER deploy's stale-chunk error can auto-recover again.
+      try { sessionStorage.removeItem('bbb_chunk_reloaded'); } catch { /* ignore */ }
+      return this.props.children;
+    }
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center px-6 py-24">
         <div className="max-w-md text-center">

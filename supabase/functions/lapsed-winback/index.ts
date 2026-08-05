@@ -44,39 +44,25 @@ Deno.serve(async (req) => {
   const sb = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
   const studioName = studio.split("-").map((w: string) => w[0].toUpperCase() + w.slice(1)).join(" ");
 
-  // ── Audience: lapsed members (same shape as the dashboard cohort) ─────────
-  const { data: clients, error } = await sb
-    .from("mindbody_clients")
-    .select("mindbody_id, first_name, last_name, email, phone")
-    .eq("studio_slug", studio)
-    .not("email", "is", null)
-    .limit(3000);
-  if (error) return json({ ok: false, error: error.message }, 500);
-
-  const ids = (clients || []).map((c: any) => c.mindbody_id);
-  const eligible: any[] = [];
-  for (let i = 0; i < ids.length; i += 150) {
-    const chunk = ids.slice(i, i + 150);
-    const [{ data: cur }, { data: visits }] = await Promise.all([
-      sb.from("mindbody_client_services").select("mindbody_client_id").in("mindbody_client_id", chunk).eq("current", true),
-      sb.from("mindbody_visits").select("mindbody_client_id, starts_at").in("mindbody_client_id", chunk).eq("signed_in", true),
-    ]);
-    const hasCur = new Set((cur || []).map((r: any) => r.mindbody_client_id));
-    const agg = new Map<number, { n: number; last: string }>();
-    (visits || []).forEach((v: any) => {
-      const a = agg.get(v.mindbody_client_id) || { n: 0, last: "" };
-      a.n++; if (v.starts_at > a.last) a.last = v.starts_at;
-      agg.set(v.mindbody_client_id, a);
+  // ── Audience: reuse the dashboard's OWN lapsed cohort (get_marketing_
+  // dashboard → lapsed.list). r2 2026-08-03: the previous hand-rolled crawl
+  // silently truncated visit history at the API's 1000-row cap and found 28
+  // people where the dashboard counts 271. One source of truth now.
+  const { data: dash, error } = await sb.rpc("get_marketing_dashboard", { p_studio: studio });
+  if (error) return json({ ok: false, error: `dashboard rpc: ${error.message}` }, 500);
+  const lapsedList: any[] = dash?.lapsed?.list || [];
+  const eligible = lapsedList
+    .filter((c) => c.email)
+    .map((c) => {
+      const parts = String(c.name || "").trim().split(/\s+/);
+      return {
+        mindbody_id: null,
+        first_name: parts[0] || "there",
+        last_name: parts.slice(1).join(" "),
+        email: c.email, phone: c.phone,
+        lifetime_visits: c.lifetime_visits, last_visit: c.last_visit,
+      };
     });
-    const mo6 = new Date(Date.now() - 182 * 864e5).toISOString();
-    const mo36 = new Date(Date.now() - 1095 * 864e5).toISOString();
-    for (const c of (clients || []).filter((c: any) => chunk.includes(c.mindbody_id))) {
-      const a = agg.get(c.mindbody_id);
-      if (!hasCur.has(c.mindbody_id) && a && a.n >= 5 && a.last < mo6 && a.last >= mo36) {
-        eligible.push({ ...c, lifetime_visits: a.n, last_visit: a.last });
-      }
-    }
-  }
 
   // ── Guards: recent MT buyers + already-sent ──────────────────────────────
   const emails = eligible.map((c) => (c.email || "").toLowerCase().trim());
