@@ -23,7 +23,7 @@ type LocationConfig = {
 
 const LOCATIONS: Record<string, LocationConfig> = {
   'astoria':       { slug: 'astoria',       name: 'Astoria',       badge: 'ASTORIA · QUEENS',       address: '31-18 Steinway Street', city: 'Astoria',       state: 'NY', zip: '11103', phone: '(718) 704-9954', mtLocationId: 48717 },
-  'bayside':       { slug: 'bayside',       name: 'Bayside',       badge: 'BAYSIDE · QUEENS',       address: '3447 Bell Blvd',        city: 'Bayside',       state: 'NY', zip: '11361', phone: '(646) 566-8870', mtLocationId: 48718 },
+  'bayside':       { slug: 'bayside',       name: 'Bayside',       badge: 'BAYSIDE · QUEENS',       address: '34-47 Bell Blvd',        city: 'Bayside',       state: 'NY', zip: '11361', phone: '(646) 566-8870', mtLocationId: 48718 },
   'fresh-meadows': { slug: 'fresh-meadows', name: 'Fresh Meadows', badge: 'FRESH MEADOWS · QUEENS', address: '76-46 164th Street',   city: 'Fresh Meadows', state: 'NY', zip: '11366', phone: '(646) 566-8207', mtLocationId: 48719 },
   'williamsburg':  { slug: 'williamsburg',  name: 'Williamsburg',  badge: 'WILLIAMSBURG · BROOKLYN', address: '487 Driggs Ave',      city: 'Brooklyn',      state: 'NY', zip: '11211', phone: '(718) 683-1864', mtLocationId: 48720 },
 };

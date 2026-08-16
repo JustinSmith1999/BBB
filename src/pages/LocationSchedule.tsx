@@ -37,7 +37,7 @@ const LOCATIONS: Record<string, LocationConfig> = {
     slug: 'bayside',
     name: 'Bayside',
     badge: 'BAYSIDE · QUEENS',
-    address: '3447 Bell Blvd',
+    address: '34-47 Bell Blvd',
     city: 'Bayside',
     state: 'NY',
     zip: '11361',

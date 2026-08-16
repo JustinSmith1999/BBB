@@ -25,7 +25,7 @@ const PROGRAM_ICONS = [Dumbbell, User, Users, Flame] as const;
 //    Google can crawl all 4 studios from any one of them.
 const ALL_STUDIOS: { name: string; slug: string; address: string; borough: string }[] = [
   { name: 'Astoria',       slug: 'astoria',       address: '31-18 Steinway Street', borough: 'Queens' },
-  { name: 'Bayside',       slug: 'bayside',       address: '3447 Bell Blvd',        borough: 'Queens' },
+  { name: 'Bayside',       slug: 'bayside',       address: '34-47 Bell Blvd',        borough: 'Queens' },
   { name: 'Fresh Meadows', slug: 'fresh-meadows', address: '76-46 164th Street',    borough: 'Queens' },
   { name: 'Williamsburg',  slug: 'williamsburg',  address: '487 Driggs Ave',        borough: 'Brooklyn' },
 ];
@@ -89,8 +89,8 @@ export default function LocationDetailPage() {
     },
     'Bayside': {
       title: 'Gyms in Bayside, Queens · $49 Trial | Better Body Bootcamp',
-      description: 'Top-rated gym in Bayside, Queens at 3447 Bell Blvd. Bootcamp classes, expert trainers, real results. Try 2 weeks for $49. Under new ownership since Oct 2025.',
-      address: '3447 Bell Blvd', city: 'Bayside', state: 'NY', zip: '11361', phone: '+1-646-566-8870',
+      description: 'Top-rated gym in Bayside, Queens at 34-47 Bell Blvd. Bootcamp classes, expert trainers, real results. Try 2 weeks for $49. Under new ownership since Oct 2025.',
+      address: '34-47 Bell Blvd', city: 'Bayside', state: 'NY', zip: '11361', phone: '+1-646-566-8870',
       lat: 40.7666, lng: -73.7732,
       instagram: 'https://www.instagram.com/betterbodybootcampbayside',
       facebook:  'https://www.facebook.com/betterbodybootcampbayside',
@@ -445,11 +445,16 @@ export default function LocationDetailPage() {
               </div>
 
               <h1
-                className="text-[clamp(2.25rem,5vw,4.5rem)] font-black text-white tracking-tight mb-5 leading-[0.95]"
+                className="text-[clamp(2.25rem,5vw,4.5rem)] font-black text-white tracking-tight mb-4 leading-[0.95]"
                 style={{ fontFamily: 'BlackLives, sans-serif' }}
               >
                 {location.name}
               </h1>
+
+              <p className="text-white/85 text-lg sm:text-xl font-semibold max-w-2xl mx-auto mb-5 leading-snug">
+                The coach-led gym in {location.name} — group HIIT, strength, and conditioning
+                classes for every level. A different kind of gym: no guesswork, real coaching, real results.
+              </p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6 text-white/90">
                 <div className="flex items-center gap-2">

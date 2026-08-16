@@ -38,7 +38,7 @@ const QUEENS_LOCATIONS = [
     slug: 'bayside',
     name: 'Bayside',
     neighborhood: 'Bayside, Queens',
-    address: '3447 Bell Blvd',
+    address: '34-47 Bell Blvd',
     zip: '11361',
     phone: '(646) 566-8870',
     image: '/bayside-final.webp',
@@ -105,7 +105,7 @@ const faqSchema = {
       acceptedAnswer: {
         '@type': 'Answer',
         text:
-          'There are three BBB studios in Queens: Astoria (31-18 Steinway Street), Bayside (3447 Bell Blvd), and Fresh Meadows (76-46 164th Street). All three are within a 30-minute drive of each other.',
+          'There are three BBB studios in Queens: Astoria (31-18 Steinway Street), Bayside (34-47 Bell Blvd), and Fresh Meadows (76-46 164th Street). All three are within a 30-minute drive of each other.',
       },
     },
     {

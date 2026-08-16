@@ -102,7 +102,7 @@ export const STUDIO_SEO_EXTRAS: Record<string, StudioSeoExtras> = {
     },
     faq: [
       { q: 'Where is Better Body Bootcamp Bayside located?',
-        a: 'Better Body Bootcamp Bayside is at 3447 Bell Blvd, Bayside, NY 11361, on the main Bell Blvd shopping strip a few blocks from the LIRR station.' },
+        a: 'Better Body Bootcamp Bayside is at 34-47 Bell Blvd, Bayside, NY 11361, on the main Bell Blvd shopping strip a few blocks from the LIRR station.' },
       { q: 'What is the closest train to Better Body Bootcamp Bayside?',
         a: 'The LIRR Bayside station is about a 3-minute walk on Bell Blvd. The Q12, Q13, Q31, and Q88 buses also serve the area within two blocks.' },
       { q: 'Is there parking at Better Body Bootcamp Bayside?',

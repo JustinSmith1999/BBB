@@ -6,7 +6,7 @@ import SEOHead from '../components/SEOHead';
 // (/trial/[slug]) which has the real validated form + per-gym Stripe checkout.
 const STUDIOS = [
   { slug: 'astoria',       name: 'Astoria',       area: 'Astoria, Queens',        address: '31-18 Steinway Street' },
-  { slug: 'bayside',       name: 'Bayside',       area: 'Bayside, Queens',        address: '3447 Bell Blvd' },
+  { slug: 'bayside',       name: 'Bayside',       area: 'Bayside, Queens',        address: '34-47 Bell Blvd' },
   { slug: 'fresh-meadows', name: 'Fresh Meadows', area: 'Fresh Meadows, Queens',  address: '76-46 164th Street' },
   { slug: 'williamsburg',  name: 'Williamsburg',  area: 'Williamsburg, Brooklyn', address: '487 Driggs Ave' },
 ];

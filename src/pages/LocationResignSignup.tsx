@@ -13,7 +13,7 @@ type LocationConfig = {
 
 const LOCATIONS: Record<string, LocationConfig> = {
   'astoria':       { slug: 'astoria',       locationId: 'dcf94b47-dcc8-4176-96e9-f0cdd0fc6b45', name: 'Astoria',       badge: 'ASTORIA · QUEENS',         address: '31-18 Steinway Street',  city: 'Astoria',       state: 'NY', zip: '11103', phone: '(718) 704-9954', metaPixelId: '1291566006435758', heroImage: '/astoria-final.webp' },
-  'bayside':       { slug: 'bayside',       locationId: '5c0e8383-dd2f-4f8f-bfea-5cc477cec4c7', name: 'Bayside',       badge: 'BAYSIDE · QUEENS',         address: '3447 Bell Blvd',         city: 'Bayside',       state: 'NY', zip: '11361', phone: '(646) 566-8870', metaPixelId: '931144729719242',  heroImage: '/bayside-final.webp' },
+  'bayside':       { slug: 'bayside',       locationId: '5c0e8383-dd2f-4f8f-bfea-5cc477cec4c7', name: 'Bayside',       badge: 'BAYSIDE · QUEENS',         address: '34-47 Bell Blvd',         city: 'Bayside',       state: 'NY', zip: '11361', phone: '(646) 566-8870', metaPixelId: '931144729719242',  heroImage: '/bayside-final.webp' },
   'fresh-meadows': { slug: 'fresh-meadows', locationId: '6bbbe077-bcc6-4d9d-a10b-7605c1484752', name: 'Fresh Meadows', badge: 'FRESH MEADOWS · QUEENS',   address: '76-46 164th Street',     city: 'Fresh Meadows', state: 'NY', zip: '11366', phone: '(646) 566-8207', metaPixelId: '979328851475276',  heroImage: '/freshmeadows-final.webp' },
   'williamsburg':  { slug: 'williamsburg',  locationId: '80536b45-df0e-42d1-880c-e9301372e1cf', name: 'Williamsburg',  badge: 'WILLIAMSBURG · BROOKLYN',  address: '487 Driggs Ave',         city: 'Brooklyn',      state: 'NY', zip: '11211', phone: '(718) 683-1864', metaPixelId: '2160299368182872', heroImage: '/williamsburg-final.webp' },
 };

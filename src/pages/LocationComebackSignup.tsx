@@ -46,7 +46,7 @@ const LOCATIONS: Record<string, LocationConfig> = {
     locationId: '5c0e8383-dd2f-4f8f-bfea-5cc477cec4c7',
     name: 'Bayside',
     badge: 'BAYSIDE · QUEENS',
-    address: '3447 Bell Blvd',
+    address: '34-47 Bell Blvd',
     city: 'Bayside',
     state: 'NY',
     zip: '11361',

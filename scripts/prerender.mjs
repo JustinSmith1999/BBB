@@ -66,7 +66,7 @@ const LOCATIONS = [
     title: 'Gym in Bayside, Queens · Bootcamp Classes · $49 Trial | Better Body Bootcamp',
     description:
       'Bootcamp, HIIT, and personal training on Bell Blvd in Bayside, Queens. Coach-led group classes plus 1-on-1 and small group training. Try 2 weeks for $49.',
-    address: '3447 Bell Blvd, Bayside, NY 11361',
+    address: '34-47 Bell Blvd, Bayside, NY 11361',
     phone: '(646) 566-8870',
     nearby: 'right on Bell Boulevard, steps from the LIRR Bayside station and Bell Blvd’s restaurant row',
     unique: [
@@ -146,7 +146,7 @@ const EXTRA_ROUTES = [
     description:
       'Better Body Bootcamp has 3 gyms in Queens — Astoria, Bayside, and Fresh Meadows. High-energy bootcamp, HIIT, and strength classes 7 days a week. Try 2 weeks for $49.',
     body: [
-      'Better Body Bootcamp operates three gyms in Queens, New York: Astoria (31-18 Steinway Street), Bayside (3447 Bell Blvd), and Fresh Meadows (76-46 164th Street). Each studio offers coach-led bootcamp, HIIT, strength, and conditioning classes 7 days a week for all fitness levels.',
+      'Better Body Bootcamp operates three gyms in Queens, New York: Astoria (31-18 Steinway Street), Bayside (34-47 Bell Blvd), and Fresh Meadows (76-46 164th Street). Each studio offers coach-led bootcamp, HIIT, strength, and conditioning classes 7 days a week for all fitness levels.',
       'Try any Queens location with a 2-week trial for $49. Find your nearest studio and reserve a class online.',
     ],
     faq: [
