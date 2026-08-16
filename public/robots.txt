@@ -1,6 +1,8 @@
 User-agent: *
 Allow: /
-Disallow: /our-team
+# 2026-08-15: removed "Disallow: /our-team". It was a legacy soft-404 that
+# blocking only kept indexed-but-uncrawlable. It now 301s to /about (see
+# netlify.toml) — Googlebot must be allowed to crawl it to see the redirect.
 
 # ── AI / generative crawlers ───────────────────────────────────────────────
 # Explicitly allow Google-Extended so Google Search Generative Experience

@@ -143,6 +143,38 @@
   function = "review-redirect"
   path     = "/review/*"
 
+# 2026-08-15 SEO: legacy MindBody-era URL /free-1-day-pass has no React route,
+# so it fell through to the SPA catch-all and returned HTTP 200 with 404 content
+# (a soft-404). Google kept it indexed, splitting authority from /trial. 301 it
+# to the canonical trial page. force=true so it wins over the catch-all below.
+[[redirects]]
+  from   = "/free-1-day-pass"
+  to     = "/trial"
+  status = 301
+  force  = true
+
+[[redirects]]
+  from   = "/free-1-day-pass/*"
+  to     = "/trial"
+  status = 301
+  force  = true
+
+# 2026-08-15 SEO: legacy /our-team (old site path, no React route) is another
+# soft-404 (200 + 404 content) still indexed by Google. 301 it to /about, which
+# now carries the team content. (robots.txt Disallow on /our-team was ALSO
+# removed same day so Googlebot can crawl this and honor the redirect.)
+[[redirects]]
+  from   = "/our-team"
+  to     = "/about"
+  status = 301
+  force  = true
+
+[[redirects]]
+  from   = "/our-team/*"
+  to     = "/about"
+  status = 301
+  force  = true
+
 # SPA fallback for everything else — React Router handles client-side routing.
 [[redirects]]
   from   = "/*"

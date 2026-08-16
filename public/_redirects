@@ -46,5 +46,17 @@
 # Verified comeback-* senders already emit /comeback/{slug}, so this is a safety net.
 /comeback                /comeback/bayside                              302
 
+# 2026-08-15 SEO: legacy /free-1-day-pass (old MindBody URL, no React route)
+# was a soft-404 (200 + 404 content), still indexed, splitting authority from
+# /trial. 301 it to the canonical trial page. Must precede the /* catch-all.
+/free-1-day-pass         /trial                                         301!
+/free-1-day-pass/*       /trial                                         301!
+
+# 2026-08-15 SEO: legacy /our-team (no React route) — soft-404, still indexed.
+# 301 to /about (carries team content). robots Disallow removed same day so
+# Googlebot can crawl and honor this. Must precede the /* catch-all.
+/our-team                /about                                         301!
+/our-team/*              /about                                         301!
+
 # SPA fallback for client-side React Router.
 /*                       /index.html                                    200

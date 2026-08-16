@@ -45,7 +45,7 @@ export default function FAQ() {
     },
     {
       question: 'What is your cancellation policy?',
-      answer: 'Classes can be cancelled up to 2 hours before the start time without penalty through the Mind Body app. Late cancellations may result in a fee. For membership cancellations, please refer to your membership agreement or contact your location directly.',
+      answer: 'Classes can be cancelled up to 2 hours before the start time without penalty through the Better Body Studios app. Late cancellations may result in a fee. For membership cancellations, please refer to your membership agreement or contact your location directly.',
     },
     {
       question: 'Are there shower facilities?',
@@ -75,11 +75,16 @@ export default function FAQ() {
         '@context': 'https://schema.org',
         '@type': 'FAQPage',
         mainEntity: [
-          { '@type': 'Question', name: 'What is Better Body Bootcamp?', acceptedAnswer: { '@type': 'Answer', text: "Better Body Bootcamp is New York's premier group training program, offering high-intensity interval training combined with body sculpting exercises. Since 2011, we've helped thousands of members achieve their fitness goals." } },
-          { '@type': 'Question', name: 'Do I need to be in shape to start?', acceptedAnswer: { '@type': 'Answer', text: 'Not at all! Our program is designed for all fitness levels. Our expert trainers will modify exercises to match your current fitness level.' } },
-          { '@type': 'Question', name: 'Can I try a class before committing?', acceptedAnswer: { '@type': 'Answer', text: 'Yes! We offer a 2-week trial pass for $49 so you can experience our program firsthand.' } },
-          { '@type': 'Question', name: 'What is your cancellation policy?', acceptedAnswer: { '@type': 'Answer', text: 'Classes must be cancelled through the Better Body Studios app only. Membership cancellations require 30 days written notice to your home location.' } },
-          { '@type': 'Question', name: 'Can I freeze my membership?', acceptedAnswer: { '@type': 'Answer', text: 'Members with a 12-month membership may freeze one time for up to 30 days.' } },
+          { '@type': 'Question', name: 'What is Better Body Bootcamp?', acceptedAnswer: { '@type': 'Answer', text: "Better Body Bootcamp is New York's premier group training program, offering high-intensity interval training combined with body sculpting exercises. Since 2011, we've helped thousands of members achieve their fitness goals across four NYC studios." } },
+          { '@type': 'Question', name: 'Where are Better Body Bootcamp studios located?', acceptedAnswer: { '@type': 'Answer', text: 'Better Body Bootcamp has four New York City locations: Astoria (31-18 Steinway Street), Bayside (34-47 Bell Blvd), Fresh Meadows (76-46 164th Street) in Queens, and Williamsburg (487 Driggs Ave) in Brooklyn.' } },
+          { '@type': 'Question', name: 'How much is the trial and what does it include?', acceptedAnswer: { '@type': 'Answer', text: 'New NYC customers can try two weeks of unlimited classes for $49. That is the only charge — there is no membership, no auto-renewal, and no commitment. After the trial you choose whether to continue.' } },
+          { '@type': 'Question', name: 'Do I need to be in shape to start?', acceptedAnswer: { '@type': 'Answer', text: 'Not at all. The program is designed for all fitness levels and our coaches modify every exercise to match where you are. Many of our most successful members started as complete beginners.' } },
+          { '@type': 'Question', name: 'What kinds of classes do you offer?', acceptedAnswer: { '@type': 'Answer', text: 'Coached group classes including HIIT, strength training, conditioning, bootcamp, Pilates, and hybrid strength-and-cardio sessions. Astoria also runs a 12-week competition training program.' } },
+          { '@type': 'Question', name: 'Is Better Body Bootcamp good for beginners?', acceptedAnswer: { '@type': 'Answer', text: 'Yes. Every class is coach-led with scaled options, so first-timers work at their own pace alongside all levels. You never have to guess what to do — the coach guides the whole session.' } },
+          { '@type': 'Question', name: 'How many times per week should I attend?', acceptedAnswer: { '@type': 'Answer', text: 'For best results we recommend 3-4 sessions per week, which balances consistency with recovery. With an unlimited membership you can attend as often as your schedule allows.' } },
+          { '@type': 'Question', name: 'Can I try a class before committing?', acceptedAnswer: { '@type': 'Answer', text: 'Yes. Start with the $49 two-week unlimited trial to experience the program firsthand before deciding on a membership.' } },
+          { '@type': 'Question', name: 'What is your cancellation policy?', acceptedAnswer: { '@type': 'Answer', text: 'Classes can be cancelled up to 2 hours before start time without penalty through the Better Body Studios app. Late cancellations may incur a fee. Membership cancellations follow your membership agreement — contact your home location.' } },
+          { '@type': 'Question', name: 'Can I freeze my membership?', acceptedAnswer: { '@type': 'Answer', text: 'Membership freezes are available under certain circumstances — contact your location to discuss options and any applicable terms.' } },
         ],
       }}
     />

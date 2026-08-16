@@ -746,6 +746,21 @@ export default function LocationTrialSignup() {
                         14721 support ticket (task #498): ask MT to (a) split
                         into 4 per-studio passes AND (b) flag them as intro
                         offers so /intro-offers works. */}
+                    {/* 2026-08-09: Sticker-shock buffer. The MT /buy widget
+                        lists the full membership catalog ($199/mo, $2,199 PIF)
+                        around the $49 pass — a $49 shopper who scrolls past the
+                        overlay sees those and bolts. Until MT flags pass 14721
+                        as an intro offer so /intro-offers works (ticket #498),
+                        reframe it: make crystal-clear the ONLY charge today is
+                        $49, nothing recurring. Pure copy — no logic touched. */}
+                    <div className="mb-4 rounded-xl bg-red-50 border border-red-100 p-3 sm:p-4 text-center">
+                      <p className="text-sm sm:text-base font-extrabold text-gray-900">
+                        You pay <span className="text-red-600">$49 today</span> — that's the whole price.
+                      </p>
+                      <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                        No membership, no auto-renewal, no commitment. Two weeks of unlimited classes, then it's up to you.
+                      </p>
+                    </div>
                     <div
                       key={`mt-trial-${location.slug}`}
                       data-mariana-integrations={`/buy/${location.mtLocationId}?activeProduct=memberships-14721&locations=${location.mtLocationId}`}
