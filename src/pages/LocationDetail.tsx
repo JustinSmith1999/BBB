@@ -410,7 +410,7 @@ export default function LocationDetailPage() {
           buttons only need ~520px total — the rest was empty space and the
           page felt "massive with horrible spacing". Replaced with a tight
           content-driven height + py-16/20 padding for proper rhythm. */}
-      <div className="relative bg-black overflow-hidden">
+      <div className="relative bg-black overflow-hidden min-h-[80vh] lg:min-h-[88vh] flex flex-col">
         {/* Base diagonal gradient */}
         <div className="absolute inset-0 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black" />
         {/* 2026-06-29 (MOBILE FIX): the two big red blur orbs below were
@@ -438,7 +438,7 @@ export default function LocationDetailPage() {
         {/* Bottom vignette for content legibility */}
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/70" />
 
-        <div className="container mx-auto px-4 relative z-10 pt-8 pb-16 sm:pt-10 sm:pb-20">
+        <div className="container mx-auto px-4 relative z-10 pt-8 pb-12 sm:pt-10 sm:pb-14 flex-1 flex flex-col justify-center">
           <Link
             to="/locations"
             className="inline-flex items-center gap-2 text-white/70 hover:text-white transition-colors font-semibold group text-sm mb-10"
@@ -475,7 +475,7 @@ export default function LocationDetailPage() {
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6 text-white/90">
                 <div className="flex items-center gap-2">
                   <MapPin className="w-5 h-5 text-red-400" />
-                  <span className="text-base sm:text-lg font-semibold tracking-wide">{location.address}</span>
+                  <span className="text-base sm:text-lg font-semibold tracking-wide">{seoData?.address ?? location.address}</span>
                 </div>
                 <span className="hidden sm:block w-1 h-1 rounded-full bg-red-400/50" />
                 <a
@@ -498,9 +498,9 @@ export default function LocationDetailPage() {
                           target="_blank"
                           rel="noopener noreferrer"
                           aria-label={`Better Body Bootcamp ${location.name} on Instagram`}
-                          className="hover:text-red-400 transition-colors"
+                          className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-white/5 border border-white/15 text-white hover:bg-red-600 hover:border-red-600 transition-colors"
                         >
-                          <Instagram className="w-5 h-5 text-red-400" />
+                          <Instagram className="w-5 h-5" />
                         </a>
                       )}
                       {seoData?.facebook && (
@@ -509,9 +509,9 @@ export default function LocationDetailPage() {
                           target="_blank"
                           rel="noopener noreferrer"
                           aria-label={`Better Body Bootcamp ${location.name} on Facebook`}
-                          className="hover:text-red-400 transition-colors"
+                          className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-white/5 border border-white/15 text-white hover:bg-red-600 hover:border-red-600 transition-colors"
                         >
-                          <Facebook className="w-5 h-5 text-red-400" />
+                          <Facebook className="w-5 h-5" />
                         </a>
                       )}
                     </div>
