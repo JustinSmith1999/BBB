@@ -26,6 +26,12 @@ export type StudioFaqEntry = { q: string; a: string };
 export type StudioSeoExtras = {
   // Programs offered at this studio — feeds hasOfferCatalog as Service entities.
   programs: Array<{ name: string; description: string; price?: string }>;
+  // Surrounding neighborhoods this studio realistically serves. Baked into
+  // areaServed schema + a visible "Areas we serve" block so the page ranks for
+  // "gym/bootcamp/group fitness in <nearby area>" — the reach expansion the
+  // keyword research flagged (most searchers use the neighborhood, not the exact
+  // one the studio sits in).
+  nearbyAreas: string[];
   // Neighborhood entity facts — power the local Q&A answers AND optionally
   // surface as visible "About the neighborhood" blocks if we want them later.
   neighborhood: {
@@ -67,6 +73,7 @@ export const STUDIO_SEO_EXTRAS: Record<string, StudioSeoExtras> = {
 
   'Astoria': {
     programs: PROGRAMS_DEFAULT,
+    nearbyAreas: ['Long Island City', 'Sunnyside', 'Woodside', 'Ditmars', 'Astoria Heights'],
     neighborhood: {
       nearestSubway: 'The N and W trains at Astoria Blvd are about a 5-minute walk; the R/W at Steinway St is a 10-minute walk.',
       parking: 'Street parking along Steinway Street and the surrounding side streets is generally easy mid-morning and evening. Metered weekday parking applies on the main commercial strip.',
@@ -75,6 +82,8 @@ export const STUDIO_SEO_EXTRAS: Record<string, StudioSeoExtras> = {
     faq: [
       { q: 'Where is Better Body Bootcamp Astoria located?',
         a: 'Better Body Bootcamp Astoria is at 31-18 Steinway Street, Astoria, NY 11103, in the heart of the Steinway Street shopping corridor.' },
+      { q: 'Where can I find a bootcamp, HIIT, or group fitness class near me in Astoria?',
+        a: 'Better Body Bootcamp Astoria runs coach-led bootcamp, HIIT, strength, and group fitness classes every day on Steinway Street — serving Astoria, Long Island City, Sunnyside, Woodside, and Ditmars. It is a gym built around real coaching, not a self-serve floor. New members get two weeks of unlimited classes for $49.' },
       { q: 'What is the closest subway to Better Body Bootcamp Astoria?',
         a: 'The N and W trains at Astoria Blvd are about a 5-minute walk. The R and W trains at Steinway St are about a 10-minute walk. Several bus lines stop directly on Steinway.' },
       { q: 'Is there parking near Better Body Bootcamp Astoria?',
@@ -95,6 +104,7 @@ export const STUDIO_SEO_EXTRAS: Record<string, StudioSeoExtras> = {
 
   'Bayside': {
     programs: PROGRAMS_DEFAULT,
+    nearbyAreas: ['Bay Terrace', 'Whitestone', 'Auburndale', 'Douglaston', 'Little Neck', 'Oakland Gardens'],
     neighborhood: {
       nearestSubway: 'The LIRR Bayside station is about a 3-minute walk on Bell Blvd. The Q12, Q13, Q31, and Q88 buses all stop within two blocks.',
       parking: 'Free street parking is generally available on Bell Blvd and the side streets. Municipal lots near 41st Ave provide additional metered parking.',
@@ -103,6 +113,8 @@ export const STUDIO_SEO_EXTRAS: Record<string, StudioSeoExtras> = {
     faq: [
       { q: 'Where is Better Body Bootcamp Bayside located?',
         a: 'Better Body Bootcamp Bayside is at 34-47 Bell Blvd, Bayside, NY 11361, on the main Bell Blvd shopping strip a few blocks from the LIRR station.' },
+      { q: 'Where can I find a bootcamp, HIIT, or group fitness class near me in Bayside?',
+        a: 'Better Body Bootcamp Bayside offers coach-led bootcamp, HIIT, strength, and group fitness classes daily on Bell Blvd — serving Bayside, Bay Terrace, Whitestone, Auburndale, Douglaston, and Little Neck. It is a coaching-first gym, not a self-serve floor. New members get two weeks of unlimited classes for $49.' },
       { q: 'What is the closest train to Better Body Bootcamp Bayside?',
         a: 'The LIRR Bayside station is about a 3-minute walk on Bell Blvd. The Q12, Q13, Q31, and Q88 buses also serve the area within two blocks.' },
       { q: 'Is there parking at Better Body Bootcamp Bayside?',
@@ -123,6 +135,7 @@ export const STUDIO_SEO_EXTRAS: Record<string, StudioSeoExtras> = {
 
   'Fresh Meadows': {
     programs: PROGRAMS_DEFAULT,
+    nearbyAreas: ['Utopia', 'Hillcrest', 'Jamaica Estates', 'Flushing', 'Kew Gardens Hills', 'Briarwood'],
     neighborhood: {
       nearestSubway: 'Fresh Meadows is primarily served by buses — the Q30, Q31, Q75, Q88, and Q17 all stop within a few blocks. The nearest subway is the F train at 169th St, about a 12-minute drive.',
       parking: 'Easy street parking on 164th Street and the surrounding residential blocks. The neighborhood is largely drive-up — most members park within a block.',
@@ -131,6 +144,8 @@ export const STUDIO_SEO_EXTRAS: Record<string, StudioSeoExtras> = {
     faq: [
       { q: 'Where is Better Body Bootcamp Fresh Meadows located?',
         a: 'Better Body Bootcamp Fresh Meadows is at 76-46 164th Street, Fresh Meadows, NY 11366, minutes from Cunningham Park and the Long Island Expressway.' },
+      { q: 'Where can I find a bootcamp, HIIT, or group fitness class near me in Fresh Meadows?',
+        a: 'Better Body Bootcamp Fresh Meadows runs coach-led bootcamp, HIIT, strength, and group fitness classes daily on 164th Street — serving Fresh Meadows, Utopia, Hillcrest, Jamaica Estates, Flushing, and Kew Gardens Hills. It is a coaching-first gym, not a self-serve floor. New members get two weeks of unlimited classes for $49.' },
       { q: 'How do I get to Better Body Bootcamp Fresh Meadows by transit?',
         a: 'Fresh Meadows is primarily served by buses — the Q30, Q31, Q75, Q88, and Q17 all stop within a few blocks. The nearest subway is the F train at 169th St, about a 12-minute drive.' },
       { q: 'Is parking easy at Better Body Bootcamp Fresh Meadows?',
@@ -151,6 +166,7 @@ export const STUDIO_SEO_EXTRAS: Record<string, StudioSeoExtras> = {
 
   'Williamsburg': {
     programs: PROGRAMS_DEFAULT,
+    nearbyAreas: ['Greenpoint', 'East Williamsburg', 'Bushwick', 'Bedford-Stuyvesant'],
     neighborhood: {
       nearestSubway: 'The L train at Bedford Ave is about a 6-minute walk. The G train at Metropolitan Ave / Lorimer St is about a 12-minute walk.',
       parking: 'Street parking in Williamsburg is limited and metered weekdays. Most members take the L train or bike. Citi Bike stations are within two blocks.',
@@ -159,6 +175,8 @@ export const STUDIO_SEO_EXTRAS: Record<string, StudioSeoExtras> = {
     faq: [
       { q: 'Where is Better Body Bootcamp Williamsburg located?',
         a: 'Better Body Bootcamp Williamsburg is at 487 Driggs Ave, Brooklyn, NY 11211, walking distance from McCarren Park and the Williamsburg Bridge waterfront.' },
+      { q: 'Where can I find a bootcamp, HIIT, or group fitness class near me in Williamsburg?',
+        a: 'Better Body Bootcamp Williamsburg offers coach-led bootcamp, HIIT, strength, and group fitness classes daily on Driggs Ave — serving Williamsburg, Greenpoint, East Williamsburg, and Bushwick. It is a coaching-first gym, not a self-serve floor. New members get two weeks of unlimited classes for $49.' },
       { q: 'What is the closest subway to Better Body Bootcamp Williamsburg?',
         a: 'The L train at Bedford Ave is about a 6-minute walk. The G train at Metropolitan Ave or Lorimer St is about a 12-minute walk. Multiple bus lines also serve the area.' },
       { q: 'Is there parking near Better Body Bootcamp Williamsburg?',

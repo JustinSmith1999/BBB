@@ -81,7 +81,7 @@ export default function LocationDetailPage() {
   }> = {
     'Astoria': {
       title: 'Gyms in Astoria, Queens · $49 Trial | Better Body Bootcamp',
-      description: 'Top-rated gym in Astoria, Queens at 31-18 Steinway Street. Bootcamp classes, expert trainers, real results. Try 2 weeks for $49. Under new ownership since Oct 2025.',
+      description: 'Coach-led bootcamp, HIIT & group fitness gym in Astoria, Queens on Steinway St — also serving Long Island City, Sunnyside & Woodside. 2 weeks unlimited classes for $49.',
       address: '31-18 Steinway Street', city: 'Astoria', state: 'NY', zip: '11103', phone: '+1-718-704-9954',
       lat: 40.7634, lng: -73.9148,
       instagram: 'https://www.instagram.com/betterbodybootcampastoria',
@@ -89,7 +89,7 @@ export default function LocationDetailPage() {
     },
     'Bayside': {
       title: 'Gyms in Bayside, Queens · $49 Trial | Better Body Bootcamp',
-      description: 'Top-rated gym in Bayside, Queens at 34-47 Bell Blvd. Bootcamp classes, expert trainers, real results. Try 2 weeks for $49. Under new ownership since Oct 2025.',
+      description: 'Coach-led bootcamp, HIIT & group fitness gym in Bayside, Queens on Bell Blvd — also serving Bay Terrace, Whitestone, Douglaston & Little Neck. 2 weeks unlimited for $49.',
       address: '34-47 Bell Blvd', city: 'Bayside', state: 'NY', zip: '11361', phone: '+1-646-566-8870',
       lat: 40.7666, lng: -73.7732,
       instagram: 'https://www.instagram.com/betterbodybootcampbayside',
@@ -97,7 +97,7 @@ export default function LocationDetailPage() {
     },
     'Fresh Meadows': {
       title: 'Gyms in Fresh Meadows, Queens · $49 Trial | Better Body Bootcamp',
-      description: 'Top-rated gym in Fresh Meadows at 76-46 164th Street. Bootcamp classes, expert trainers, real results. Try 2 weeks for $49. Under new ownership since Oct 2025.',
+      description: 'Coach-led bootcamp, HIIT & group fitness gym in Fresh Meadows, Queens — also serving Flushing, Hillcrest, Utopia & Jamaica Estates. 2 weeks unlimited classes for $49.',
       address: '76-46 164th Street', city: 'Fresh Meadows', state: 'NY', zip: '11366', phone: '+1-646-566-8207',
       lat: 40.7345, lng: -73.7906,
       instagram: 'https://www.instagram.com/betterbodyfreshmeadows',
@@ -105,7 +105,7 @@ export default function LocationDetailPage() {
     },
     'Williamsburg': {
       title: 'Gyms in Williamsburg, Brooklyn · $49 Trial | Better Body Bootcamp',
-      description: "Top-rated gym in Williamsburg, Brooklyn at 487 Driggs Ave. Bootcamp classes, expert trainers, real results. Try 2 weeks for $49. Under new ownership since Oct 2025.",
+      description: "Coach-led bootcamp, HIIT & group fitness gym in Williamsburg, Brooklyn on Driggs Ave — also serving Greenpoint, East Williamsburg & Bushwick. 2 weeks unlimited for $49.",
       address: '487 Driggs Ave', city: 'Brooklyn', state: 'NY', zip: '11211', phone: '+1-718-683-1864',
       lat: 40.7146, lng: -73.9602,
       instagram: 'https://www.instagram.com/betterbodybootcampwilliamsburg',
@@ -117,6 +117,11 @@ export default function LocationDetailPage() {
   void NEW_OWNERSHIP_TAG;
 
   const seoData = location ? LOCATION_SEO[location.name] : null;
+  // Surrounding neighborhoods this studio serves — drives the enriched
+  // areaServed schema below + the visible "Areas we serve" block. Sourced from
+  // the keyword research so we rank for "gym/bootcamp in <nearby area>", not
+  // just the exact neighborhood the studio sits in.
+  const nearbyAreas = location ? (STUDIO_SEO_EXTRAS[location.name]?.nearbyAreas ?? []) : [];
   const locationSlug = location ? location.name.toLowerCase().replace(/\s+/g, '-') : slug || '';
   // ── LocalBusiness schema ───────────────────────────────────────────────
   // Beefed up beyond the bare HealthClub: geo coords help us appear in the
@@ -160,11 +165,22 @@ export default function LocationDetailPage() {
       opens: '06:00',
       closes: '21:00',
     })),
-    areaServed: {
-      '@type': 'City',
-      name: seoData.city,
-      containedInPlace: { '@type': 'AdministrativeArea', name: 'New York' },
-    },
+    // areaServed lists the studio's own city PLUS the surrounding
+    // neighborhoods it draws from. This is a direct relevance signal for
+    // "gym / bootcamp / group fitness in <nearby area>" queries — the reach
+    // expansion the keyword research identified.
+    areaServed: [
+      {
+        '@type': 'City',
+        name: seoData.city,
+        containedInPlace: { '@type': 'AdministrativeArea', name: 'New York' },
+      },
+      ...nearbyAreas.map((area) => ({
+        '@type': 'Place',
+        name: area,
+        containedInPlace: { '@type': 'AdministrativeArea', name: 'New York' },
+      })),
+    ],
     // sameAs links to the studio's social profiles. Google uses these to
     // confirm the entity is the same business across the web.
     sameAs: [
@@ -607,6 +623,17 @@ export default function LocationDetailPage() {
                   );
                 })}
               </div>
+
+              {/* Areas we serve — visible on-page content that mirrors the
+                  areaServed schema. Targets "gym / bootcamp / group fitness in
+                  <nearby neighborhood>" so the page ranks beyond the exact
+                  block the studio sits on. */}
+              {nearbyAreas.length > 0 && (
+                <p className="mt-9 text-center text-gray-400 text-sm sm:text-[15px] leading-relaxed max-w-3xl mx-auto">
+                  Proudly serving <span className="text-gray-200 font-semibold">{location.name}</span> and nearby{' '}
+                  {nearbyAreas.join(', ')} — bootcamp, HIIT, strength &amp; group fitness classes for every level.
+                </p>
+              )}
             </div>
           </div>
         </div>
