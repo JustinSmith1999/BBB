@@ -411,8 +411,25 @@ export default function LocationDetailPage() {
           page felt "massive with horrible spacing". Replaced with a tight
           content-driven height + py-16/20 padding for proper rhythm. */}
       <div className="relative bg-black overflow-hidden min-h-[80vh] lg:min-h-[88vh] flex flex-col">
-        {/* Base diagonal gradient */}
-        <div className="absolute inset-0 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black" />
+        {/* Full-bleed studio training video — fills the hero so it never reads
+            as empty. Muted, looping, autoplay (same optimized asset the
+            Services page uses). Poster loads instantly while the video buffers. */}
+        <video
+          src="/services/hero.mp4"
+          poster="/services/hero-poster.webp"
+          aria-label={`Better Body Bootcamp ${location.name} training`}
+          className="absolute inset-0 w-full h-full object-cover"
+          style={{ objectPosition: 'center 35%' }}
+          autoPlay
+          muted
+          loop
+          playsInline
+        />
+        {/* Dark wash so the white headline stays legible over the footage */}
+        <div
+          className="absolute inset-0"
+          style={{ background: 'linear-gradient(180deg, rgba(9,9,11,0.60) 0%, rgba(9,9,11,0.45) 45%, rgba(9,9,11,0.92) 100%)' }}
+        />
         {/* 2026-06-29 (MOBILE FIX): the two big red blur orbs below were
             crashing iOS Safari — page rendered pure black on phones. iOS
             chokes on blur radii > ~50px when the blurred element is large
