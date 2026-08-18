@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { MapPin, Phone, Calendar, ArrowLeft, ArrowRight, Clock, Dumbbell, Users, User, Flame } from 'lucide-react';
+import { MapPin, Phone, Calendar, ArrowLeft, ArrowRight, Clock, Dumbbell, Users, User, Flame, Instagram, Facebook } from 'lucide-react';
 
 // 2026-06-25: Mariana Tek per-studio location IDs (pulled from
 // betterbodybootcamp.marianatools.com/developer). Same tenant for all 4
@@ -485,6 +485,38 @@ export default function LocationDetailPage() {
                   <Phone className="w-5 h-5 text-red-400" />
                   <span className="text-base sm:text-lg font-semibold tracking-wide">{location.phone}</span>
                 </a>
+
+                {/* Studio social profiles — visible links that also reinforce
+                    the sameAs schema (helps Google confirm the entity). */}
+                {(seoData?.instagram || seoData?.facebook) && (
+                  <>
+                    <span className="hidden sm:block w-1 h-1 rounded-full bg-red-400/50" />
+                    <div className="flex items-center gap-3">
+                      {seoData?.instagram && (
+                        <a
+                          href={seoData.instagram}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`Better Body Bootcamp ${location.name} on Instagram`}
+                          className="hover:text-red-400 transition-colors"
+                        >
+                          <Instagram className="w-5 h-5 text-red-400" />
+                        </a>
+                      )}
+                      {seoData?.facebook && (
+                        <a
+                          href={seoData.facebook}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`Better Body Bootcamp ${location.name} on Facebook`}
+                          className="hover:text-red-400 transition-colors"
+                        >
+                          <Facebook className="w-5 h-5 text-red-400" />
+                        </a>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
