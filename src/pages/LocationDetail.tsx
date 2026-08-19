@@ -29,18 +29,6 @@ const ALL_STUDIOS: { name: string; slug: string; address: string; borough: strin
   { name: 'Fresh Meadows', slug: 'fresh-meadows', address: '76-46 164th Street',    borough: 'Queens' },
   { name: 'Williamsburg',  slug: 'williamsburg',  address: '487 Driggs Ave',        borough: 'Brooklyn' },
 ];
-
-// Per-studio hero background — the sharpest real photo we have for each studio.
-// (The old services/hero.mp4 was a 720p *portrait* clip and looked blurry
-// stretched across a wide hero.) Astoria/Williamsburg/Fresh Meadows use their
-// real storefront shots; Bayside uses a clean training shot cropped from its
-// campaign banner.
-const HERO_BG: Record<string, string> = {
-  'Astoria':       '/astoria-final.webp',
-  'Bayside':       '/bayside-bg.jpg',
-  'Fresh Meadows': '/freshmeadows-final.webp',
-  'Williamsburg':  '/williamsburg-final.webp',
-};
 import { supabase, LOCATION_PUBLIC_COLUMNS, Location } from '../lib/supabase';
 import SEOHead from '../components/SEOHead';
 import { STUDIO_SEO_EXTRAS } from '../lib/studioFaq';
@@ -426,17 +414,8 @@ export default function LocationDetailPage() {
         {/* Full-bleed studio training video — fills the hero so it never reads
             as empty. Muted, looping, autoplay (same optimized asset the
             Services page uses). Poster loads instantly while the video buffers. */}
-        <img
-          src={HERO_BG[location.name] ?? '/bayside-bg.jpg'}
-          alt={`Better Body Bootcamp ${location.name}`}
-          className="absolute inset-0 w-full h-full object-cover"
-          style={{ objectPosition: 'center 40%' }}
-        />
-        {/* Dark wash so the white headline stays legible over the footage */}
-        <div
-          className="absolute inset-0"
-          style={{ background: 'linear-gradient(180deg, rgba(9,9,11,0.60) 0%, rgba(9,9,11,0.45) 45%, rgba(9,9,11,0.92) 100%)' }}
-        />
+        {/* Base diagonal gradient */}
+        <div className="absolute inset-0 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black" />
         {/* 2026-06-29 (MOBILE FIX): the two big red blur orbs below were
             crashing iOS Safari — page rendered pure black on phones. iOS
             chokes on blur radii > ~50px when the blurred element is large
@@ -465,7 +444,7 @@ export default function LocationDetailPage() {
         <div className="container mx-auto px-4 relative z-10 pt-8 pb-12 sm:pt-10 sm:pb-14 flex-1 flex flex-col justify-center">
           <Link
             to="/locations"
-            className="inline-flex items-center gap-2 text-white bg-black/45 backdrop-blur-sm border border-white/15 rounded-full px-4 py-2 hover:bg-black/65 transition-colors font-semibold group text-sm mb-10 shadow-lg"
+            className="inline-flex items-center gap-2 text-white/70 hover:text-white transition-colors font-semibold group text-sm mb-10"
           >
             <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
             <span>All Locations</span>

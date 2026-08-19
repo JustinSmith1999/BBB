@@ -28,7 +28,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const ADMIN_SECRET = Deno.env.get("BBB_ADMIN_SECRET") || "bbb-test-2026-05-27";
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization, x-bbb-secret" };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b, null, 2), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
-const fill = (t: string, name: string, studio: string) => t.replaceAll("{{name}}", name).replaceAll("{{studio}}", studio);
+const fill = (t: string, name: string, studio: string, slug = "") =>
+  t.replaceAll("{{name}}", name).replaceAll("{{studio}}", studio).replaceAll("{{studio_slug}}", slug);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -105,8 +106,8 @@ Deno.serve(async (req) => {
         method: "POST", headers: { "Authorization": `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           from: `Better Body Bootcamp <${FROM}>`, to: [email],
-          subject: fill(body.offer_subject, first, studioName),
-          html: fill(body.offer_html, first, studioName),
+          subject: fill(body.offer_subject, first, studioName, studio),
+          html: fill(body.offer_html, first, studioName, studio),
           tags: [{ name: "send_path", value: "lapsed_winback" }, { name: "studio", value: studio }],
         }),
       });
@@ -118,7 +119,7 @@ Deno.serve(async (req) => {
       const digits = (c.phone || "").replace(/\D/g, "");
       const e164 = /^\d{10}$/.test(digits) ? "+1" + digits : (/^1\d{10}$/.test(digits) ? "+" + digits : null);
       if (!e164 || !TW.sid) { failed++; continue; }
-      const form = new URLSearchParams({ To: e164, From: TW.from!, Body: fill(body.offer_sms, first, studioName) + " Txt STOP to opt out" });
+      const form = new URLSearchParams({ To: e164, From: TW.from!, Body: fill(body.offer_sms, first, studioName, studio) + " Txt STOP to opt out" });
       const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TW.sid}/Messages.json`, {
         method: "POST", headers: { "Authorization": "Basic " + btoa(`${TW.sid}:${TW.tok}`), "Content-Type": "application/x-www-form-urlencoded" }, body: form.toString(),
       });

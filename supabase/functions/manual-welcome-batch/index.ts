@@ -248,14 +248,26 @@ Deno.serve(async (req) => {
 
   let body: any = {};
   try { body = await req.json(); } catch {}
-  const trialIds: string[] = (body?.trial_ids || []).filter((x: unknown) => typeof x === "string");
+  let trialIds: string[] = (body?.trial_ids || []).filter((x: unknown) => typeof x === "string");
   const excludeIds = new Set<string>((body?.exclude_trial_ids || []).filter((x: unknown) => typeof x === "string"));
-  const sendCustomerSms   = body?.send_customer_sms   !== false; // default true
+  // 2026-08-09: AUTO-RECOVER mode. When the MT sync goes dark for >3h (e.g. the
+  // dead OAuth-token outage), trials get boarded but the 3-hour past-send guard
+  // in mt-orders-sync skips their welcome — so those paying customers never get
+  // the BBB welcome/booking nudge. Pass { auto_recover_days: N } (with NO
+  // trial_ids) to find mt_app trials from the last N days that have NO welcome
+  // email on record and welcome them. Idempotent: skips anyone already in
+  // email_log for a welcome path, and dry_run previews first. Conservative
+  // channel defaults so a backlog run can't spam — email only, no SMS / owner /
+  // studio unless explicitly turned on.
+  const autoRecoverDays = (Number.isFinite(Number(body?.auto_recover_days)) && Number(body?.auto_recover_days) > 0)
+    ? Math.min(60, Number(body.auto_recover_days)) : 0;
+  const autoMode = autoRecoverDays > 0 && !trialIds.length;
+  const sendCustomerSms   = autoMode ? (body?.send_customer_sms === true) : (body?.send_customer_sms   !== false);
   const sendCustomerEmail = body?.send_customer_email !== false;
-  const sendOwnerSms      = body?.send_owner_sms      !== false;
-  const sendStudioEmail   = body?.send_studio_email   !== false;
+  const sendOwnerSms      = autoMode ? (body?.send_owner_sms === true)    : (body?.send_owner_sms      !== false);
+  const sendStudioEmail   = autoMode ? (body?.send_studio_email === true) : (body?.send_studio_email   !== false);
   const dryRun            = body?.dry_run             === true;
-  if (!trialIds.length) return json({ ok: false, error: "trial_ids required (non-empty array)" }, 400);
+  if (!trialIds.length && !autoMode) return json({ ok: false, error: "trial_ids required (non-empty array), or pass auto_recover_days" }, 400);
 
   const supaUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const supaKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -270,6 +282,46 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "Twilio env missing" }, 500);
   }
   const sb = createClient(supaUrl, supaKey);
+
+  // AUTO-RECOVER discovery: resolve the trial_ids ourselves — every mt_app trial
+  // in the window that has NO welcome email logged yet. Read-only; safe in dry_run.
+  let autoRecoverInfo: any = null;
+  if (autoMode) {
+    const sinceIso = new Date(Date.now() - autoRecoverDays * 864e5).toISOString();
+    const { data: cand, error: cErr } = await sb
+      .from("trial_signups")
+      .select("id, payment_date")
+      .eq("source_category", "mt_app")
+      .eq("payment_status", "completed")
+      .is("deleted_at", null)
+      .gte("payment_date", sinceIso)
+      .order("payment_date", { ascending: false })
+      .limit(1000);
+    if (cErr) return json({ ok: false, error: `auto-recover query: ${cErr.message}` }, 500);
+    const candIds = (cand ?? []).map((r: any) => r.id as string);
+    // Exclude anyone who already has ANY welcome email logged — never double-welcome.
+    const welcomed = new Set<string>();
+    for (let i = 0; i < candIds.length; i += 200) {
+      const chunk = candIds.slice(i, i + 200);
+      const { data: logs } = await sb
+        .from("email_log")
+        .select("trial_signup_id, send_path")
+        .in("trial_signup_id", chunk);
+      for (const l of (logs ?? []) as any[]) {
+        if (/welcome/i.test(String(l.send_path || ""))) welcomed.add(l.trial_signup_id);
+      }
+    }
+    trialIds = candIds.filter((id) => !welcomed.has(id) && !excludeIds.has(id));
+    autoRecoverInfo = {
+      window_days: autoRecoverDays,
+      mt_app_completed_in_window: candIds.length,
+      already_welcomed: welcomed.size,
+      to_recover: trialIds.length,
+    };
+    if (!trialIds.length) {
+      return json({ ok: true, auto_recover: autoRecoverInfo, count: 0, dry_run: dryRun, message: "no un-welcomed mt_app trials in window — nothing to recover." });
+    }
+  }
 
   // Pull trials + their studio + owners in one shot
   const { data: trials, error: tErr } = await sb
@@ -436,5 +488,5 @@ Deno.serve(async (req) => {
     results.push(out);
   }
 
-  return json({ ok: true, count: results.length, dry_run: dryRun, results });
+  return json({ ok: true, count: results.length, dry_run: dryRun, ...(autoRecoverInfo ? { auto_recover: autoRecoverInfo } : {}), results });
 });

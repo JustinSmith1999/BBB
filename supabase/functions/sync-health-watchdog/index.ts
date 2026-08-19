@@ -150,6 +150,40 @@ Deno.serve(async (req) => {
     results.push({ check: "welcome_gap", error: (e as Error).message });
   }
 
+  // ── MT OAUTH TOKEN EXPIRY (2026-08-05) ──────────────────────────────────
+  // The failure that went dark mid-week: MT's OAuth token expires ~weekly, and
+  // when it dies the ENTIRE sync goes blind. The staleness watches above only
+  // notice ~2h AFTER sales stop flowing — by then you're already behind and
+  // scrambling. This checks the token DIRECTLY and warns ~24h BEFORE expiry so
+  // you re-seed during business hours (log into MT admin → run the reseed)
+  // instead of finding it dark. Self-suppressed to one ping / 6h.
+  try {
+    const { data: tok } = await sb
+      .from("mt_oauth").select("expires_at, refresh_token").eq("id", "default").maybeSingle();
+    let tokenBody: string | null = null;
+    if (!tok || !tok.refresh_token) {
+      tokenBody = `🚨 BBB: the Mariana Tek sync has NO stored login token — sync is/going dark. Log into MT admin and re-seed the mt_oauth row now.`;
+    } else if (tok.expires_at) {
+      const hrsLeft = (new Date(tok.expires_at).getTime() - now) / 3600000;
+      if (hrsLeft <= 0) {
+        tokenBody = `🚨 BBB: the Mariana Tek login token EXPIRED — sync is dark, no new trials/sales are landing. Log into MT admin and re-seed the mt_oauth row to restore it.`;
+      } else if (hrsLeft <= 24) {
+        tokenBody = `⚠️ BBB heads-up: the Mariana Tek login token expires in ~${hrsLeft.toFixed(0)}h. Re-seed it today (MT admin → reseed) so the sync never goes dark. Doing it now beats scrambling later.`;
+      }
+    }
+    results.push({ check: "mt_token", expires_at: tok?.expires_at ?? null, warn: !!tokenBody });
+    if (tokenBody) {
+      const since6h = new Date(now - 6 * 3600 * 1000).toISOString();
+      const { count } = await sb.from("sms_messages").select("*", { count: "exact", head: true })
+        .eq("send_path", "sync_watchdog_alert").gte("sent_at", since6h).ilike("body", "%Mariana Tek%token%");
+      if ((count ?? 0) === 0) {
+        alertsToFire.push({ display: "MT login token", table: "mt_oauth", body: tokenBody });
+      }
+    }
+  } catch (e) {
+    results.push({ check: "mt_token", error: (e as Error).message });
+  }
+
   // Rate-limit: don't re-alert in <60 min for the same table.
   const alertsSent: any[] = [];
   for (const a of alertsToFire) {

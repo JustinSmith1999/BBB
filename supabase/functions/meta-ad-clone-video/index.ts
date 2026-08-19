@@ -82,6 +82,26 @@ async function waitVideoReady(videoId: string, token: string, maxMs = 35000) {
   return "processing"; // proceed anyway; Meta finishes async
 }
 
+// 2026-08-06: Meta REQUIRES a thumbnail on a video creative. After a video
+// processes, Meta auto-generates candidate thumbnails — grab the preferred one
+// so we don't have to supply our own. Polls briefly in case they lag the
+// "ready" status.
+async function getVideoThumb(videoId: string, token: string, maxMs = 20000): Promise<string> {
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    try {
+      const t = await fbGet(`${videoId}/thumbnails`, token, { fields: "uri,is_preferred" });
+      const list = t?.data || [];
+      if (list.length) {
+        const pref = list.find((x: any) => x.is_preferred) || list[0];
+        if (pref?.uri) return pref.uri as string;
+      }
+    } catch (_) { /* keep polling */ }
+    await sleep(3000);
+  }
+  return "";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ ok: false, error: "POST only" }, 405);
@@ -98,12 +118,17 @@ Deno.serve(async (req) => {
   const pauseIds: string[] = Array.isArray(body.pause_ad_ids) ? body.pause_ad_ids.map(String) : [];
   const dryRun = body.dry_run === true;
 
+  // 2026-08-06: optional token override. Studios each have their own
+  // META_TOKEN_<STUDIO>, but if one is stale/mis-scoped you can borrow another
+  // studio's working token (as long as its user has access to this studio's ad
+  // account + page). Pass { "token_env": "META_TOKEN_FRESH_MEADOWS" }.
   if (!TOKENS[studio]) return json({ ok: false, error: `unknown studio: ${studio}` }, 400);
   if (!sourceAdId) return json({ ok: false, error: "source_ad_id required" }, 400);
   if (!videos.length) return json({ ok: false, error: "videos[] required" }, 400);
 
-  const token = Deno.env.get(TOKENS[studio]);
-  if (!token) return json({ ok: false, error: `missing ${TOKENS[studio]}` }, 500);
+  const tokenEnv = (body.token_env && String(body.token_env)) || TOKENS[studio];
+  const token = Deno.env.get(tokenEnv);
+  if (!token) return json({ ok: false, error: `missing ${tokenEnv}` }, 500);
   const account = ACCOUNTS[studio];
 
   // 1. Read source ad → adset + creative spec (to clone)
@@ -148,7 +173,21 @@ Deno.serve(async (req) => {
       // 3. Clone spec, swap video + thumbnail
       const newOss: any = JSON.parse(JSON.stringify(oss));
       newOss.video_data = { ...oss.video_data, video_id: videoId };
-      if (v.thumb_url) { newOss.video_data.image_url = v.thumb_url; delete newOss.video_data.image_hash; }
+      // 2026-08-06 FIX: the spread copies the SOURCE video's thumbnail — both
+      // image_hash and image_url can come along, and Meta rejects a video_data
+      // that has both ("ObjectStorySpecRedundant"). That thumbnail also points
+      // at the OLD video's frame, which is wrong for the new clip. Strip both;
+      // if a custom thumb_url was given use it, otherwise let Meta auto-generate
+      // the poster from the new video.
+      delete newOss.video_data.image_hash;
+      delete newOss.video_data.image_url;
+      if (v.thumb_url) {
+        newOss.video_data.image_url = v.thumb_url;
+      } else {
+        // Meta needs a thumbnail — use the one it generated for the new video.
+        const autoThumb = await getVideoThumb(videoId, token);
+        if (autoThumb) newOss.video_data.image_url = autoThumb;
+      }
 
       // 4. Create creative
       const cr = await fbPost(`${account}/adcreatives`, token, {
