@@ -91,6 +91,16 @@ const TIERS: Record<string, Array<{ fn: string; body: Record<string, unknown> }>
     // attendees got stranded). 7 days is cheap insurance and the parallelized
     // fetch (mapPool) keeps it well under the edge timeout.
     { fn: "mariana-tek-visits-sync",   body: { lookback_days: 7 } },
+    // 2026-09-01: clients-sync was written but NEVER deployed or scheduled —
+    // the customer roster froze on July 11 and Homebase went stale. Runs the
+    // rolling 45-day window every cycle so the roster can never freeze again.
+    { fn: "mariana-tek-clients-sync",  body: { max_ids: 2000 } },
+    // 2026-09-01: Lead Ads poll — pulls Meta lead-form submissions into
+    // trial_signups so the desk sees them on Today within one cycle.
+    { fn: "meta-lead-ads",             body: { action: "poll" } },
+    // 2026-09-02: MT-based payment verification — heals any 'disputed'
+    // mis-stamps and verifies every completed row against Mariana Tek.
+    { fn: "mt-verify-payments",        body: { days: 60 } },
   ],
   // "all" = every tier above, for manual full-refresh ad-hoc
   all: [],

@@ -3,6 +3,7 @@ import { MapPin } from 'lucide-react';
 import { supabase, LOCATION_PUBLIC_COLUMNS, Location } from '../lib/supabase';
 import { Link } from 'react-router-dom';
 import SEOHead from '../components/SEOHead';
+import PageHero, { Red } from '../components/PageHero';
 import NativeClassList from '../components/NativeClassList';
 
 // 2026-06-26 v2: Iframe gone. NativeClassList hits the mt-public-classes
@@ -80,21 +81,16 @@ export default function Classes() {
   return (
     <>
     <SEOHead
-      title="Class Schedule | Better Body Bootcamp"
-      description="Browse and book group fitness classes at Better Body Bootcamp. View the weekly schedule for our Astoria, Bayside, Fresh Meadows, and Williamsburg NYC locations."
+      title="Group Fitness Classes & Schedule | Better Body Bootcamp NYC"
+      description="Group fitness classes in Queens & Brooklyn. Browse the live schedule and book at Better Body Bootcamp. View the weekly schedule for our Astoria, Bayside, Fresh Meadows, and Williamsburg NYC locations."
       canonical="/classes"
     />
     <div className="min-h-screen bg-white">
-      <div className="bg-gradient-to-br from-black to-gray-900 text-white pt-24 pb-20">
-        <div className="container mx-auto px-4 text-center">
-          <h1 className="text-[clamp(2rem,4.5vw,4rem)] font-bold mb-6">
-            Class <span className="text-red-600">Schedule</span>
-          </h1>
-          <p className="text-xl md:text-2xl text-gray-300 max-w-3xl mx-auto">
-            Browse and book your fitness classes at any location
-          </p>
-        </div>
-      </div>
+      <PageHero
+        eyebrow="GROUP FITNESS · LIVE SCHEDULE"
+        lines={["CLASS", <Red key="r">SCHEDULE</Red>]}
+        sub="Browse and book group fitness classes at any of our four studios. Times update live."
+      />
 
       <div className="container mx-auto px-4 py-16">
         {loading ? (
@@ -134,10 +130,11 @@ export default function Classes() {
 
             {selectedLocationData && (
               <div className="bg-white rounded-xl shadow-lg p-6">
-                <div className="flex items-center justify-between mb-6">
+                {/* 2026-08-31: centered on mobile (owner request), row on sm+ */}
+                <div className="flex flex-col items-center text-center gap-3 sm:flex-row sm:items-center sm:justify-between sm:text-left sm:gap-0 mb-6">
                   <div>
                     <h2 className="text-2xl font-bold text-black mb-2">{selectedLocationData.name} Classes</h2>
-                    <div className="flex items-center space-x-2 text-gray-600">
+                    <div className="flex items-center justify-center sm:justify-start space-x-2 text-gray-600">
                       <MapPin className="w-4 h-4" />
                       <span>{selectedLocationData.address}</span>
                     </div>
@@ -157,6 +154,39 @@ export default function Classes() {
             )}
           </>
         )}
+      </div>
+
+      {/* SEO content block (2026-08-23): the schedule grid alone left this page
+          thin in the served HTML. Real program facts, brand voice. */}
+      <div className="bg-white py-16 border-t border-gray-100">
+        <div className="container mx-auto px-4">
+          <div className="max-w-4xl mx-auto">
+            <h2 className="text-3xl font-bold text-black mb-6">What a Class Here Actually Looks Like</h2>
+            <div className="space-y-4 text-gray-700 leading-relaxed">
+              <p>
+                Every session at Better Body Bootcamp is coach-led from the first minute to the last. You walk in,
+                the board tells you nothing you need to figure out alone, and a coach runs the whole room through
+                the day's program: a warmup, strength or conditioning blocks, and a finisher. Classes stay small
+                enough that the coach sees every rep and fixes form on the spot instead of letting bad habits settle in.
+              </p>
+              <p>
+                The weekly schedule mixes HIIT training, strength training, bootcamp classes, Pilates, and hybrid
+                training sessions, so training three or four days a week never means repeating the same
+                workout. Early birds catch 5 and 6 AM classes; the evening rush runs past 7 PM. Book through the
+                Better Body Studios app or right on this page, and cancel up to 2 hours before class without penalty.
+              </p>
+              <p>
+                All four studios run the same programming: <Link to="/locations/astoria" className="text-red-600 font-semibold hover:underline">Astoria</Link> on
+                Steinway Street, <Link to="/locations/bayside" className="text-red-600 font-semibold hover:underline">Bayside</Link> on
+                Bell Blvd, <Link to="/locations/fresh-meadows" className="text-red-600 font-semibold hover:underline">Fresh Meadows</Link> on
+                164th Street, and <Link to="/locations/williamsburg" className="text-red-600 font-semibold hover:underline">Williamsburg</Link> on
+                Driggs Ave. One membership works at all of them, so a Tuesday in Queens and a Thursday in Brooklyn
+                is a normal week. New here? The <Link to="/trial" className="text-red-600 font-semibold hover:underline">$49 two-week trial</Link> is
+                unlimited classes at your home studio with no auto-renewal.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="bg-gray-50 py-16">

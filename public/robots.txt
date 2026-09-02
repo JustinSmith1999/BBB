@@ -30,3 +30,6 @@ User-agent: CCBot
 Allow: /
 
 Sitemap: https://betterbodybootcamp.com/sitemap.xml
+
+# llms.txt — structured site guide for AI answer engines (llmstxt.org standard)
+# https://betterbodybootcamp.com/llms.txt

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Quote } from 'lucide-react';
 import { supabase, Testimonial } from '../lib/supabase';
 import SEOHead from '../components/SEOHead';
+import PageHero, { Red } from '../components/PageHero';
 
 export default function TestimonialsPage() {
   const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
@@ -52,33 +53,11 @@ export default function TestimonialsPage() {
       {seo}
       <div style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
 
-        {/* Hero */}
-        <div
-          className="relative overflow-hidden flex items-end"
-          style={{ minHeight: '50vh', paddingTop: '160px', paddingBottom: '80px' }}
-        >
-          <img
-            src="https://images.pexels.com/photos/4162487/pexels-photo-4162487.jpeg?auto=compress&cs=tinysrgb&w=1920&q=80"
-            alt=""
-            className="absolute inset-0 w-full h-full object-cover"
-            style={{ filter: 'grayscale(20%)' }}
-          />
-          <div
-            className="absolute inset-0"
-            style={{ background: 'linear-gradient(to bottom, rgba(14,15,19,0.72) 0%, rgba(14,15,19,0.92) 100%)' }}
-          />
-          <div className="relative z-10 max-w-content mx-auto px-6">
-            <p className="eyebrow mb-5">REAL RESULTS</p>
-            <h1
-              className="font-display font-black uppercase"
-              style={{ fontSize: 'clamp(40px, 5vw, 64px)', lineHeight: '0.95', letterSpacing: '-0.01em' }}
-            >
-              SUCCESS
-              <br />
-              <span style={{ color: 'var(--brand-red)' }}>STORIES</span>
-            </h1>
-          </div>
-        </div>
+        {/* Hero (shared PageHero — one style everywhere) */}
+        <PageHero
+          eyebrow="REAL RESULTS · NYC"
+          lines={["SUCCESS", <Red key="r">STORIES</Red>]}
+        />
 
         {/* Video testimonials */}
         {videoTestimonials.length > 0 && (
@@ -139,11 +118,16 @@ export default function TestimonialsPage() {
               >
                 Written Testimonials
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl">
-                {textTestimonials.map(t => (
+              {/* 2026-09-02: masonry via CSS columns — short reviews never sit on
+                  the same stretched row as long ones. Google reviews render
+                  verbatim with no title (titles read like AI summaries). */}
+              <div className="columns-1 md:columns-2 lg:columns-3 gap-6">
+                {textTestimonials.map(t => {
+                  const isGoogle = t.name.includes('Google review');
+                  return (
                   <div
                     key={t.id}
-                    className="rounded-xl transition-all duration-200"
+                    className="rounded-xl transition-all duration-200 break-inside-avoid mb-6"
                     style={{
                       backgroundColor: 'var(--bg-elevated)',
                       border: '1px solid var(--divider)',
@@ -153,11 +137,14 @@ export default function TestimonialsPage() {
                     onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--divider)'}
                   >
                     <Quote className="mb-4" style={{ color: 'var(--brand-red)', width: 28, height: 28 }} />
-                    <h3 className="font-bold text-lg mb-3" style={{ color: 'var(--text-primary)' }}>{t.title}</h3>
-                    <p className="mb-5 text-sm leading-relaxed" style={{ color: 'var(--text-secondary)', lineHeight: '1.7' }}>{t.content}</p>
+                    {!isGoogle && (
+                      <h3 className="font-bold text-lg mb-3" style={{ color: 'var(--text-primary)' }}>{t.title}</h3>
+                    )}
+                    <p className="mb-5 text-sm leading-relaxed whitespace-pre-line" style={{ color: 'var(--text-secondary)', lineHeight: '1.7' }}>{t.content}</p>
                     <p className="font-bold text-sm" style={{ color: 'var(--brand-red)', letterSpacing: '0.04em' }}>{t.name}</p>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </section>

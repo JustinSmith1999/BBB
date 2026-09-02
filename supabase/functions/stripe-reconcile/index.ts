@@ -218,7 +218,7 @@ Deno.serve(async (req) => {
     while (true) {
       const { data: trials, error: trialErr } = await sb
         .from("trial_signups")
-        .select("id, name, email, phone, location_id, payment_status, payment_date, mindbody_id, stripe_session_id, source_category, created_at, deleted_at")
+        .select("id, name, email, phone, location_id, payment_status, payment_date, mindbody_id, mariana_tek_id, stripe_session_id, source_category, created_at, deleted_at")
         .is("deleted_at", null)
         .order("payment_status", { ascending: false }) // 'completed' > 'pending'
         .order("created_at", { ascending: false })
@@ -251,15 +251,32 @@ Deno.serve(async (req) => {
   }
 
   // 2c. email_log "any welcome row" by trial_signup_id
+  //
+  // 2026-08-29 ROOT-CAUSE FIX (the Carlos 47-email incident): this used to be
+  // ONE .in() with EVERY trial id (~750 UUIDs ≈ 28KB URL). The request blew
+  // past the URL limit and failed — and the error was silently ignored — so
+  // welcomeByTrialId came back EMPTY and every candidate looked un-welcomed.
+  // stripe-reconcile then re-fired manual-welcome-batch every 15 minutes for
+  // any Stripe-paid trial in the 14-day window: the first native Stripe sale
+  // (guiqiang qiu, 8/29) got 20+ welcome emails and Bayside got 20+ studio
+  // alerts. Fix: chunk the query (same pattern as the capi_events lookup
+  // below) and FAIL CLOSED — if a chunk errors, treat all its trials as
+  // already-welcomed. Worst case a genuinely missed welcome waits for the
+  // next healthy tick; we never machine-gun a customer again.
   const trialIds = Array.from(trialsByEmail.values())
     .map((t: any) => t.id).filter(Boolean);
   const welcomeByTrialId = new Set<string>();
-  if (trialIds.length) {
-    const { data: logs } = await sb
+  for (const chunk of chunkArr(trialIds, 100)) {
+    const { data: logs, error: logErr } = await sb
       .from("email_log")
       .select("trial_signup_id, send_path")
-      .in("trial_signup_id", trialIds)
+      .in("trial_signup_id", chunk)
       .in("send_path", WELCOME_SEND_PATHS);
+    if (logErr) {
+      console.error("welcome-set chunk failed (failing CLOSED):", logErr.message);
+      for (const id of chunk) welcomeByTrialId.add(id);
+      continue;
+    }
     for (const l of logs ?? []) {
       const id = (l as any).trial_signup_id;
       if (id) welcomeByTrialId.add(id);

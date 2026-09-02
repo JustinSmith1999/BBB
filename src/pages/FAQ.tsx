@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
+import PageHero, { Red } from '../components/PageHero';
 
 interface FAQItem {
   question: string;
@@ -89,19 +90,28 @@ export default function FAQ() {
       }}
     />
     <div className="min-h-screen bg-white">
-      <div className="bg-gradient-to-br from-black to-gray-900 text-white pt-24 pb-20">
-        <div className="container mx-auto px-4 text-center">
-          <h1 className="text-[clamp(2rem,4.5vw,4rem)] font-bold mb-6">
-            <span className="text-red-600">F.A.Q.</span>
-          </h1>
-          <p className="text-xl md:text-2xl text-gray-300 max-w-3xl mx-auto">
-            Everything you need to know about Better Body Bootcamp
-          </p>
-        </div>
-      </div>
+      <PageHero
+        eyebrow="GOOD QUESTIONS · NYC"
+        lines={["YOUR QUESTIONS,", <Red key="r">ANSWERED</Red>]}
+        sub="Everything you need to know about training at Better Body Bootcamp."
+      />
 
       <div className="container mx-auto px-4 py-16">
         <div className="max-w-4xl mx-auto">
+          {/* Visible intro (2026-08-23): the accordion answers are collapsed in the
+              served HTML, so crawlers saw almost no text on this page. */}
+          <div className="mb-10 text-gray-700 leading-relaxed space-y-4">
+            <p>
+              These are the questions we hear most at the front desk of our four studios in Astoria, Bayside,
+              Fresh Meadows, and Williamsburg. The short version: every class is coach-led, small enough that the coach knows your name,
+              and open to all fitness levels. New NYC customers start with the $49 two-week unlimited trial, and
+              there is no contract trap behind it. It is a one-time charge with no auto-renewal.
+            </p>
+            <p>
+              If your question is about a specific studio's schedule, amenities, or parking, the fastest answer
+              is your studio's page or a quick text to the front desk. Everything else is covered below.
+            </p>
+          </div>
           <div className="space-y-4">
             {faqs.map((faq, index) => (
               <div

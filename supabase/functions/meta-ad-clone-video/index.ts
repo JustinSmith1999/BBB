@@ -189,6 +189,16 @@ Deno.serve(async (req) => {
         if (autoThumb) newOss.video_data.image_url = autoThumb;
       }
 
+      // 2026-08-24: optional per-video copy overrides so a clone can carry NEW
+      // ad copy instead of the source ad's. Any of: message (primary text),
+      // title (headline), link_description, link (CTA destination URL).
+      if (v.message) newOss.video_data.message = String(v.message);
+      if (v.title) newOss.video_data.title = String(v.title);
+      if (v.link_description) newOss.video_data.link_description = String(v.link_description);
+      if (v.link && newOss.video_data.call_to_action?.value) {
+        newOss.video_data.call_to_action.value.link = String(v.link);
+      }
+
       // 4. Create creative
       const cr = await fbPost(`${account}/adcreatives`, token, {
         name: `${v.name} — creative`,

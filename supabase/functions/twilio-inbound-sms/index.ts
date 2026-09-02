@@ -188,6 +188,99 @@ serve(async (req) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
   );
 
+  // ─── 2026-09-01 · OWNER REPLY RELAY ─────────────────────────────────────
+  // If the sender is a gym owner/manager (location_owners), this text is a
+  // REPLY to a forwarded customer message. Relay it to the customer through
+  // the BBB number so the owner can answer straight from their own phone:
+  //   - By default it goes to the customer from the LAST forward we sent
+  //     this owner (send_path owner_inbound_alert, phone parsed from body).
+  //   - To target someone else, start the text with their number:
+  //     "+16467995985 Hey Laura, ..." — we strip the number and relay.
+  // The owner gets a TwiML confirmation or error back instantly.
+  try {
+    const ownDigits = from.replace(/\D+/g, '').slice(-10);
+    const { data: ownerRows } = await sb
+      .from('location_owners')
+      .select('name, phone')
+      .eq('notify_on_inbound', true);
+    const ownerRow = (ownerRows ?? []).find(
+      (o: any) => String(o.phone || '').replace(/\D+/g, '').slice(-10) === ownDigits,
+    );
+    if (ownerRow) {
+      let target = '';
+      let relayBody = body;
+      const explicit = body.match(/^\+?1?\s*(\d{10})\b[\s:,-]*/);
+      if (explicit) {
+        target = '+1' + explicit[1];
+        relayBody = body.slice(explicit[0].length).trim();
+      } else {
+        // 2026-09-01 · MISTARGET GUARD: a plain reply only auto-targets when
+        // there has been exactly ONE customer forwarded in the last 60 min.
+        // With multiple active threads we refuse and text back a picker
+        // (name + number of the recent customers) instead of guessing.
+        const hourAgo = new Date(Date.now() - 3600_000).toISOString();
+        const { data: recentFwds } = await sb
+          .from('sms_messages')
+          .select('body, created_at')
+          .eq('send_path', 'owner_inbound_alert')
+          .ilike('to_phone', '%' + ownDigits)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        const parsed = (recentFwds ?? []).map((f: any) => {
+          const pm = String(f.body || '').match(/from\s+(.{2,40}?)\s*\((\+\d{10,15})\)/);
+          return pm ? { name: pm[1], phone: pm[2], at: f.created_at } : null;
+        }).filter(Boolean) as { name: string; phone: string; at: string }[];
+        const uniqRecent = [...new Map(parsed.filter(p => p.at >= hourAgo).map(p => [p.phone, p])).values()];
+        if (uniqRecent.length === 1) {
+          target = uniqRecent[0].phone;
+        } else if (uniqRecent.length > 1) {
+          const menu = uniqRecent.slice(0, 4)
+            .map(p => `${p.name}: ${p.phone.replace('+1', '')}`)
+            .join('\n');
+          const twimlPick = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${
+            'Multiple customers texted recently. Easiest: reply from the Inbox at betterbodybootcamp.com/homebase. Or start your text with their number:\n' + menu
+          }</Message></Response>`;
+          return new Response(twimlPick, { status: 200, headers: { ...cors, 'Content-Type': 'text/xml' } });
+        } else {
+          // Nothing in the last hour: fall back to the single most recent
+          // forward ever (quiet periods, one conversation at a time).
+          if (parsed.length && parsed[0]) target = parsed[0].phone;
+        }
+      }
+      const T_SID = Deno.env.get('TWILIO_ACCOUNT_SID') ?? '';
+      const T_TOK = Deno.env.get('TWILIO_AUTH_TOKEN') ?? '';
+      const T_FROM = Deno.env.get('TWILIO_FROM_NUMBER') ?? '';
+      let confirm: string;
+      if (!target || !relayBody) {
+        confirm = 'Could not tell who this reply is for. Reply from the Inbox at betterbodybootcamp.com/homebase, or start your text with their number like: 6467995985 your message';
+      } else if (!T_SID || !T_TOK || !T_FROM) {
+        confirm = 'Relay unavailable (SMS not configured). Use betterbodybootcamp.com/homebase';
+      } else {
+        const rf = new URLSearchParams({ To: target, From: T_FROM, Body: relayBody.slice(0, 1200) });
+        const rres = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${T_SID}/Messages.json`, {
+          method: 'POST',
+          headers: { Authorization: 'Basic ' + btoa(`${T_SID}:${T_TOK}`), 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: rf.toString(),
+        });
+        const rj: { sid?: string; message?: string } = await rres.json().catch(() => ({}));
+        const okRelay = rres.ok && rj.sid;
+        await sb.from('sms_messages').insert({
+          from_phone: T_FROM, to_phone: target, body: relayBody,
+          direction: 'outbound', twilio_sid: okRelay ? rj.sid : null,
+          status: okRelay ? 'queued' : 'failed', send_path: 'owner_relay',
+          error_message: okRelay ? null : (rj.message ?? `http_${rres.status}`),
+        }).then(({ error }) => { if (error) console.error('owner_relay log failed:', error.message); });
+        confirm = okRelay
+          ? `Sent to ${target} from the gym number.`
+          : `Send FAILED (${rj.message ?? rres.status}). Try betterbodybootcamp.com/homebase`;
+      }
+      const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${confirm}</Message></Response>`;
+      return new Response(twiml, { status: 200, headers: { ...cors, 'Content-Type': 'text/xml' } });
+    }
+  } catch (e) {
+    console.error('owner-relay exception:', (e as Error).message);
+  }
+
   // Log every inbound to a generic table so nothing is ever lost. Best effort.
   try {
     await sb.from('twilio_inbound_log').insert({
@@ -250,6 +343,46 @@ serve(async (req) => {
       matchedLocationId = fwdTrial?.location_id ?? null;
       matchedTrialName = fwdTrial?.name ?? null;
 
+      // 2026-09-01 · WINBACK FIX: expired members (Segment A/B/C recipients)
+      // have no trial_signups row, so replies routed nowhere and the owner
+      // forward silently skipped. Fall back to mariana_tek_clients by phone,
+      // map studio_slug -> location UUID, and pull lifetime spend from
+      // mariana_tek_sales so the forward tells the owner who this is.
+      let memberStats = '';
+      if (!matchedLocationId) {
+        const SLUG2LOC: Record<string, string> = {
+          'astoria': 'dcf94b47-dcc8-4176-96e9-f0cdd0fc6b45',
+          'bayside': '5c0e8383-dd2f-4f8f-bfea-5cc477cec4c7',
+          'fresh-meadows': '6bbbe077-bcc6-4d9d-a10b-7605c1484752',
+          'williamsburg': '80536b45-df0e-42d1-880c-e9301372e1cf',
+        };
+        const { data: mtc } = await sb
+          .from('mariana_tek_clients')
+          .select('first_name, last_name, email, studio_slug')
+          .in('phone', Array.from(new Set(phoneVariantsFwd)))
+          .limit(1)
+          .maybeSingle();
+        if (mtc) {
+          matchedTrialName = `${mtc.first_name ?? ''} ${mtc.last_name ?? ''}`.trim() || null;
+          matchedLocationId = SLUG2LOC[String(mtc.studio_slug ?? '')] ?? null;
+          try {
+            const { data: sales } = await sb
+              .from('mariana_tek_sales')
+              .select('total, sale_date')
+              .eq('customer_email', mtc.email)
+              .limit(500);
+            if (sales && sales.length) {
+              const tot = sales.reduce((a: number, r: any) => a + (parseFloat(r.total) || 0), 0);
+              const dates = sales.map((r: any) => String(r.sale_date || '')).filter(Boolean).sort();
+              const since = dates.length ? dates[0].slice(0, 4) : '';
+              memberStats = `Past member · $${Math.round(tot)} lifetime` + (since ? ` · customer since ${since}` : '');
+            } else {
+              memberStats = 'Past member (pre-migration history)';
+            }
+          } catch (_e) { memberStats = 'Past member'; }
+        }
+      }
+
       // 2026-06-12 — Twilio 11200 fix. Resolve studioSlug/rawStudioName HERE
       // inside the forward block instead of referencing the variables that
       // get declared later in the function (TDZ ReferenceError → 500 →
@@ -311,7 +444,8 @@ serve(async (req) => {
           const fwdMsg =
             `${studioName} — text from ${senderLabel} (${from}):\n\n` +
             `"${trimmedBody}"\n\n` +
-            `Reply at ${homebaseLink}`;
+            (memberStats ? `${memberStats}\n\n` : '') +
+            `Reply in Homebase (Inbox tab): betterbodybootcamp.com/homebase`;
 
           // Fire one Twilio call per recipient, in parallel. Each independently
           // logged to sms_messages so the dashboard shows what we sent + to whom.

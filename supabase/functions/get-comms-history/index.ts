@@ -177,6 +177,113 @@ async function fetchResendEmailBody(emailId: string): Promise<{ html: string | n
 }
 
 serve(async (req) => {
+  // ─── 2026-09-01 · INBOX MODE ────────────────────────────────────────────
+  // { inbox: true, days?: 30 } → every SMS conversation of the last N days
+  // grouped into threads, with names resolved from trial_signups and
+  // mariana_tek_clients (winback members). Powers the Homebase Inbox tab.
+  if (req.method === 'POST') {
+    let peek: any = {};
+    try { peek = await req.clone().json(); } catch { /* fall through */ }
+    if (peek?.inbox === true) {
+      try {
+        const days = Math.min(Number(peek.days) || 30, 90);
+        const sinceIso = new Date(Date.now() - days * 86400_000).toISOString();
+        const sb2 = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+        );
+        const { data: msgs, error: mErr } = await sb2
+          .from('sms_messages')
+          .select('created_at, from_phone, to_phone, body, direction, status, send_path, sent_by, trial_signup_id')
+          .gte('created_at', sinceIso)
+          // NULL-safe exclude: .neq alone drops send_path IS NULL rows too
+          // (SQL three-valued logic) — which is every inbound text.
+          .or('send_path.is.null,send_path.neq.owner_inbound_alert')
+          .order('created_at', { ascending: false })
+          .limit(4000);
+        if (mErr) return json({ ok: false, error: mErr.message }, 500);
+        // We fetched newest-first (so a 30-day window never truncates TODAY);
+        // flip back to chronological for thread building.
+        (msgs ?? []).reverse();
+        const { data: owners } = await sb2.from('location_owners').select('phone');
+        const ownerSet = new Set((owners ?? []).map((o: any) => String(o.phone || '').replace(/\D+/g, '').slice(-10)).filter(Boolean));
+        const last10 = (p: string) => String(p || '').replace(/\D+/g, '').slice(-10);
+        const threads = new Map<string, any>();
+        for (const m of msgs ?? []) {
+          const counterpart = m.direction === 'inbound' ? m.from_phone : m.to_phone;
+          const key = last10(counterpart);
+          if (!key || key.length < 10) continue;
+          if (ownerSet.has(key)) continue; // owner pings are not customer threads
+          let t = threads.get(key);
+          if (!t) { t = { phone: '+1' + key, messages: [], trial_signup_id: null }; threads.set(key, t); }
+          if (m.trial_signup_id) t.trial_signup_id = m.trial_signup_id;
+          t.messages.push({ at: m.created_at, dir: m.direction, body: m.body, status: m.status, path: m.send_path, by: m.sent_by });
+        }
+        // Resolve names: trial_signups first, then mariana_tek_clients.
+        const phones = [...threads.keys()].map((k) => '+1' + k);
+        const nameByKey: Record<string, any> = {};
+        if (phones.length) {
+          const { data: ts } = await sb2.from('trial_signups')
+            .select('id, name, phone, front_desk_stage, location_id, locations:location_id(name)')
+            .in('phone', phones).is('deleted_at', null);
+          for (const r of ts ?? []) nameByKey[last10(r.phone)] = {
+            name: r.name, kind: 'lead', stage: r.front_desk_stage,
+            studio: (r as any).locations?.name ?? null, trial_signup_id: r.id,
+          };
+          const { data: mc } = await sb2.from('mariana_tek_clients')
+            .select('first_name, last_name, phone, studio_slug')
+            .in('phone', phones);
+          for (const r of mc ?? []) {
+            const k = last10(r.phone);
+            if (!nameByKey[k]) nameByKey[k] = {
+              name: `${r.first_name ?? ''} ${r.last_name ?? ''}`.trim(), kind: 'member',
+              stage: null, studio: r.studio_slug, trial_signup_id: null,
+            };
+          }
+        }
+        // Winback name fallback: the campaign batch file knows every
+        // recipient's name + studio even when no DB table does.
+        try {
+          const { data: batchBlob } = await sb2.storage.from('campaigns').download('winback-batch-2026-08-21.json');
+          if (batchBlob) {
+            const batch = JSON.parse(await batchBlob.text());
+            const rows2 = Array.isArray(batch) ? batch : (batch.rows || batch.recipients || []);
+            for (const r of rows2) {
+              const k = last10(r.phone);
+              if (k && !nameByKey[k]) nameByKey[k] = { name: r.name, kind: 'member', stage: null, studio: r.studio, trial_signup_id: null };
+            }
+          }
+        } catch (_e) { /* name fallback only */ }
+
+        const out = [...threads.entries()].map(([k, t]) => {
+          const info = nameByKey[k] || {};
+          const msgsArr = t.messages.slice(-50);
+          const lastIn = [...msgsArr].reverse().find((m: any) => m.dir === 'inbound');
+          const lastOutHuman = [...msgsArr].reverse().find((m: any) => m.dir === 'outbound' && !['auto_reply'].includes(m.path || ''));
+          const unanswered = !!lastIn && (!lastOutHuman || lastOutHuman.at < lastIn.at)
+            && !/^(stop|stopall|unsubscribe)$/i.test((lastIn.body || '').trim());
+          return {
+            phone: t.phone,
+            name: info.name || null, kind: info.kind || 'unknown',
+            stage: info.stage || null, studio: info.studio || null,
+            trial_signup_id: info.trial_signup_id || t.trial_signup_id,
+            last_at: msgsArr[msgsArr.length - 1]?.at, unanswered,
+            messages: msgsArr,
+          };
+        })
+        // Blast-only threads (we texted an offer, they never replied and no
+        // human ever manually texted them) are campaign logs, not
+        // conversations — keep the inbox to real threads.
+        .filter((t: any) => t.messages.some((m: any) => m.dir === 'inbound'
+          || (m.dir === 'outbound' && !String(m.path || '').startsWith('winback') && m.path !== 'auto_reply')))
+        .sort((a, b) => String(b.last_at).localeCompare(String(a.last_at))).slice(0, 60);
+        return json({ ok: true, threads: out, days });
+      } catch (e) {
+        return json({ ok: false, error: (e as Error).message }, 500);
+      }
+    }
+  }
+
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   const body: { email?: string; phone?: string; limit?: number; days?: number; email_id?: string; trial_id?: string } =

@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
             body: new URLSearchParams({
               From: from,
               To: to,
-              Body: `probe-twilio - verification SMS from BBB stack. Sent ${new Date().toISOString()}.`,
+              Body: String(body?.body || `probe-twilio - verification SMS from BBB stack. Sent ${new Date().toISOString()}.`).slice(0, 1400),
             }).toString(),
           },
         );

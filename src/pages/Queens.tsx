@@ -187,13 +187,15 @@ export default function Queens() {
               monthly billing on a membership they never use.
             </p>
             <p className="text-lg leading-relaxed text-gray-700 mb-4">
-              Every BBB Queens location runs the same proven program: high-energy strength,
-              conditioning, and metabolic training led by expert coaches. Classes max out at 20
-              members so you get real coaching cues every set — not lost in a sea of 60.
+              Every BBB Queens location runs the same proven program of group fitness classes in
+              Queens: HIIT classes, high-energy strength work, conditioning, and metabolic training
+              led by expert coaches. If you've been searching for HIIT classes in Queens that are
+              actually coached rather than just timed, this is that room. Classes stay small,
+              so you get real coaching cues every set instead of getting lost in a sea of 60.
             </p>
             <p className="text-lg leading-relaxed text-gray-700">
-              If you live anywhere in Queens — from LIC to Bayside Hills, from Sunnyside to Jamaica
-              Estates — there is a BBB studio within a short drive. Start with our $49 two-week
+              If you live anywhere in Queens, from LIC to Bayside Hills or Sunnyside to Jamaica
+              Estates, there is a BBB studio within a short drive. Start with our $49 two-week
               unlimited trial and train at any of the three Queens locations.
             </p>
           </div>
@@ -263,7 +265,7 @@ export default function Queens() {
                 {
                   t: 'Real Group Coaching',
                   d:
-                    'Capped at 20 members per class. Real coaching cues every set — not lost in a sea of 60.',
+                    'Small coached classes. Real coaching cues every set — not lost in a sea of 60.',
                 },
                 {
                   t: 'Strength + Conditioning',

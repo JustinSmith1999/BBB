@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { MapPin, Phone, Calendar, ArrowLeft, ArrowRight, Clock, Dumbbell, Users, User, Flame, Instagram, Facebook } from 'lucide-react';
+import { MapPin, Phone, ArrowLeft, ArrowRight, Clock, Dumbbell, Users, User, Flame } from 'lucide-react';
+import { StudioReviews } from '../components/GoogleReviews';
 
 // 2026-06-25: Mariana Tek per-studio location IDs (pulled from
 // betterbodybootcamp.marianatools.com/developer). Same tenant for all 4
@@ -29,6 +30,30 @@ const ALL_STUDIOS: { name: string; slug: string; address: string; borough: strin
   { name: 'Fresh Meadows', slug: 'fresh-meadows', address: '76-46 164th Street',    borough: 'Queens' },
   { name: 'Williamsburg',  slug: 'williamsburg',  address: '487 Driggs Ave',        borough: 'Brooklyn' },
 ];
+
+// 2026-08-23 on-page checker: one natural positioning sentence per studio.
+// Adds the "fitness goals" semantic term + honest comparison framing against
+// the boutique/big-box options people actually cross-shop in each neighborhood.
+// 2026-08-25: short per-studio hero sublines — the hero used to show the same
+// generic sentence at all four studios. One line each, no capacity numbers.
+const HERO_BOROUGH: Record<string, string> = {
+  'astoria': 'Queens',
+  'bayside': 'Queens',
+  'fresh-meadows': 'Queens',
+  'williamsburg': 'Brooklyn',
+};
+
+
+const STUDIO_POSITIONING: Record<string, string> = {
+  'astoria':
+    "Whatever your fitness goals are, from first pull-up to marathon prep, our coaches build the path. Plenty of members arrive after trying big-box gyms and boutique studios around Steinway and 30th Ave, and stay because a coached room beats training alone.",
+  'bayside':
+    "Whatever your fitness goals are, our coaches meet you where you're at. If you're comparing us to Powerhouse or the big-box gyms along Bell Blvd, the difference is simple: every session here is coach-led, small group, and programmed for you.",
+  'fresh-meadows':
+    "Looking for a boot camp gym near you in Fresh Meadows? This is it: coach-led small group classes built around your fitness goals whether that's fat loss, strength, or just showing up consistently again.",
+  'williamsburg':
+    "Comparing us to Barry's or the other boutique studios in Williamsburg? Our classes are coach-led and small group like theirs, at a fraction of the per-class price, and programmed around your fitness goals instead of a franchise formula.",
+};
 import { supabase, LOCATION_PUBLIC_COLUMNS, Location } from '../lib/supabase';
 import SEOHead from '../components/SEOHead';
 import { STUDIO_SEO_EXTRAS } from '../lib/studioFaq';
@@ -80,32 +105,32 @@ export default function LocationDetailPage() {
     facebook?: string;
   }> = {
     'Astoria': {
-      title: 'Gyms in Astoria, Queens · $49 Trial | Better Body Bootcamp',
-      description: 'Coach-led bootcamp, HIIT & group fitness gym in Astoria, Queens on Steinway St — also serving Long Island City, Sunnyside & Woodside. 2 weeks unlimited classes for $49.',
+      title: 'Gyms in Astoria, Queens · Group Fitness Classes · $49 Trial',
+      description: 'Group fitness classes, bootcamp & HIIT gym in Astoria, Queens on Steinway St — also serving Long Island City, Sunnyside & Woodside. 2 weeks unlimited classes for $49.',
       address: '31-18 Steinway Street', city: 'Astoria', state: 'NY', zip: '11103', phone: '+1-718-704-9954',
       lat: 40.7634, lng: -73.9148,
       instagram: 'https://www.instagram.com/betterbodybootcampastoria',
       facebook:  'https://www.facebook.com/betterbodybootcampastoria',
     },
     'Bayside': {
-      title: 'Gyms in Bayside, Queens · $49 Trial | Better Body Bootcamp',
-      description: 'Coach-led bootcamp, HIIT & group fitness gym in Bayside, Queens on Bell Blvd — also serving Bay Terrace, Whitestone, Douglaston & Little Neck. 2 weeks unlimited for $49.',
+      title: 'Gyms in Bayside, Queens · Group Fitness Classes · $49 Trial',
+      description: 'Group fitness classes, bootcamp & HIIT gym in Bayside, Queens on Bell Blvd — also serving Bay Terrace, Whitestone, Douglaston & Little Neck. 2 weeks unlimited for $49.',
       address: '34-47 Bell Blvd', city: 'Bayside', state: 'NY', zip: '11361', phone: '+1-646-566-8870',
       lat: 40.7666, lng: -73.7732,
       instagram: 'https://www.instagram.com/betterbodybootcampbayside',
       facebook:  'https://www.facebook.com/betterbodybootcampbayside',
     },
     'Fresh Meadows': {
-      title: 'Gyms in Fresh Meadows, Queens · $49 Trial | Better Body Bootcamp',
-      description: 'Coach-led bootcamp, HIIT & group fitness gym in Fresh Meadows, Queens — also serving Flushing, Hillcrest, Utopia & Jamaica Estates. 2 weeks unlimited classes for $49.',
+      title: 'Gyms in Fresh Meadows, Queens · Group Fitness Classes · $49 Trial',
+      description: 'Group fitness classes, bootcamp & HIIT gym in Fresh Meadows, Queens — also serving Flushing, Hillcrest, Utopia & Jamaica Estates. 2 weeks unlimited classes for $49.',
       address: '76-46 164th Street', city: 'Fresh Meadows', state: 'NY', zip: '11366', phone: '+1-646-566-8207',
       lat: 40.7345, lng: -73.7906,
       instagram: 'https://www.instagram.com/betterbodyfreshmeadows',
       facebook:  'https://www.facebook.com/betterbodybootcampfreshmeadows',
     },
     'Williamsburg': {
-      title: 'Gyms in Williamsburg, Brooklyn · $49 Trial | Better Body Bootcamp',
-      description: "Coach-led bootcamp, HIIT & group fitness gym in Williamsburg, Brooklyn on Driggs Ave — also serving Greenpoint, East Williamsburg & Bushwick. 2 weeks unlimited for $49.",
+      title: 'Gyms in Williamsburg, Brooklyn · Group Fitness Classes · $49 Trial',
+      description: "Group fitness classes, bootcamp & HIIT gym in Williamsburg, Brooklyn on Driggs Ave — also serving Greenpoint, East Williamsburg & Bushwick. 2 weeks unlimited for $49.",
       address: '487 Driggs Ave', city: 'Brooklyn', state: 'NY', zip: '11211', phone: '+1-718-683-1864',
       lat: 40.7146, lng: -73.9602,
       instagram: 'https://www.instagram.com/betterbodybootcampwilliamsburg',
@@ -196,9 +221,10 @@ export default function LocationDetailPage() {
         'https://www.facebook.com/betterbodybootcamp',
       ],
     },
-    // New ownership signal — surfaces to Google + helps with the "is this
-    // the same business that had that bad review?" question.
-    foundingDate: '2025-10-01',
+    // Business founded 2011 (operating since 2011; ownership changed Oct 2025
+    // — that's noted in the FAQ content, but foundingDate = business age,
+    // and 15 years of history is a local-trust signal worth claiming).
+    foundingDate: '2011',
     knowsAbout: ['Bootcamp Classes', 'Group Fitness', 'Personal Training', 'Strength Training', 'HIIT', 'Cardio'],
   } : undefined;
 
@@ -216,7 +242,20 @@ export default function LocationDetailPage() {
   //      to this specific studio as the provider.
   //   3. SpeakableSpecification on the FAQ section — voice assistants pick
   //      this up for "Hey Google, what time does Better Body Bootcamp open?"
-  const studioExtras = location ? STUDIO_SEO_EXTRAS[location.name] : undefined;
+  // 2026-09-02: surface the new-ownership story everywhere it matters —
+  // first FAQ on every studio page (also lands in the FAQPage schema, so
+  // Google and AI assistants answer "is BBB under new management" correctly).
+  const baseExtras = location ? STUDIO_SEO_EXTRAS[location.name] : undefined;
+  const studioExtras = (baseExtras && location) ? {
+    ...baseExtras,
+    faq: [
+      {
+        q: `Is Better Body Bootcamp ${location.name} under new ownership?`,
+        a: `Yes. Better Body Bootcamp has been under new ownership since October 2025, with new coaches and new programming across all four studios. The ${location.name} community you know is the same; the training, coaching staff, and member experience have been rebuilt from the ground up.`,
+      },
+      ...baseExtras.faq,
+    ],
+  } : undefined;
   const pageUrl = `https://betterbodybootcamp.com/locations/${locationSlug}`;
 
   const faqSchema = (studioExtras && location) ? {
@@ -389,7 +428,7 @@ export default function LocationDetailPage() {
   };
 
   // Trial URLs are always internal app routes now — never external.
-  const isExternalTrialUrl = (_locationName: string) => false;
+  const isExternalTrialUrl = () => false;
 
   return (
     <>
@@ -400,167 +439,85 @@ export default function LocationDetailPage() {
       schema={allSchemas.length > 0 ? allSchemas : undefined}
     />
     <div className="min-h-screen bg-black">
-      {/* 2026-06-25: Premium gradient hero. Replaces the stretched/pixelated
-          studio photo treatment — the source *-final.webp files (Bayside is
-          25KB!) are too low-res to display at fullscreen without artifacting.
-          Pure CSS: rich dark gradient + brand-red glow orbs + dot grid texture
-          + soft vignette. Loads instantly, scales infinitely, never blurs. */}
-      {/* 2026-06-26: was h-screen lg:h-[88vh] which forced the hero to fill
-          88% of viewport on desktop (~820px on a 1080p screen). The H1 +
-          buttons only need ~520px total — the rest was empty space and the
-          page felt "massive with horrible spacing". Replaced with a tight
-          content-driven height + py-16/20 padding for proper rhythm. */}
-      <div className="relative bg-black overflow-hidden min-h-[80vh] lg:min-h-[88vh] flex flex-col">
-        {/* Full-bleed studio training video — fills the hero so it never reads
-            as empty. Muted, looping, autoplay (same optimized asset the
-            Services page uses). Poster loads instantly while the video buffers. */}
-        {/* Base diagonal gradient */}
-        <div className="absolute inset-0 bg-gradient-to-br from-zinc-950 via-zinc-900 to-black" />
-        {/* 2026-06-29 (MOBILE FIX): the two big red blur orbs below were
-            crashing iOS Safari — page rendered pure black on phones. iOS
-            chokes on blur radii > ~50px when the blurred element is large
-            (these were 600-700px @ 120-140px blur). Hidden on mobile via
-            `hidden lg:block` — mobile gets the base gradient + dot grid
-            (both cheap), desktop keeps the rich glow look where it works.
-            On mobile we substitute a cheap red gradient sweep so the hero
-            still feels branded, not flat. */}
-        {/* Mobile-only: cheap red gradient sweep (no blur, no GPU cost) */}
-        <div className="absolute inset-0 lg:hidden bg-gradient-to-br from-red-900/40 via-transparent to-red-800/20" />
-        {/* Desktop-only: red brand glow — top-left */}
-        <div className="hidden lg:block absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-red-600/30 blur-[120px]" />
-        {/* Desktop-only: red brand glow — bottom-right */}
-        <div className="hidden lg:block absolute -bottom-40 -right-40 w-[700px] h-[700px] rounded-full bg-red-700/25 blur-[140px]" />
-        {/* Subtle dot grid texture (cheap, mobile-safe) */}
-        <div
-          className="absolute inset-0 opacity-[0.06]"
-          style={{
-            backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)',
-            backgroundSize: '32px 32px',
-          }}
+      {/* 2026-08-25 CLEAN HERO (reference: 1bodytraining.com — Justin: "we
+          want it clean"). Still photo, left-aligned editorial layout, solid +
+          outlined two-line headline, one quiet subline, rectangular buttons.
+          No video, no glow orbs, no dot grid, no icon rows, no scroll cue.
+          Content-driven height. */}
+      <div className="relative bg-black overflow-hidden">
+        {/* 2026-08-25: video background (poster keeps the identical still on
+            screen until the clip loads, so there is never a flash or void).
+            Same quiet grade as the still — dimmed + partly desaturated — so it
+            reads as texture, not noise. */}
+        <video
+          src="/services/hero.mp4"
+          poster="/services/hero-poster.webp"
+          aria-hidden="true"
+          className="absolute inset-0 w-full h-full object-cover opacity-60"
+          style={{ objectPosition: 'center 30%', filter: 'grayscale(35%)' }}
+          autoPlay
+          muted
+          loop
+          playsInline
         />
-        {/* Bottom vignette for content legibility */}
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/70" />
+        <div className="absolute inset-0 bg-black/60" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30" />
 
-        <div className="container mx-auto px-4 relative z-10 pt-8 pb-12 sm:pt-10 sm:pb-14 flex-1 flex flex-col justify-center">
+        <div className="container mx-auto px-4 sm:px-8 relative z-10 pt-10 pb-14 sm:pt-12 sm:pb-16 lg:pt-16 lg:pb-20">
           <Link
             to="/locations"
-            className="inline-flex items-center gap-2 text-white/70 hover:text-white transition-colors font-semibold group text-sm mb-10"
+            className="inline-flex items-center gap-2 text-white/60 hover:text-white transition-colors text-xs font-bold tracking-[0.2em] uppercase mb-12"
           >
-            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+            <ArrowLeft className="w-3.5 h-3.5" />
             <span>All Locations</span>
           </Link>
 
-          <div className="max-w-5xl mx-auto text-center">
-            <div className="mb-9">
-              {/* Eyebrow with live red dot */}
-              <div className="inline-flex items-center gap-2 mb-4">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
-                </span>
-                <span className="text-red-400 text-xs font-black tracking-[0.3em] uppercase">
-                  {seoData?.city ? `${seoData.city} · ${seoData.state}` : 'NYC Studio'}
-                </span>
-              </div>
-
-              <h1
-                className="text-[clamp(3rem,8vw,7rem)] font-black text-white tracking-tight mb-6 leading-[0.92]"
-                style={{ fontFamily: 'BlackLives, sans-serif' }}
-              >
-                {location.name}
-              </h1>
-
-              <p className="text-white text-xl sm:text-2xl font-semibold max-w-3xl mx-auto mb-6 leading-snug">
-                The coach-led gym in {location.name} — group HIIT, strength, and conditioning
-                classes for every level. A different kind of gym: no guesswork, real coaching, real results.
-              </p>
-
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6 text-white/90">
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-5 h-5 text-red-400" />
-                  <span className="text-base sm:text-lg font-semibold tracking-wide">{seoData?.address ?? location.address}</span>
-                </div>
-                <span className="hidden sm:block w-1 h-1 rounded-full bg-red-400/50" />
-                <a
-                  href={`tel:${location.phone.replace(/[^0-9]/g, '')}`}
-                  className="flex items-center gap-2 hover:text-red-400 transition-colors"
-                >
-                  <Phone className="w-5 h-5 text-red-400" />
-                  <span className="text-base sm:text-lg font-semibold tracking-wide">{location.phone}</span>
-                </a>
-
-                {/* Studio social profiles — visible links that also reinforce
-                    the sameAs schema (helps Google confirm the entity). */}
-                {(seoData?.instagram || seoData?.facebook) && (
-                  <>
-                    <span className="hidden sm:block w-1 h-1 rounded-full bg-red-400/50" />
-                    <div className="flex items-center gap-3">
-                      {seoData?.instagram && (
-                        <a
-                          href={seoData.instagram}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          aria-label={`Better Body Bootcamp ${location.name} on Instagram`}
-                          className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-white/5 border border-white/15 text-white hover:bg-red-600 hover:border-red-600 transition-colors"
-                        >
-                          <Instagram className="w-5 h-5" />
-                        </a>
-                      )}
-                      {seoData?.facebook && (
-                        <a
-                          href={seoData.facebook}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          aria-label={`Better Body Bootcamp ${location.name} on Facebook`}
-                          className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-white/5 border border-white/15 text-white hover:bg-red-600 hover:border-red-600 transition-colors"
-                        >
-                          <Facebook className="w-5 h-5" />
-                        </a>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
+          <div className="max-w-4xl mx-auto text-center">
+            <div className="flex items-center justify-center gap-4 mb-6">
+              <span className="block w-10 h-px bg-white/50" />
+              <span className="text-white/80 text-xs font-bold tracking-[0.35em] uppercase">
+                {(seoData?.city || location.name)}, {HERO_BOROUGH[locationSlug ?? ''] ?? 'NY'} &middot; Est. 2011
+              </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 max-w-xl mx-auto w-full">
+            <h1
+              className="font-black text-white uppercase leading-[0.88] tracking-tight mb-8"
+              style={{ fontFamily: 'BlackLives, sans-serif', fontSize: 'clamp(3rem,8vw,6.5rem)' }}
+            >
+              {location.name}
+              <span
+                aria-hidden="true"
+                className="block text-transparent"
+                style={{ WebkitTextStroke: '2px rgba(255,255,255,0.85)' }}
+              >
+                {HERO_BOROUGH[locationSlug ?? ''] ?? 'New York'}.
+              </span>
+            </h1>
+
+<p className="text-white/50 text-sm tracking-wide mb-10">
+              {seoData?.address ?? location.address}
+              {' '}&middot;{' '}
+              <a
+                href={`tel:${location.phone.replace(/[^0-9]/g, '')}`}
+                className="hover:text-white transition-colors"
+              >
+                {location.phone}
+              </a>
+            </p>
+
+            <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4">
+              <Link
+                to={getTrialUrl(location.name)}
+                className="inline-flex items-center justify-center bg-red-600 hover:bg-red-700 text-white text-sm font-bold tracking-[0.15em] uppercase px-8 py-4 transition-colors"
+              >
+                2 Weeks for $49
+              </Link>
               <Link
                 to={`/schedule/${locationSlug}`}
-                className="group bg-white hover:bg-gray-50 rounded-xl py-4 px-5 transition-all duration-300 shadow-xl hover:shadow-2xl hover:-translate-y-0.5"
+                className="inline-flex items-center justify-center border border-white/40 hover:border-white hover:bg-white hover:text-black text-white text-sm font-bold tracking-[0.15em] uppercase px-8 py-4 transition-colors"
               >
-                <div className="flex items-center justify-center gap-2.5">
-                  <Calendar className="w-5 h-5 text-red-600 group-hover:scale-110 transition-transform" />
-                  <span className="text-base font-black text-black tracking-wide">VIEW SCHEDULE</span>
-                </div>
+                Book a Class
               </Link>
-
-              {isExternalTrialUrl(location.name) ? (
-                <a
-                  href={getTrialUrl(location.name)}
-                  className="group bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 rounded-xl py-4 px-5 transition-all duration-300 shadow-xl shadow-red-900/30 hover:shadow-2xl hover:-translate-y-0.5 ring-1 ring-red-500/40"
-                >
-                  <div className="flex items-center justify-center">
-                    <span className="text-base font-black text-white tracking-wide">2 WEEKS FOR $49</span>
-                  </div>
-                </a>
-              ) : (
-                <Link
-                  to={getTrialUrl(location.name)}
-                  className="group bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 rounded-xl py-4 px-5 transition-all duration-300 shadow-xl shadow-red-900/30 hover:shadow-2xl hover:-translate-y-0.5 ring-1 ring-red-500/40"
-                >
-                  <div className="flex items-center justify-center">
-                    <span className="text-base font-black text-white tracking-wide">2 WEEKS FOR $49</span>
-                  </div>
-                </Link>
-              )}
-            </div>
-          </div>
-
-          {/* Scroll cue */}
-          <div className="text-center pb-2 sm:pb-4">
-            <div className="inline-flex items-center gap-2 text-white/40 text-[10px] sm:text-xs font-bold tracking-[0.25em] uppercase">
-              <span>Schedule below</span>
-              <span className="text-red-500">↓</span>
             </div>
           </div>
         </div>
@@ -630,10 +587,13 @@ export default function LocationDetailPage() {
               <div className="text-center mb-10">
                 <span className="inline-block text-red-500 text-xs font-black tracking-[0.25em] uppercase mb-3">What We Train</span>
                 <h2 className="text-[clamp(1.875rem,4vw,3.5rem)] font-black text-white mb-3 tracking-tight">
-                  Programs at {location.name}
+                  Group Fitness Classes at {location.name}
                 </h2>
                 <p className="text-gray-400 text-base sm:text-lg max-w-xl mx-auto leading-relaxed">
-                  Coached group-strength, conditioning, and personal training — every session is programmed.
+                  Strength training, HIIT training, bootcamp classes, hybrid training, small group training, and 1-on-1 personal training. Every session is programmed.
+                </p>
+                <p className="mt-4 inline-flex items-center gap-2 text-xs font-black tracking-[0.2em] uppercase text-red-500 border border-red-500/40 rounded-full px-4 py-2">
+                  New ownership · New coaches · Since October 2025
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
@@ -648,12 +608,7 @@ export default function LocationDetailPage() {
                         <Icon className="w-5 h-5 text-red-400 group-hover:text-white transition-colors" />
                       </div>
                       <h3 className="text-base sm:text-lg font-black text-white mb-2 tracking-tight">{p.name}</h3>
-                      <p className="text-sm text-gray-400 leading-relaxed mb-3">{p.description}</p>
-                      {p.price && (
-                        <span className="inline-flex items-center text-[11px] font-black tracking-wider px-2.5 py-1 rounded-full bg-red-600 text-white uppercase">
-                          {p.price}
-                        </span>
-                      )}
+                      <p className="text-sm text-gray-400 leading-relaxed">{p.description}</p>
                     </div>
                   );
                 })}
@@ -665,8 +620,16 @@ export default function LocationDetailPage() {
                   block the studio sits on. */}
               {nearbyAreas.length > 0 && (
                 <p className="mt-9 text-center text-gray-400 text-sm sm:text-[15px] leading-relaxed max-w-3xl mx-auto">
-                  Proudly serving <span className="text-gray-200 font-semibold">{location.name}</span> and nearby{' '}
-                  {nearbyAreas.join(', ')} — bootcamp, HIIT, strength &amp; group fitness classes for every level.
+                  Better Body Bootcamp is a coach-led <span className="text-gray-200 font-semibold">gym in {location.name}</span>, also serving nearby{' '}
+                  {nearbyAreas.join(', ')} with bootcamp, HIIT, strength &amp; group fitness classes for every level.
+                </p>
+              )}
+
+              {/* 2026-08-23 on-page checker: per-studio positioning line — natural
+                  comparison framing + "fitness goals" semantic term. */}
+              {STUDIO_POSITIONING[location.slug] && (
+                <p className="mt-4 text-center text-gray-400 text-sm sm:text-[15px] leading-relaxed max-w-3xl mx-auto">
+                  {STUDIO_POSITIONING[location.slug]}
                 </p>
               )}
             </div>
@@ -674,11 +637,14 @@ export default function LocationDetailPage() {
         </div>
       )}
 
+      {/* ── Real Google reviews for THIS studio (2026-09-02) ── */}
+      <StudioReviews studio={location.name} />
+
       {/* ── FAQ (light gray, full-width, top 5 visible by default) ── */}
       {studioExtras && (
         <div id="faq" className="bg-gray-50 py-14 sm:py-16 border-t border-gray-100">
           <div className="container mx-auto px-4">
-            <div className="max-w-3xl mx-auto">
+            <div className="max-w-5xl mx-auto">
               <div className="text-center mb-8">
                 <span className="inline-block text-red-600 text-xs font-black tracking-[0.25em] uppercase mb-3">Common Questions</span>
                 <h2 className="text-[clamp(1.875rem,4vw,3.5rem)] font-black text-black mb-3 tracking-tight">
@@ -792,6 +758,17 @@ export default function LocationDetailPage() {
                 </Link>
               </div>
             )}
+            {location.name === 'Williamsburg' && (
+              <div className="text-center mt-8">
+                <Link
+                  to="/brooklyn"
+                  className="inline-flex items-center gap-2 text-red-400 hover:text-red-300 font-bold text-sm tracking-wide"
+                >
+                  See all gyms in Brooklyn
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -803,9 +780,9 @@ export default function LocationDetailPage() {
             <div className="bg-gradient-to-br from-zinc-900 to-black border border-red-900/30 rounded-3xl p-10 sm:p-12 text-center shadow-2xl">
               <h2 className="text-[clamp(2rem,4vw,4rem)] font-black text-white mb-4 tracking-tight">Ready to Get Started?</h2>
               <p className="text-white/80 text-lg mb-8 max-w-2xl mx-auto leading-relaxed">
-                Join us at our {location.name} location for high-energy bootcamp classes designed to help you achieve your fitness goals with expert guidance and community support.
+                Two weeks of unlimited classes at {location.name} for $49. Come see what coached training actually feels like.
               </p>
-              {isExternalTrialUrl(location.name) ? (
+              {isExternalTrialUrl() ? (
                 <a
                   href={getTrialUrl(location.name)}
                   className="inline-flex items-center justify-center space-x-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-10 py-5 rounded-2xl text-lg font-bold transition-all transform hover:scale-105 shadow-xl"

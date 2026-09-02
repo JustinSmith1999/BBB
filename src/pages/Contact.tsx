@@ -3,6 +3,7 @@ import { MapPin, Phone, Mail, ArrowRight, CheckCircle } from 'lucide-react';
 import { supabase, LOCATION_PUBLIC_COLUMNS, Location, ContactSubmission } from '../lib/supabase';
 import { getUtmParams } from '../lib/utm';
 import SEOHead from '../components/SEOHead';
+import PageHero, { Red } from '../components/PageHero';
 
 export default function ContactPage() {
   const [locations, setLocations] = useState<Location[]>([]);
@@ -92,35 +93,16 @@ export default function ContactPage() {
 
       <div style={{ minHeight: '100vh', backgroundColor: 'var(--bg-primary)' }}>
 
-        {/* ── Hero ── */}
-        <div
-          className="relative overflow-hidden flex flex-col items-center justify-center text-center"
-          style={{ paddingTop: '160px', paddingBottom: '96px', borderBottom: '1px solid var(--divider)' }}
-        >
-          <div className="absolute inset-0 pointer-events-none opacity-[0.07]">
-            <div
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[280px] rounded-full"
-              style={{ backgroundColor: 'var(--brand-red)', filter: 'blur(120px)' }}
-            />
-          </div>
-          <div className="relative z-10 max-w-3xl mx-auto px-6">
-            <p className="eyebrow mb-5" style={{ letterSpacing: '0.2em' }}>WE'D LOVE TO HEAR FROM YOU</p>
-            <h1
-              className="font-display font-black uppercase"
-              style={{ fontSize: 'clamp(2.25rem, 4.5vw, 4rem)', lineHeight: '0.92', letterSpacing: '-0.01em', color: 'var(--text-primary)' }}
-            >
-              LET'S <span style={{ color: 'var(--brand-red)' }}>TALK</span>
-            </h1>
-            <p
-              style={{ color: 'var(--text-secondary)', fontSize: '1rem', lineHeight: '1.7', maxWidth: '46ch', margin: '24px auto 0' }}
-            >
-              Questions about our classes, memberships, or getting started? Drop us a message and we'll get back to you fast.
-            </p>
-          </div>
-        </div>
+        {/* ── Hero (shared PageHero — one style everywhere) ── */}
+        {/* 2026-09-02 (owner): one line, not stacked, and less dead air. */}
+        <PageHero
+          eyebrow="WE'D LOVE TO HEAR FROM YOU"
+          lines={[<span key="l">LET'S <Red>TALK</Red></span>]}
+          sub="Questions about our classes, memberships, or getting started? Drop us a message and we'll get back to you fast."
+        />
 
         {/* ── Body ── */}
-        <section style={{ padding: '96px 0' }}>
+        <section style={{ padding: '48px 0 96px' }}>
           <div className="max-w-6xl mx-auto px-6">
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-10 items-start">
 

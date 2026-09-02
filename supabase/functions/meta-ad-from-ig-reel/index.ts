@@ -104,7 +104,16 @@ Deno.serve(async (req) => {
       const igs = await resolveIgAccounts(account, token);
       res.ig_accounts = igs;
       let media: any = null, igUsed: any = null;
-      for (const ig of igs) { const m = await findReelMedia(ig.id, token, j.shortcode); if (m) { media = m; igUsed = ig; break; } }
+      // 2026-08-31: media_id override. Bayside's token lacks instagram_basic,
+      // so listing /{ig}/media 400s (#10). IG shortcodes are base64url-encoded
+      // media ids, so the caller can pass media_id directly and we skip the
+      // listing entirely. instagram_actor_id = first resolved IG account.
+      if (j.media_id) {
+        media = { id: String(j.media_id), permalink: `https://www.instagram.com/reel/${j.shortcode}/`, media_type: "VIDEO", via: "media_id override" };
+        igUsed = igs[0] || null;
+      } else {
+        for (const ig of igs) { const m = await findReelMedia(ig.id, token, j.shortcode); if (m) { media = m; igUsed = ig; break; } }
+      }
       res.resolved_media = media; res.ig_used = igUsed;
       // adset → campaign for activation
       const aset = await fbGet(String(j.adset_id), token, { fields: "id,name,campaign_id,daily_budget,effective_status" });
@@ -115,11 +124,24 @@ Deno.serve(async (req) => {
       if (dryRun) { res.ok = true; res.plan = `Create ad from IG media ${media.id} into adset ${j.adset_id}, set daily_budget=$${(j.daily_budget_cents/100).toFixed(0)}, ${res.activate?"ACTIVATE":"leave paused"} campaign+adset.`; results.push(res); continue; }
 
       // 2. Create creative from existing IG post
-      const cr = await fbPost(`${account}/adcreatives`, token, {
-        name: `${j.ad_name || studio + " IG reel"} — creative`,
-        source_instagram_media_id: media.id,
-        instagram_actor_id: igUsed.id,
-      });
+      // 2026-08-31: Meta v19+ rejects instagram_actor_id for some accounts
+      // ((#100) must be a valid Instagram account id). Try the modern
+      // instagram_user_id param first, fall back to instagram_actor_id.
+      let cr: any;
+      try {
+        cr = await fbPost(`${account}/adcreatives`, token, {
+          name: `${j.ad_name || studio + " IG reel"} — creative`,
+          source_instagram_media_id: media.id,
+          instagram_user_id: igUsed?.id,
+        });
+      } catch (e1) {
+        res.first_attempt_error = String(e1).slice(0, 200);
+        cr = await fbPost(`${account}/adcreatives`, token, {
+          name: `${j.ad_name || studio + " IG reel"} — creative`,
+          source_instagram_media_id: media.id,
+          instagram_actor_id: igUsed?.id,
+        });
+      }
       res.creative_id = cr.id;
       // 3. Create the ad (active)
       const ad = await fbPost(`${account}/ads`, token, { name: j.ad_name || `${studio} IG reel ${j.shortcode}`, adset_id: String(j.adset_id), creative: JSON.stringify({ creative_id: cr.id }), status: "ACTIVE" });

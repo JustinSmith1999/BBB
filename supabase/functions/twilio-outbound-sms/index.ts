@@ -49,7 +49,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST')    return json({ ok: false, error: 'POST only' }, 405);
 
-  let body: { trial_signup_id?: string; body?: string; sent_by?: string };
+  let body: { trial_signup_id?: string; to_phone?: string; studio?: string; body?: string; sent_by?: string; media_url?: string };
   try {
     body = await req.json();
   } catch {
@@ -59,8 +59,11 @@ serve(async (req) => {
   const text    = body?.body?.trim();
   const sentBy  = body?.sent_by?.trim() || null;
 
-  if (!trialId || !text) {
-    return json({ ok: false, error: 'trial_signup_id and body required' }, 400);
+  // 2026-09-01 · Homebase Inbox: allow sending to a raw phone (winback
+  // members and other non-trial threads have no trial_signup_id).
+  const directPhone = normalizeUsPhone(body?.to_phone);
+  if ((!trialId && !directPhone) || !text) {
+    return json({ ok: false, error: 'trial_signup_id or to_phone, plus body, required' }, 400);
   }
   if (text.length > 1500) {
     return json({ ok: false, error: 'body too long (>1500 chars)' }, 400);
@@ -71,21 +74,26 @@ serve(async (req) => {
   const sb = createClient(sbUrl, sbKey);
 
   // Look up the trial_signup to get the customer's phone + studio slug.
-  const { data: trial, error: trialErr } = await sb
-    .from('trial_signups')
-    .select('id, name, phone, opted_out_at, location_id, locations:location_id(name)')
-    .eq('id', trialId)
-    .is('deleted_at', null)
-    .maybeSingle();
-  if (trialErr || !trial) {
-    return json({ ok: false, error: `trial not found: ${trialErr?.message ?? 'no row'}` }, 404);
+  // In direct-phone mode there is no trial row; studio comes from the body.
+  let trial: any = null;
+  if (trialId) {
+    const { data: t, error: trialErr } = await sb
+      .from('trial_signups')
+      .select('id, name, phone, opted_out_at, location_id, locations:location_id(name)')
+      .eq('id', trialId)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (trialErr || !t) {
+      return json({ ok: false, error: `trial not found: ${trialErr?.message ?? 'no row'}` }, 404);
+    }
+    if (t.opted_out_at) {
+      return json({ ok: false, error: 'customer has opted out — cannot SMS' }, 403);
+    }
+    trial = t;
   }
-  if (trial.opted_out_at) {
-    return json({ ok: false, error: 'customer has opted out — cannot SMS' }, 403);
-  }
-  const toPhone = normalizeUsPhone(trial.phone);
+  const toPhone = trial ? normalizeUsPhone(trial.phone) : directPhone;
   if (!toPhone) {
-    return json({ ok: false, error: `trial has invalid phone: ${trial.phone}` }, 400);
+    return json({ ok: false, error: `invalid phone` }, 400);
   }
 
   // Send via Twilio REST API.
@@ -103,7 +111,7 @@ serve(async (req) => {
   // no matter what contact name their phone shows.
   // Skip the prepend if staff already typed "BBB" anywhere in the first 30
   // chars of the body — avoids double-branding when they wrote it manually.
-  const studioName = String((trial as any).locations?.name ?? '').trim();
+  const studioName = String((trial as any)?.locations?.name ?? body?.studio ?? '').trim();
   const head30 = text.slice(0, 30).toUpperCase();
   const alreadyBranded = head30.includes('BBB') || head30.includes('BETTER BODY');
   const finalBody = (studioName && !alreadyBranded)
@@ -126,6 +134,9 @@ serve(async (req) => {
         To: toPhone,
         Body: finalBody,
         StatusCallback: statusCallback,
+        // 2026-08-22: optional image attachment (sends as MMS). Must be a
+        // public https URL (e.g. the Supabase logos bucket).
+        ...(body.media_url?.startsWith('https://') ? { MediaUrl: body.media_url } : {}),
       }),
     },
   );
@@ -134,12 +145,13 @@ serve(async (req) => {
   if (!tw.ok) {
     // Log the failure to sms_messages so it shows in the thread too.
     await sb.from('sms_messages').insert({
-      trial_signup_id: trialId,
-      studio_slug: (trial as any).locations?.name?.toLowerCase()?.replace(/\s+/g, '-') ?? null,
+      trial_signup_id: trialId ?? null,
+      studio_slug: ((trial as any)?.locations?.name ?? body?.studio ?? '').toLowerCase().replace(/\s+/g, '-') || null,
       direction: 'outbound',
       from_phone: fromPhone,
       to_phone: toPhone,
       body: finalBody,
+      send_path: trialId ? null : 'homebase_manual',
       status: 'failed',
       error_code: String(twJson?.code ?? ''),
       error_message: twJson?.message ?? 'unknown',
@@ -150,8 +162,9 @@ serve(async (req) => {
 
   // Twilio accepted — log the outbound to the gateway.
   const { error: insErr } = await sb.from('sms_messages').insert({
-    trial_signup_id: trialId,
-    studio_slug: (trial as any).locations?.name?.toLowerCase()?.replace(/\s+/g, '-') ?? null,
+    trial_signup_id: trialId ?? null,
+    studio_slug: ((trial as any)?.locations?.name ?? body?.studio ?? '').toLowerCase().replace(/\s+/g, '-') || null,
+    send_path: trialId ? null : 'homebase_manual',
     direction: 'outbound',
     from_phone: fromPhone,
     to_phone: toPhone,

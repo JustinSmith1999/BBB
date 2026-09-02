@@ -2299,6 +2299,36 @@ Deno.serve(async (req: Request) => {
 
       console.log("Trial signup saved:", data);
 
+      // ─── 2026-08-28: AUTO-PROVISION IN MARIANA TEK ───────────────────────
+      // The native checkout (no MT iframe) collects money via Stripe; this
+      // fire-and-forget call makes the buyer a real MT member (user + cart +
+      // contract + alt-payment order) via the mt-provision edge function.
+      // mt-provision is idempotent and self-alerts on failure, so a webhook
+      // replay or a double-fire is harmless. Only trial + bts299 provision;
+      // special/comeback variants are manual-offer flows left to the desk.
+      try {
+        const provisionKind =
+          metadata.product === "bts299" ? "bts299"
+          : (!metadata.priceVariant || metadata.priceVariant === "trial") ? "trial"
+          : null;
+        const studioSlugProv = (location?.name ?? "").toLowerCase().replace(/\s+/g, "-");
+        if (provisionKind && studioSlugProv && trialData.email) {
+          fetch(`${Deno.env.get("SUPABASE_URL") ?? ""}/functions/v1/mt-provision`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-bbb-secret": "bbb-test-2026-05-27" },
+            body: JSON.stringify({
+              email: trialData.email,
+              name: trialData.name,
+              phone: trialData.phone || null,
+              studio_slug: studioSlugProv,
+              kind: provisionKind,
+            }),
+          }).catch((e) => console.error("mt-provision kick failed:", (e as Error).message));
+        }
+      } catch (e) {
+        console.error("mt-provision kick threw:", (e as Error).message);
+      }
+
       // ─── Mirror to stripe_paid_mirror (single source of truth) ──────────
       // Real-time mirror write so the dashboard's count_paid_canonical can
       // see this purchase immediately, not on the next 5-min cron tick.

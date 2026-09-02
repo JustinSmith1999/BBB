@@ -1,6 +1,7 @@
 import { Check, Zap, Dumbbell, Heart, Flame, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import SEOHead from '../components/SEOHead';
+import PageHero, { Red } from '../components/PageHero';
 
 const plans = [
   {
@@ -108,51 +109,17 @@ export default function PricingPage() {
 
       <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-primary)' }}>
 
-        {/* ── Hero ── */}
-        <div
-          className="relative overflow-hidden flex flex-col items-center justify-center text-center"
-          style={{
-            paddingTop: '160px',
-            paddingBottom: '96px',
-            borderBottom: '1px solid var(--divider)',
-          }}
-        >
-          {/* Glow */}
-          <div className="absolute inset-0 pointer-events-none opacity-[0.06]">
-            <div
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[640px] h-[320px] rounded-full"
-              style={{ backgroundColor: 'var(--brand-red)', filter: 'blur(100px)' }}
-            />
-          </div>
-
-          <div className="relative z-10 max-w-3xl mx-auto px-6">
-            <p className="eyebrow mb-5" style={{ letterSpacing: '0.2em' }}>MEMBERSHIP</p>
-            <h1
-              className="font-display font-black uppercase"
-              style={{
-                fontSize: 'clamp(2rem, 4.5vw, 4rem)',
-                lineHeight: '0.92',
-                letterSpacing: '-0.01em',
-                color: 'var(--text-primary)',
-              }}
-            >
-              INVEST IN
-              <br />
-              <span style={{ color: 'var(--brand-red)' }}>YOUR BODY</span>
-            </h1>
-            <p
-              className="mt-6 text-lg"
-              style={{ color: 'var(--text-secondary)', lineHeight: '1.6', maxWidth: '52ch', margin: '24px auto 0' }}
-            >
-              Simple, transparent options — from a two-week trial to a full annual commitment. Start whenever you're ready.
-            </p>
-          </div>
-        </div>
+        {/* ── Hero (shared PageHero — one style everywhere) ── */}
+        <PageHero
+          eyebrow="MEMBERSHIP · NYC"
+          lines={["INVEST IN", <Red key="r">YOUR BODY</Red>]}
+          sub="Simple, transparent options — from a two-week trial to a full annual commitment. Start whenever you're ready."
+        />
 
         {/* ── Plans ── */}
         <section style={{ padding: '96px 0' }}>
-          <div className="max-w-6xl mx-auto px-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+          <div className="max-w-content mx-auto px-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch">
               {plans.map((plan) => (
                 <div
                   key={plan.id}
@@ -334,7 +301,7 @@ export default function PricingPage() {
             padding: '96px 0',
           }}
         >
-          <div className="max-w-6xl mx-auto px-6">
+          <div className="max-w-content mx-auto px-6">
             <div className="text-center mb-16">
               <p className="eyebrow mb-4" style={{ letterSpacing: '0.2em' }}>THE PROGRAM</p>
               <h2
@@ -392,6 +359,38 @@ export default function PricingPage() {
                 </div>
               ))}
             </div>
+          </div>
+        </section>
+
+        {/* SEO content block (2026-08-23): pricing cards alone left this page
+            thin in the served HTML. How pricing actually works, brand voice. */}
+        <section style={{ borderTop: '1px solid var(--divider)', padding: '64px 0' }}>
+          <div className="max-w-6xl mx-auto px-6" style={{ color: 'var(--text-secondary)', fontSize: '15px', lineHeight: '1.7' }}>
+            <h2
+              className="font-display font-black uppercase mb-5"
+              style={{ fontSize: 'clamp(1.25rem, 2.5vw, 1.75rem)', color: 'var(--text-primary)' }}
+            >
+              How Pricing Works Here
+            </h2>
+            <p style={{ marginBottom: '16px' }}>
+              Everyone starts the same way: the $49 two-week trial. It's unlimited classes at your home studio,
+              it's a one-time charge, and it does not roll into anything automatically. We built it that way on
+              purpose. Two weeks is enough time to train six or eight sessions, meet the coaches, and know
+              whether this is your gym before you commit to a membership.
+            </p>
+            <p style={{ marginBottom: '16px' }}>
+              After the trial, memberships are unlimited classes across all four studios: Astoria, Bayside, and
+              Fresh Meadows in Queens plus Williamsburg in Brooklyn. There are no per-class charges and no
+              booking fees. Month-to-month and paid-in-full options exist at different price points, and the
+              front desk will lay out exact numbers for your studio without games. Class cancellations are free
+              up to 2 hours before start time through the Better Body Studios app.
+            </p>
+            <p>
+              If you're comparing boot camp prices across NYC, the math is straightforward: boutique studios
+              charge $34 to $40 per single class, while a member training four times a week here pays a
+              fraction of that per session, with a coach running every workout. That's why most people who
+              finish the trial stay.
+            </p>
           </div>
         </section>
 

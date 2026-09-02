@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MapPin, Phone, ArrowRight } from 'lucide-react';
+import { MapPin, ArrowRight } from 'lucide-react';
 import { supabase, LOCATION_PUBLIC_COLUMNS, Location } from '../lib/supabase';
 import SEOHead from '../components/SEOHead';
+import PageHero, { Red } from '../components/PageHero';
 
 const locationImages: Record<string, string> = {
   'Williamsburg': '/williamsburg-final.webp',
@@ -37,54 +38,22 @@ export default function LocationsPage() {
 
       <div style={{ minHeight: '100vh', backgroundColor: 'var(--bg-primary)' }}>
 
-        {/* Hero */}
-        <div
-          className="relative flex flex-col items-center justify-center text-center overflow-hidden"
-          style={{
-            paddingTop: '160px',
-            paddingBottom: '96px',
-            borderBottom: '1px solid var(--divider)',
-          }}
-        >
-          <div className="absolute inset-0 pointer-events-none opacity-[0.06]">
-            <div
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] rounded-full"
-              style={{ backgroundColor: 'var(--brand-red)', filter: 'blur(100px)' }}
-            />
-          </div>
-          <div className="relative z-10 max-w-3xl mx-auto px-6">
-            <p className="eyebrow mb-5" style={{ letterSpacing: '0.2em' }}>NYC STUDIOS</p>
-            <h1
-              className="font-display font-black uppercase"
-              style={{
-                fontSize: 'clamp(2rem, 4.5vw, 4rem)',
-                lineHeight: '0.92',
-                letterSpacing: '-0.01em',
-                color: 'var(--text-primary)',
-              }}
-            >
-              FIND YOUR{' '}
-              <span style={{ color: 'var(--brand-red)' }}>LOCATION</span>
-            </h1>
-            <p
-              className="mt-6 text-lg"
-              style={{ color: 'var(--text-secondary)', lineHeight: '1.6', maxWidth: '48ch', margin: '24px auto 0' }}
-            >
-              Four studios across New York City. Same elite coaching, same proven program — wherever you are.
-            </p>
-          </div>
-        </div>
+        {/* Hero (shared PageHero — one style everywhere) */}
+        <PageHero
+          eyebrow="NYC STUDIOS · QUEENS + BROOKLYN"
+          lines={["A BETTER BODY", <Red key="r">NEAR YOU</Red>]}
+        />
 
         {/* Grid */}
-        <section style={{ padding: '96px 0' }}>
-          <div className="max-w-6xl mx-auto px-6">
+        <section style={{ padding: '48px 0 96px' }}>
+          <div className="max-w-[1440px] mx-auto px-6">
             {loading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {[...Array(4)].map((_, i) => (
                   <div
                     key={i}
                     className="rounded-2xl animate-pulse"
-                    style={{ height: '420px', backgroundColor: 'var(--bg-elevated)' }}
+                    style={{ height: '600px', backgroundColor: 'var(--bg-elevated)' }}
                   />
                 ))}
               </div>
@@ -99,7 +68,7 @@ export default function LocationsPage() {
                       to={`/locations/${slug}`}
                       className="group relative rounded-2xl overflow-hidden block"
                       style={{
-                        height: '420px',
+                        height: '600px',
                         border: '1px solid var(--divider)',
                         transition: 'border-color 250ms ease',
                       }}
@@ -111,7 +80,7 @@ export default function LocationsPage() {
                         <img
                           src={imgSrc}
                           alt={location.name}
-                          className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                          className="absolute inset-0 w-full h-full object-cover grayscale-[45%] group-hover:grayscale-0 transition-all duration-700 group-hover:scale-105"
                         />
                       ) : (
                         <div className="absolute inset-0" style={{ backgroundColor: 'var(--bg-elevated)' }} />
@@ -167,28 +136,21 @@ export default function LocationsPage() {
                                 {location.address}, {location.city}, {location.state} {location.zip}
                               </span>
                             </div>
-                            {location.phone && (
-                              <div className="flex items-center gap-2.5">
-                                <Phone style={{ width: '14px', height: '14px', color: 'var(--brand-red)', flexShrink: 0 }} />
-                                <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.75)' }}>{location.phone}</span>
-                              </div>
-                            )}
                           </div>
 
                           <div
-                            className="inline-flex items-center gap-2 font-display font-bold uppercase"
+                            className="inline-flex items-center gap-2 font-display font-bold uppercase group-hover:gap-3"
                             style={{
-                              fontSize: '12px',
-                              letterSpacing: '0.08em',
+                              fontSize: '13px',
+                              letterSpacing: '0.18em',
                               color: '#fff',
-                              backgroundColor: 'var(--brand-red)',
-                              padding: '10px 20px',
-                              borderRadius: '999px',
-                              transition: 'background-color 150ms ease',
+                              borderBottom: '2px solid var(--brand-red)',
+                              paddingBottom: '6px',
+                              transition: 'gap 150ms ease',
                             }}
                           >
                             View Studio
-                            <ArrowRight style={{ width: '13px', height: '13px' }} />
+                            <ArrowRight style={{ width: '14px', height: '14px', color: 'var(--brand-red)' }} />
                           </div>
                         </div>
                       </div>
@@ -197,6 +159,53 @@ export default function LocationsPage() {
                 })}
               </div>
             )}
+          </div>
+        </section>
+
+        {/* 2026-08-25: "Four Studios, One Membership" — restyled from a flat
+            text wall into stats + two-column editorial prose. Same copy, same
+            SEO value, actual life. */}
+        <section style={{ borderTop: '1px solid var(--divider)', padding: '80px 0' }}>
+          <div className="max-w-[1440px] mx-auto px-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-16">
+              {[
+                { n: '4', l: 'Studios across NYC' },
+                { n: '1', l: 'Membership, every studio' },
+                { n: '2011', l: 'Training New Yorkers since' },
+                { n: '7', l: 'Days a week, 5 AM to night' },
+              ].map((x) => (
+                <div key={x.l} style={{ borderLeft: '2px solid var(--brand-red)', paddingLeft: '18px' }}>
+                  <div className="font-display font-black" style={{ fontSize: 'clamp(2.25rem,4vw,3.5rem)', lineHeight: 1, color: 'var(--text-primary)' }}>{x.n}</div>
+                  <div className="uppercase" style={{ fontSize: '11px', letterSpacing: '0.14em', color: 'var(--text-secondary)', marginTop: '8px' }}>{x.l}</div>
+                </div>
+              ))}
+            </div>
+            <div className="grid md:grid-cols-[1fr,2fr] gap-10 md:gap-16">
+              <h2
+                className="font-display font-black uppercase"
+                style={{ fontSize: 'clamp(1.5rem,3vw,2.5rem)', lineHeight: '0.95', color: 'var(--text-primary)' }}
+              >
+                Four Studios,<br />
+                <span style={{ color: 'var(--brand-red)' }}>One Membership</span>
+              </h2>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '15px', lineHeight: '1.8' }}>
+                <p style={{ marginBottom: '16px' }}>
+                  Better Body Bootcamp has been training New Yorkers since 2011, and today runs four studios: three
+                  across Queens and one in Brooklyn. Astoria sits on Steinway Street minutes from the Broadway N/W stop,
+                  Bayside is on Bell Blvd near the LIRR, Fresh Meadows is on 164th Street off the Q65, and Williamsburg
+                  is on Driggs Ave a few blocks from the Bedford L. Every studio runs the same coach-led programming
+                  in small group classes, so which one you call home comes down to your commute, not the quality of
+                  the workout.
+                </p>
+                <p>
+                  One membership works at all four, and plenty of members split their week between studios: mornings
+                  near home, evenings near work. If you're new, pick whichever studio is easiest to get to and start
+                  with the $49 two-week unlimited trial there. Members drive in from Whitestone, Flushing, Douglaston,
+                  Forest Hills, Long Island City, and Greenpoint, and the studios' class times are built around real
+                  NYC schedules, from 5 AM sessions before the commute to evening classes that let you train after work.
+                </p>
+              </div>
+            </div>
           </div>
         </section>
 

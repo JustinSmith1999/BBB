@@ -8,8 +8,6 @@
     <link rel="preconnect" href="https://uracuwugpxqjfgtuobal.supabase.co" crossorigin />
     <link rel="dns-prefetch" href="https://connect.facebook.net" />
     <link rel="dns-prefetch" href="https://checkout.stripe.com" />
-    <link rel="dns-prefetch" href="https://betterbodybootcamp.marianaiframes.com" />
-    <link rel="preconnect" href="https://betterbodybootcamp.marianaiframes.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#dc2626" />
@@ -180,132 +178,14 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <!-- 2026-06-24: Mariana Tek Web Integrations runtime. Bootstraps the iframe
-         widgets used on /schedule/[slug], /classes, /pricing, /account, etc.
-         (Renders wherever the React tree includes a <div data-mariana-integrations="..."> element.)
-         Replaces the per-page healcode.js / MindBody widget loaders. Lives in
-         index.html so it's available on first paint of any page. -->
-    <!-- 2026-07-30: MT_CONFIG attribution bridge. MT's widget is a sealed
-         cross-origin iframe, so we can't read its inputs — but MT officially
-         calls these parent-page callbacks with the customer's email + order
-         after account creation / login / purchase. We stash a soft-deleted
-         "attribution-shadow" row in trial_signups carrying fbp/fbc/UA/UTMs;
-         mariana-tek-capi-purchase-sync joins it by email to make MT purchases
-         attributable in Meta. MUST be defined BEFORE the MT loader below. -->
-    <script>
-      (function () {
-        var SB = 'https://uracuwugpxqjfgtuobal.supabase.co';
-        var ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVyYWN1d3VncHhxamZndHVvYmFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzOTkxMDksImV4cCI6MjA3ODk3NTEwOX0.DFlpeS3mh4ZL6aFEBUXg5biZ6wLXQyxjkrX66hnNgso';
-        var LOCS = {
-          'astoria': 'dcf94b47-dcc8-4176-96e9-f0cdd0fc6b45',
-          'williamsburg': '80536b45-df0e-42d1-880c-e9301372e1cf',
-          'bayside': '5c0e8383-dd2f-4f8f-bfea-5cc477cec4c7',
-          'fresh-meadows': '6bbbe077-bcc6-4d9d-a10b-7605c1484752'
-        };
-        function cookie(n) {
-          var m = document.cookie.match(new RegExp('(?:^|; )' + n + '=([^;]*)'));
-          return m ? decodeURIComponent(m[1]) : '';
-        }
-        // Persist click ids / UTMs from the landing URL so they survive SPA nav.
-        try {
-          var q = new URLSearchParams(location.search);
-          ['utm_source','utm_medium','utm_campaign','utm_content','utm_term'].forEach(function (k) {
-            if (q.get(k)) sessionStorage.setItem('bbb_' + k, q.get(k));
-          });
-          if (q.get('fbclid')) sessionStorage.setItem('bbb_fbclid', q.get('fbclid'));
-        } catch (e) {}
-        function signals() {
-          var fbp = cookie('_fbp') || null;
-          var fbc = cookie('_fbc') || null;
-          if (!fbc) {
-            var fbclid = null;
-            try { fbclid = sessionStorage.getItem('bbb_fbclid'); } catch (e) {}
-            if (fbclid) fbc = 'fb.1.' + Date.now() + '.' + fbclid;
-          }
-          var utms = {};
-          try {
-            ['utm_source','utm_medium','utm_campaign','utm_content','utm_term'].forEach(function (k) {
-              var v = sessionStorage.getItem('bbb_' + k);
-              if (v) utms[k] = v;
-            });
-          } catch (e) {}
-          return { fbp: fbp, fbc: fbc, utms: utms };
-        }
-        function locId() {
-          var m = location.pathname.match(/\/(?:trial|schedule)\/([a-z-]+)/);
-          return (m && LOCS[m[1]]) || null;
-        }
-        var sent = {};
-        var lastEmail = null;
-        function shadow(email) {
-          email = (email || '').trim().toLowerCase();
-          if (!email || sent[email]) return;
-          sent[email] = true;
-          var s = signals();
-          var body = {
-            name: 'attribution-shadow',
-            email: email,
-            location_id: locId(),
-            source_category: 'web_organic',
-            payment_status: 'attribution_only',
-            fbp: s.fbp, fbc: s.fbc,
-            client_user_agent: navigator.userAgent || null,
-            deleted_at: new Date().toISOString()
-          };
-          for (var k in s.utms) body[k] = s.utms[k];
-          fetch(SB + '/rest/v1/trial_signups', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer ' + ANON,
-              'apikey': ANON,
-              'Prefer': 'return=minimal'
-            },
-            body: JSON.stringify(body)
-          }).catch(function () {});
-        }
-        window.MT_CONFIG = {
-          isCaptureUTMParamsActive: true,
-          events: {
-            // 2026-08-03: telemetry for the sticker-shock fix — records which
-            // analytics events MT fires (esp. around the $49 overlay closing)
-            // so we can key the catalog-hiding panel on a VERIFIED signal.
-            // Zero side effects: ring buffer in sessionStorage + console only.
-            onTrackEvent: function (name, props) {
-              try {
-                var k = 'bbb_mt_events';
-                var arr = JSON.parse(sessionStorage.getItem(k) || '[]');
-                arr.push({ t: Date.now(), n: name });
-                if (arr.length > 50) arr = arr.slice(-50);
-                sessionStorage.setItem(k, JSON.stringify(arr));
-              } catch (e) {}
-            },
-            onCreateAccountComplete: function (d) { lastEmail = d && d.emailAddress; shadow(lastEmail); },
-            onLoginComplete: function (d) { lastEmail = d && d.emailAddress; shadow(lastEmail); },
-            onCheckoutComplete: function (d) {
-              var em = (d && d.order && (d.order.email || (d.order.user && d.order.user.email))) || lastEmail;
-              shadow(em);
-            }
-          }
-        };
-      })();
-    </script>
-    <script>
-      (function () {
-        var TENANT_NAME = 'betterbodybootcamp';
-        var d = document;
-        var sA = ['polyfills', 'js'];
-        for (var i = 0; i < sA.length; i++) {
-          var s = d.createElement('script');
-          s.src = 'https://' + TENANT_NAME + '.marianaiframes.com/' + sA[i];
-          s.setAttribute('data-timestamp', +new Date());
-          (d.head || d.body).appendChild(s);
-        }
-      })();
-    </script>
-    <noscript>
-      Please enable JavaScript to view class schedules &amp; bookings —
-      <a href="https://marianatek.com/?ref_noscript" rel="nofollow">Web Integrations by Mariana Tek</a>.
-    </noscript>
+    <!-- 2026-08-31: Mariana Tek Web Integrations runtime REMOVED site-wide.
+         Every schedule/checkout surface is now native (NativeClassList +
+         book-class / mt-provision edge functions), so the widget scripts were
+         pure dead weight — and their date polyfill was actively CRASHING
+         iOS Safari on any page that formats dates (all location/schedule
+         pages). The MT_CONFIG attribution bridge went with it: it only fired
+         on MT-widget checkout events, which no longer exist. If a widget is
+         ever needed again, load the marianaiframes.com scripts on that one
+         page only — never globally. -->
   </body>
 </html>

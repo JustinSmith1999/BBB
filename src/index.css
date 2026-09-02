@@ -56,7 +56,9 @@
 .nav-desktop {
   display: none;
   align-items: center;
-  gap: 28px;
+  /* 2026-09-02 (owner: "menu should NEVER be this condensed"):
+     responsive gap so items breathe at every width... */
+  gap: clamp(16px, 1.8vw, 30px);
 }
 
 .nav-hamburger {
@@ -71,7 +73,10 @@
   display: block;
 }
 
-@media (min-width: 900px) {
+/* 2026-09-02: was 900px — at 900-1150px the 7 links + app pills + CTA
+   didn't fit and "BOOK A CLASS" / "GET STARTED" wrapped to two lines.
+   Hamburger stays until the full nav genuinely fits on one line. */
+@media (min-width: 1180px) {
   .nav-desktop {
     display: flex;
   }
@@ -84,6 +89,7 @@
 }
 
 .nav-link {
+  white-space: nowrap;
   font-size: 14px;
   font-weight: 500;
   text-transform: uppercase;
@@ -98,6 +104,7 @@
 }
 
 .nav-cta {
+  white-space: nowrap;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -174,6 +181,10 @@ body::before {
     animation: scroll 14s linear infinite;
   }
 
+  .animate-scroll-slow {
+    animation: scroll 60s linear infinite;
+  }
+
   /* Eyebrow label utility */
   .eyebrow {
     font-size: 11px;
@@ -214,4 +225,11 @@ body::before {
   * {
     transition-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1);
   }
+}
+
+/* 2026-09-02: no more lone words on their own line — balance heading wraps
+   site-wide. HEADINGS ONLY: putting this on .font-display broke the scrolling
+   tickers (text-wrap: balance re-enables wrapping on white-space: nowrap). */
+h1, h2, h3 {
+  text-wrap: balance;
 }

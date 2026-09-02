@@ -52,8 +52,11 @@ export default function TrialSignup() {
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 -mt-10 relative z-20 pb-20">
         <div className="bg-white rounded-3xl shadow-2xl p-6 sm:p-10">
           <div className="text-center mb-8">
-            <h2 className="text-2xl sm:text-3xl font-black text-gray-900 mb-2">Choose Your Studio</h2>
-            <p className="text-gray-600">Select the location closest to you to claim your 2-week trial.</p>
+            <h2 className="text-2xl sm:text-3xl font-black text-gray-900 mb-2">Choose Your Better Body Bootcamp Studio</h2>
+            <p className="text-gray-600">
+              The $49 trial is available at Better Body Bootcamp Astoria, Bayside, Fresh Meadows, and
+              Williamsburg. Pick the one closest to you to claim your 2 weeks.
+            </p>
           </div>
           <div className="grid sm:grid-cols-2 gap-4 sm:gap-5">
             {STUDIOS.map(s => (

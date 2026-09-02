@@ -46,109 +46,124 @@ export default function Footer() {
 
   return (
     <footer style={{ backgroundColor: 'var(--bg-primary)', borderTop: '1px solid var(--divider)', color: 'var(--text-primary)' }}>
-      <div className="max-w-content mx-auto px-6 py-16">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-10 mb-12">
+      {/* 2026-08-25 redesign: the old footer stacked logo + 2 giant store
+          badges + newsletter in one tall left column next to three short link
+          lists — huge imbalance, dead space, 5 red labels. Now: newsletter as
+          a slim full-width band, then 4 balanced columns, red reserved for
+          the Join button only. */}
+      {!isTrialRoute && (
+        <div style={{ borderBottom: '1px solid var(--divider)' }}>
+          <div className="max-w-content mx-auto px-6 py-10 flex flex-col md:flex-row md:items-center gap-6 md:gap-12">
+            <div className="md:flex-1">
+              <p className="font-display font-black uppercase" style={{ fontSize: 'clamp(1.25rem,2vw,1.75rem)', lineHeight: 1 }}>
+                Join the list
+              </p>
+              <p className="text-sm mt-2" style={{ color: 'var(--text-secondary)' }}>
+                Training tips and member offers. No spam.
+              </p>
+            </div>
+            {joined ? (
+              <p className="text-sm font-bold" style={{ color: 'var(--brand-red)' }}>You're on the list.</p>
+            ) : (
+              <div className="md:flex-1 w-full">
+                <form onSubmit={handleJoin} className="flex w-full">
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="your@email.com"
+                    required
+                    disabled={submitting}
+                    className="flex-1 min-w-0 text-sm px-4 outline-none disabled:opacity-60"
+                    style={{
+                      backgroundColor: 'var(--bg-elevated)',
+                      border: '1px solid var(--divider)',
+                      borderRight: 'none',
+                      color: 'var(--text-primary)',
+                      height: '48px',
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="font-display font-bold uppercase text-sm px-7 transition-colors duration-200 disabled:opacity-60 disabled:cursor-wait"
+                    style={{ backgroundColor: 'var(--brand-red)', color: '#fff', letterSpacing: '0.1em', height: '48px', whiteSpace: 'nowrap' }}
+                    onMouseEnter={e => { if (!submitting) e.currentTarget.style.backgroundColor = 'var(--brand-red-hover)'; }}
+                    onMouseLeave={e => { if (!submitting) e.currentTarget.style.backgroundColor = 'var(--brand-red)'; }}
+                  >
+                    {submitting ? '...' : 'Join'}
+                  </button>
+                </form>
+                {errorMsg && (
+                  <p className="text-xs mt-2" style={{ color: '#fca5a5' }}>{errorMsg}</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
-          {/* Brand + app download + email signup */}
-          <div className="col-span-2 md:col-span-1">
+      <div className="max-w-content mx-auto px-6 py-14">
+        {/* 2026-09-02 (owner: "footer is staggered and all over"): brand gets
+            its own row; the three link lists sit in ONE aligned 3-col row at
+            every width, so nothing dangles or staggers. */}
+        <div className="md:flex md:items-start md:gap-16">
+
+          {/* Brand — 2026-09-02 (owner): bigger, and centered on mobile */}
+          <div className="mb-12 md:mb-0 md:w-80 md:flex-none flex flex-col items-center text-center md:items-start md:text-left">
             <img
               src="https://uracuwugpxqjfgtuobal.supabase.co/storage/v1/object/public/logos/0180_bbb_bbb-newtext_logo_new_black_1%20(1).png"
               alt="Better Body Bootcamp Logo"
-              className="h-10 w-auto object-contain mb-4"
+              className="h-12 w-auto object-contain mb-5"
             />
-            <p className="text-sm mb-5" style={{ color: 'var(--text-secondary)', lineHeight: '1.6', maxWidth: '28ch' }}>
-              New York's premier group fitness bootcamp since 2011.
+            <p className="mb-6 mx-auto md:mx-0" style={{ color: 'var(--text-secondary)', fontSize: '16px', lineHeight: '1.65', maxWidth: '32ch' }}>
+              New York's premier group fitness bootcamp since 2011. Four studios across Queens and Brooklyn.
             </p>
-
-            {/* 2026-06-29: iOS app download CTA. 2026-07-11: Android now live on
-                Google Play (id=com.marianatek.betterbodybootcamp) — both badges. */}
-            <p className="eyebrow mb-3">GET THE APP</p>
-            <a
-              href="https://apps.apple.com/us/app/better-body-studios/id6778182425"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Download Better Body Studios on the App Store"
-              className="inline-flex items-center gap-3 px-4 py-2.5 rounded-xl transition-transform hover:scale-[1.02] mb-3"
-              style={{ backgroundColor: '#000', border: '1px solid #1f2937' }}
-            >
-              {/* Apple logo */}
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff" aria-hidden="true">
-                <path d="M17.05 12.04c-.02-3 2.45-4.44 2.56-4.51-1.4-2.04-3.57-2.32-4.34-2.35-1.84-.19-3.6 1.08-4.54 1.08-.94 0-2.39-1.06-3.93-1.03-2.02.03-3.88 1.18-4.92 2.99-2.1 3.65-.54 9.05 1.51 12.01 1 1.45 2.19 3.08 3.74 3.02 1.51-.06 2.08-.97 3.9-.97 1.82 0 2.34.97 3.94.94 1.63-.03 2.66-1.47 3.65-2.93 1.15-1.68 1.62-3.31 1.64-3.39-.04-.02-3.15-1.21-3.21-4.78zM14.09 3.83c.83-1.01 1.39-2.41 1.24-3.83-1.19.05-2.65.79-3.51 1.79-.77.89-1.45 2.32-1.27 3.7 1.33.11 2.69-.67 3.54-1.66z"/>
-              </svg>
-              <span className="flex flex-col leading-tight">
-                <span className="text-[10px] text-white/70 uppercase tracking-wide">Download on the</span>
-                <span className="text-base font-bold text-white">App Store</span>
-              </span>
-            </a>
-            <a
-              href="https://play.google.com/store/apps/details?id=com.marianatek.betterbodybootcamp"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Get Better Body Bootcamp on Google Play"
-              className="inline-flex items-center gap-3 px-4 py-2.5 rounded-xl transition-transform hover:scale-[1.02] mb-6"
-              style={{ backgroundColor: '#000', border: '1px solid #1f2937' }}
-            >
-              {/* Google Play glyph */}
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff" aria-hidden="true">
-                <path d="M4 2.5v19a1 1 0 0 0 1.53.85l15.5-9.5a1 1 0 0 0 0-1.7L5.53 1.65A1 1 0 0 0 4 2.5z"/>
-              </svg>
-              <span className="flex flex-col leading-tight">
-                <span className="text-[10px] text-white/70 uppercase tracking-wide">Get it on</span>
-                <span className="text-base font-bold text-white">Google Play</span>
-              </span>
-            </a>
-
-            {!isTrialRoute && (
-              <>
-                <p className="eyebrow mb-3">JOIN THE LIST</p>
-                {joined ? (
-                  <p className="text-sm" style={{ color: 'var(--brand-red)' }}>You're on the list.</p>
-                ) : (
-                  <>
-                    <form onSubmit={handleJoin} className="flex gap-2">
-                      <input
-                        type="email"
-                        value={email}
-                        onChange={e => setEmail(e.target.value)}
-                        placeholder="your@email.com"
-                        required
-                        disabled={submitting}
-                        className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg outline-none disabled:opacity-60"
-                        style={{
-                          backgroundColor: 'var(--bg-elevated)',
-                          border: '1px solid var(--divider)',
-                          color: 'var(--text-primary)',
-                        }}
-                      />
-                      <button
-                        type="submit"
-                        disabled={submitting}
-                        className="text-sm font-bold px-4 py-2 rounded-lg transition-colors duration-200 disabled:opacity-60 disabled:cursor-wait"
-                        style={{
-                          backgroundColor: 'var(--brand-red)',
-                          color: 'var(--text-primary)',
-                          whiteSpace: 'nowrap',
-                        }}
-                        onMouseEnter={e => { if (!submitting) e.currentTarget.style.backgroundColor = 'var(--brand-red-hover)'; }}
-                        onMouseLeave={e => { if (!submitting) e.currentTarget.style.backgroundColor = 'var(--brand-red)'; }}
-                      >
-                        {submitting ? '...' : 'Join'}
-                      </button>
-                    </form>
-                    {errorMsg && (
-                      <p className="text-xs mt-2" style={{ color: '#fca5a5' }}>{errorMsg}</p>
-                    )}
-                  </>
-                )}
-              </>
-            )}
+            <div className="flex items-center justify-center md:justify-start gap-5">
+              <a
+                href="https://apps.apple.com/us/app/better-body-studios/id6778182425"
+                target="_blank" rel="noopener noreferrer"
+                aria-label="Download Better Body Studios on the App Store"
+                className="uppercase font-bold transition-colors"
+                style={{ fontSize: '11px', letterSpacing: '0.12em', color: 'var(--text-secondary)', textDecoration: 'none', borderBottom: '1px solid var(--divider)', paddingBottom: '3px' }}
+                onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-primary)')}
+                onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-secondary)')}
+              >
+                App Store
+              </a>
+              <a
+                href="https://play.google.com/store/apps/details?id=com.marianatek.betterbodybootcamp"
+                target="_blank" rel="noopener noreferrer"
+                aria-label="Get Better Body Bootcamp on Google Play"
+                className="uppercase font-bold transition-colors"
+                style={{ fontSize: '11px', letterSpacing: '0.12em', color: 'var(--text-secondary)', textDecoration: 'none', borderBottom: '1px solid var(--divider)', paddingBottom: '3px' }}
+                onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-primary)')}
+                onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-secondary)')}
+              >
+                Google Play
+              </a>
+              <a
+                href="https://www.yelp.com/biz/better-body-bootcamp-bayside-bayside-3"
+                target="_blank" rel="noopener noreferrer"
+                aria-label="Better Body Bootcamp on Yelp"
+                className="uppercase font-bold transition-colors"
+                style={{ fontSize: '11px', letterSpacing: '0.12em', color: 'var(--text-secondary)', textDecoration: 'none', borderBottom: '1px solid var(--divider)', paddingBottom: '3px' }}
+                onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-primary)')}
+                onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-secondary)')}
+              >
+                Yelp
+              </a>
+            </div>
           </div>
 
-          {/* Quick Links */}
+          {/* Link lists — one balanced 3-col row */}
+          <div className="grid grid-cols-3 gap-6 md:gap-10 md:flex-1">
+
+          {/* Explore */}
           <div>
-            <p className="eyebrow mb-5">QUICK LINKS</p>
+            <p className="uppercase font-bold mb-5" style={{ fontSize: '11px', letterSpacing: '0.18em', color: 'var(--text-secondary)', opacity: 0.7 }}>Explore</p>
             <ul className="space-y-3 text-sm">
-              {[['/','Home'],['/about','About'],['/testimonials','Testimonials'],['/locations','Locations']].map(([path, label]) => (
+              {[['/','Home'],['/about','About'],['/services','Services'],['/pricing','Pricing'],['/testimonials','Testimonials']].map(([path, label]) => (
                 <li key={path}>
                   <Link
                     to={path}
@@ -164,9 +179,10 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* Locations */}
+          {/* Studios — 2026-09-02: each name links to the studio page; the small
+              Yelp link below routes to that studio's Yelp listing. */}
           <div>
-            <p className="eyebrow mb-5">LOCATIONS</p>
+            <p className="uppercase font-bold mb-5" style={{ fontSize: '11px', letterSpacing: '0.18em', color: 'var(--text-secondary)', opacity: 0.7 }}>Studios</p>
             <ul className="space-y-3 text-sm">
               {[['astoria','Astoria'],['bayside','Bayside'],['fresh-meadows','Fresh Meadows'],['williamsburg','Williamsburg']].map(([slug, label]) => (
                 <li key={slug}>
@@ -184,11 +200,11 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* Legal */}
+          {/* Support */}
           <div>
-            <p className="eyebrow mb-5">LEGAL</p>
+            <p className="uppercase font-bold mb-5" style={{ fontSize: '11px', letterSpacing: '0.18em', color: 'var(--text-secondary)', opacity: 0.7 }}>Support</p>
             <ul className="space-y-3 text-sm">
-              {[['/faq','FAQ'],['/legal','Legal'],['/terms','Terms of Service'],['/privacy','Privacy Policy']].map(([path, label]) => (
+              {[['/faq','FAQ'],['/contact','Contact'],['/legal','Legal'],['/terms','Terms'],['/privacy','Privacy']].map(([path, label]) => (
                 <li key={path}>
                   <Link
                     to={path}
@@ -203,10 +219,12 @@ export default function Footer() {
               ))}
             </ul>
           </div>
+          </div>
         </div>
 
-        <div style={{ borderTop: '1px solid var(--divider)', paddingTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-          <p className="eyebrow" style={{ color: 'var(--text-secondary)' }}>NEW YORK'S #1 BOOTCAMP SINCE 2011</p>
+        {/* 2026-09-02 (owner): bottom bar centered, tagline in brand red */}
+        <div style={{ borderTop: '1px solid var(--divider)', marginTop: '48px', paddingTop: '28px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '8px' }}>
+          <p className="uppercase font-bold" style={{ fontSize: '12px', letterSpacing: '0.18em', color: 'var(--brand-red)' }}>New York's #1 bootcamp since 2011</p>
           <p className="text-xs" style={{ color: 'var(--text-secondary)', opacity: 0.6 }}>
             © {new Date().getFullYear()} Better Body Bootcamp. All rights reserved.
           </p>

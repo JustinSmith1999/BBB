@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle, Calendar, ArrowRight } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
+import NativeClassList from '../components/NativeClassList';
 
 const APP_STORE_URL = 'https://apps.apple.com/us/app/better-body-studios/id6778182425';
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.marianatek.betterbodybootcamp';
@@ -103,35 +104,9 @@ export default function TrialSuccess() {
     if (!sessionId) navigate('/locations');
   }, [sessionId, navigate]);
 
-  // ── Mount the MT booking widget ─────────────────────────────────────────
-  // The MT Web Integrations runtime (loaded in index.html) auto-scans on page
-  // load, but this route mounts lazily AFTER that scan — so we poll for
-  // MTIntegrations.render() and invoke it once our div is in the DOM. Same
-  // pattern as LocationTrialSignup's buy-widget mount. For Astoria / Fresh
-  // Meadows / Williamsburg (bought via MT's widget) the customer is already
-  // signed into their MT session, so this schedule lets them reserve in one
-  // tap. Bayside (Stripe checkout) has no MT session yet — MT's widget will
-  // prompt them to sign in, which they can do once they set their password.
-  useEffect(() => {
-    if (!studio) return;
-    let stop = false;
-    const tryInit = (attempts: number) => {
-      if (stop) return;
-      if (typeof window.MTIntegrations?.render === 'function') {
-        const divs = Array.from(document.querySelectorAll('[data-mariana-integrations]')) as HTMLElement[];
-        divs.forEach((div, i) => {
-          if (!div.dataset.mtId) div.dataset.mtId = `mt-success-${i}-${Date.now()}`;
-          if (div.children.length > 0) return;
-          try { window.MTIntegrations!.render(`[data-mt-id="${div.dataset.mtId}"]`); }
-          catch (e) { console.warn('MT booking widget mount failed', e); }
-        });
-        return;
-      }
-      if (attempts > 0) setTimeout(() => tryInit(attempts - 1), 500);
-    };
-    tryInit(20);
-    return () => { stop = true; };
-  }, [studio]);
+  // 2026-08-31: MT widget mount effect removed — native class list now
+  // renders the schedule (MT iframe runtime dropped site-wide, it was
+  // crashing iOS Safari).
 
   if (!sessionId) return null;
 
@@ -165,16 +140,23 @@ export default function TrialSuccess() {
 
             {studio ? (
               <>
-                {/* MT native booking schedule — reserve right here, same session */}
-                <div
-                  key={`mt-book-${studio.mtLocationId}`}
-                  data-mariana-integrations={`/schedule/daily/${MT_CLASS_TYPE_ID}?locations=${studio.mtLocationId}`}
-                  className="w-full rounded-2xl bg-white overflow-hidden"
-                  style={{ minHeight: '620px' }}
-                />
+                {/* 2026-08-31: MT iframe widget replaced with our native class
+                    list. MT's widget runtime (marianaiframes.com scripts) was
+                    crashing iOS Safari site-wide via a broken date polyfill —
+                    removing the widget removed the scripts. Same native list
+                    and booking flow as /classes. */}
+                <div className="w-full rounded-2xl bg-white overflow-hidden p-5 sm:p-8 text-left">
+                  <NativeClassList
+                    key={`native-book-${studio.mtLocationId}`}
+                    mtLocationId={studio.mtLocationId}
+                    studioName={studio.name}
+                    studioSlug={studioSlug}
+                    days={7}
+                  />
+                </div>
                 <p className="text-gray-400 text-xs mt-3 text-center leading-relaxed">
-                  Just paid through our booking system? You&apos;re already signed in — pick a class above and tap reserve.
-                  Otherwise, sign in with your checkout email. We also emailed you a link to set your password for next time and the app.
+                  Tap a class, enter the email you used at checkout, and we&apos;ll text you a quick code to confirm your first booking.
+                  We also emailed you a link to set your password for the Better Body app.
                 </p>
               </>
             ) : (

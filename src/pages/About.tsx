@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Play, X, ArrowRight } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
+import PageHero, { Red } from '../components/PageHero';
 
 const VIDEOS = [
   {
@@ -147,45 +148,11 @@ export default function AboutPage() {
 
       <div style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
 
-        {/* ── Hero ── */}
-        {/* 2026-06-30: Tightened. Was minHeight 65vh + 160/80 padding + 64px
-            H1 cap — felt like a full-screen takeover. Cut to 42vh + 112/56
-            padding + 52px H1 cap so the eyebrow + headline read as a section
-            opener, not a banner. */}
-        <div
-          className="relative overflow-hidden flex items-end"
-          style={{ minHeight: '42vh', paddingTop: '112px', paddingBottom: '56px' }}
-        >
-          <img
-            src="https://images.pexels.com/photos/1552252/pexels-photo-1552252.jpeg?auto=compress&cs=tinysrgb&w=1920&q=80"
-            alt="Better Body Bootcamp"
-            className="absolute inset-0 w-full h-full object-cover"
-            style={{ filter: 'brightness(0.45)' }}
-          />
-          <div
-            className="absolute inset-0"
-            style={{ background: 'linear-gradient(to bottom, rgba(14,15,19,0.4) 0%, rgba(14,15,19,0.92) 100%)' }}
-          />
-
-          <div className="relative z-10 max-w-content mx-auto px-6 flex flex-col items-start gap-6">
-            <img
-              src="https://uracuwugpxqjfgtuobal.supabase.co/storage/v1/object/public/logos/0180_bbb_bbb-newtext_logo_new_black_1%20(1).png"
-              alt="Better Body Bootcamp"
-              style={{ height: '40px', width: 'auto', filter: 'brightness(0) invert(1)' }}
-            />
-            <div>
-              <p className="eyebrow mb-3">SINCE 2011 · NYC</p>
-              <h1
-                className="font-display font-black uppercase"
-                style={{ fontSize: 'clamp(34px, 4.2vw, 52px)', lineHeight: '0.92', letterSpacing: '-0.01em' }}
-              >
-                BUILDING NYC'S
-                <br />
-                <span style={{ color: 'var(--brand-red)' }}>BEST</span> BODIES
-              </h1>
-            </div>
-          </div>
-        </div>
+        {/* ── Hero (shared PageHero — the reference style, sized up) ── */}
+        <PageHero
+          eyebrow="SINCE 2011 · NYC"
+          lines={["BUILDING NYC'S", <span key="r"><Red>BEST</Red> BODIES</span>]}
+        />
 
         {/* ── Body copy ── */}
         <section style={{ padding: '96px 24px' }}>
@@ -202,8 +169,25 @@ export default function AboutPage() {
               <p style={{ color: 'var(--text-secondary)', lineHeight: '1.75', fontSize: '15px', marginBottom: '18px', maxWidth: '54ch' }}>
                 We didn't become one of America's most respected privately owned training programs by following the crowd. We got here by obsessing over your results while everyone else was chasing trends.
               </p>
+              <p style={{ color: 'var(--text-secondary)', lineHeight: '1.75', fontSize: '15px', marginBottom: '18px', maxWidth: '54ch' }}>
+                And since October 2025, Better Body is under new ownership. New coaches, new programming,
+                new standards at every studio. If you trained with us before and it wasn't for you, it's a
+                different gym now. Come see for yourself.
+              </p>
+              <p style={{ color: 'var(--text-secondary)', lineHeight: '1.75', fontSize: '15px', marginBottom: '18px', maxWidth: '54ch' }}>
+                World-class trainers who care. Science-backed workouts that actually work. An energy so electric you'll find yourself looking forward to 5 AM alarms. That's Better Body.
+              </p>
+              <p style={{ color: 'var(--text-secondary)', lineHeight: '1.75', fontSize: '15px', marginBottom: '18px', maxWidth: '54ch' }}>
+                The playbook has stayed the same since 2011: coach-led group training in classes small enough that
+                nobody disappears in the back row, and programming that blends strength work, HIIT, and
+                conditioning so you never plateau on the same routine. No wandering between machines, no guessing
+                what to do next. You show up, a coach runs the session, and you leave having done real work.
+              </p>
               <p style={{ color: 'var(--text-secondary)', lineHeight: '1.75', fontSize: '15px', maxWidth: '54ch' }}>
-                World-class trainers who genuinely care. Science-backed workouts that actually work. An energy so electric you'll find yourself looking forward to 5 AM alarms. That's Better Body.
+                Today that playbook runs at four studios: Astoria, Bayside, and Fresh Meadows in Queens, and
+                Williamsburg in Brooklyn, all under one membership. Thousands of New Yorkers have come through
+                the doors on the $49 two-week trial and stayed for years, because the thing that keeps people
+                training isn't a machine or an app. It's a room full of people who expect to see you tomorrow.
               </p>
               <a
                 href="/trial"

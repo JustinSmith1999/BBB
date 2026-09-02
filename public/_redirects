@@ -46,6 +46,27 @@
 # Verified comeback-* senders already emit /comeback/{slug}, so this is a safety net.
 /comeback                /comeback/bayside                              302
 
+# Back to School promo short links (2026-08-21) — keep in sync with netlify.toml.
+/bts                     /backtoschool?utm_source=instagram&utm_medium=social&utm_campaign=back-to-school-299&utm_content=bio   302!
+/bts/astoria             /backtoschool?studio=astoria&utm_source=instagram&utm_medium=social&utm_campaign=back-to-school-299&utm_content=bio   302!
+/bts/bayside             /backtoschool?studio=bayside&utm_source=instagram&utm_medium=social&utm_campaign=back-to-school-299&utm_content=bio   302!
+/bts/fresh-meadows       /backtoschool?studio=fresh-meadows&utm_source=instagram&utm_medium=social&utm_campaign=back-to-school-299&utm_content=bio   302!
+/bts/williamsburg        /backtoschool?studio=williamsburg&utm_source=instagram&utm_medium=social&utm_campaign=back-to-school-299&utm_content=bio   302!
+
+# 3 Free Classes claim short links (2026-08-21) — keep in sync with netlify.toml.
+/free3/astoria           /freeclasses?studio=astoria&utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes   302!
+/free3/bayside           /freeclasses?studio=bayside&utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes   302!
+/free3/fresh-meadows     /freeclasses?studio=fresh-meadows&utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes   302!
+/free3/williamsburg      /freeclasses?studio=williamsburg&utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes   302!
+/free3                   /freeclasses?utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes   302!
+/free3/*                 /freeclasses?utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes   302!
+/3free/astoria           /freeclasses?studio=astoria&utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes   302!
+/3free/bayside           /freeclasses?studio=bayside&utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes   302!
+/3free/fresh-meadows     /freeclasses?studio=fresh-meadows&utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes   302!
+/3free/williamsburg      /freeclasses?studio=williamsburg&utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes   302!
+/3free                   /freeclasses?utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes   302!
+/3free/*                 /freeclasses?utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes   302!
+
 # 2026-08-15 SEO: legacy /free-1-day-pass (old MindBody URL, no React route)
 # was a soft-404 (200 + 404 content), still indexed, splitting authority from
 # /trial. 301 it to the canonical trial page. Must precede the /* catch-all.

@@ -16,7 +16,7 @@ const SITE = "https://betterbodybootcamp.com";
 // Keep in sync with public/_redirects and the get_link_performance SQL function.
 const LINKS: Record<
   string,
-  { studio: string; source: string; medium: string; content?: string }
+  { studio: string; source: string; medium: string; content?: string; dest?: string; campaign?: string }
 > = {
   "ig-astoria":         { studio: "astoria",       source: "instagram", medium: "social", content: "bio" },
   "ig-bayside":         { studio: "bayside",       source: "instagram", medium: "social", content: "bio" },
@@ -38,6 +38,15 @@ const LINKS: Record<
   "gbp-bayside":          { studio: "bayside",       source: "gbp-post", medium: "organic", content: "post-cta" },
   "gbp-fresh-meadows":    { studio: "fresh-meadows", source: "gbp-post", medium: "organic", content: "post-cta" },
   "gbp-williamsburg":     { studio: "williamsburg",  source: "gbp-post", medium: "organic", content: "post-cta" },
+  // Back to School promo (2026-08-21) — Instagram bio links. `dest` overrides
+  // the default /trial/<studio> destination. After deploying this, flip the
+  // /bts rules in netlify.toml + _redirects to point here (?l=bts-<studio>)
+  // so the clicks land in link_clicks too.
+  "bts":                { studio: "all",           source: "instagram", medium: "social", content: "bio", dest: "/backtoschool", campaign: "back-to-school-299" },
+  "bts-astoria":        { studio: "astoria",       source: "instagram", medium: "social", content: "bio", dest: "/backtoschool?studio=astoria", campaign: "back-to-school-299" },
+  "bts-bayside":        { studio: "bayside",       source: "instagram", medium: "social", content: "bio", dest: "/backtoschool?studio=bayside", campaign: "back-to-school-299" },
+  "bts-fresh-meadows":  { studio: "fresh-meadows", source: "instagram", medium: "social", content: "bio", dest: "/backtoschool?studio=fresh-meadows", campaign: "back-to-school-299" },
+  "bts-williamsburg":   { studio: "williamsburg",  source: "instagram", medium: "social", content: "bio", dest: "/backtoschool?studio=williamsburg", campaign: "back-to-school-299" },
 };
 
 // Link-preview crawlers (iMessage, Slack, WhatsApp, Facebook, etc.) hit the URL
@@ -55,11 +64,13 @@ Deno.serve(async (req: Request) => {
     return Response.redirect(`${SITE}/trial`, 302);
   }
 
-  // Destination trial URL with UTM params.
-  const dest = new URL(`${SITE}/trial/${link.studio}`);
+  // Destination URL with UTM params. `dest` (e.g. the Back to School promo
+  // page) overrides the default /trial/<studio> target.
+  const campaign = link.campaign ?? "trial";
+  const dest = new URL(link.dest ? `${SITE}${link.dest}` : `${SITE}/trial/${link.studio}`);
   dest.searchParams.set("utm_source", link.source);
   dest.searchParams.set("utm_medium", link.medium);
-  dest.searchParams.set("utm_campaign", "trial");
+  dest.searchParams.set("utm_campaign", campaign);
   if (link.content) dest.searchParams.set("utm_content", link.content);
 
   // Log the click — best effort. A logging failure must never block the redirect.
@@ -75,7 +86,7 @@ Deno.serve(async (req: Request) => {
         studio: link.studio,
         utm_source: link.source,
         utm_medium: link.medium,
-        utm_campaign: "trial",
+        utm_campaign: campaign,
         utm_content: link.content ?? null,
         user_agent: ua || null,
         referrer: req.headers.get("referer"),

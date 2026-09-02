@@ -205,7 +205,19 @@ export default function LocationTrialSignup() {
   // The Bayside Stripe form + handleBaysideSubmit below are now dead code, kept
   // temporarily behind this flag for a fast rollback. Verify one real Bayside
   // trial end-to-end, then delete the fallback block entirely.
-  const useBaysideFallback = false;
+  //
+  // ── 2026-08-28: NATIVE CHECKOUT FOR ALL STUDIOS — MT IFRAME KILLED ──────
+  // Justin: "get rid of that ugly iframe... for ALL parts on the website."
+  // The "Bayside fallback" Stripe form below is now the PRIMARY flow for all
+  // four studios: create-trial-checkout is fully multi-location (per-studio
+  // Stripe keys in the locations table, task #382 verified), and the missing
+  // half — MT provisioning — is solved: stripe-webhook now fires mt-provision,
+  // which creates the MT user + cart + $49 contract + alt-payment order via
+  // the Admin API. Same outcome as the widget, no iframe, no login wall,
+  // and paid-but-not-provisioned is structurally impossible (dead-letter +
+  // SMS alert + retry on any MT failure).
+  // Instant rollback: set this back to false and redeploy — widget returns.
+  const useBaysideFallback = true;
   const [baysideForm,       setBaysideForm]       = useState({
     firstName: '', lastName: '', email: '', phone: '', newsletter: false,
   });
@@ -821,7 +833,7 @@ export default function LocationTrialSignup() {
                         onChange={e => setBaysideForm(f => ({ ...f, newsletter: e.target.checked }))}
                         className="mt-0.5"
                       />
-                      Send me class updates + BBB Bayside news
+                      Send me class updates + Better Body {location.name} news
                     </label>
                     {baysideError && (
                       <p className="text-xs text-red-600 leading-relaxed">{baysideError}</p>

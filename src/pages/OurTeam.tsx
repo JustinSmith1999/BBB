@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import PageHero, { Red } from '../components/PageHero';
 
 interface TeamMember {
   id: string;
@@ -42,16 +43,11 @@ export default function OurTeam() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="bg-gradient-to-br from-black to-gray-900 text-white py-20 md:py-32 mt-20">
-        <div className="container mx-auto px-4 text-center">
-          <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight">
-            Meet <span className="text-red-600">Our Team</span>
-          </h1>
-          <p className="text-xl md:text-2xl text-gray-300 max-w-3xl mx-auto">
-            Our passionate trainers and staff are dedicated to helping you achieve your fitness goals
-          </p>
-        </div>
-      </div>
+      <PageHero
+        eyebrow="COACHES & STAFF · NYC"
+        lines={["MEET", <Red key="r">OUR TEAM</Red>]}
+        sub="The trainers and staff who show up every day to get you to your goals."
+      />
 
       <div className="container mx-auto px-4 py-16">
         {loading ? (

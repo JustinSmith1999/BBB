@@ -160,6 +160,15 @@ async function refreshAccessToken(): Promise<{ ok: boolean; token?: string; erro
 }
 
 async function getAccessToken(): Promise<{ ok: boolean; token?: string; error?: string }> {
+  // 2026-08-21: Xplor/MT (Joe M, Partnerships) is issuing a proper Admin API
+  // key for server-to-server auth. When MT_ADMIN_API_KEY is set in secrets it
+  // wins outright — no OAuth, no refresh rotation, no 7-day expiry. The whole
+  // session-token dance below then becomes dead code we can delete after a
+  // clean week on the key.
+  const adminKey = Deno.env.get('MT_ADMIN_API_KEY');
+  if (adminKey && adminKey.trim()) {
+    return { ok: true, token: adminKey.trim() };
+  }
   if (cachedAccessToken && cachedExpiresAt && Date.now() < cachedExpiresAt) {
     return { ok: true, token: cachedAccessToken };
   }
@@ -190,6 +199,11 @@ function classifyOrder(summary: string, total: number): OrderKind {
   const s = (summary || '').toLowerCase();
   if (total === 0) return 'zero';
   if (s.includes('two weeks trial') || s.includes('$49') || s.includes('week trial')) return 'trial';
+  // 2026-09-02: "2 Months Back to School Promo" matched NONE of the membership
+  // keywords, fell to 'other', and skipped owner SMS + Homebase entirely —
+  // Isabel/Hilda/Effie bought $299s at the Bayside desk and nobody was told.
+  // Promo-style paid packages ARE memberships for our purposes.
+  if (s.includes('back to school') || s.includes('2 months') || s.includes('two months')) return 'membership';
   if (s.includes('membership') || s.includes(' pif') || s.includes('pif ') || s.includes('contract') || s.includes('month to month')) return 'membership';
   if (s.includes('drop in') || s.includes('late cancel') || s.includes('no show') || s.includes('water') || s.includes('celcius')) return 'ancillary';
   return 'other';
@@ -358,16 +372,25 @@ serve(async (req) => {
     fetched:        allOrders.length,
     new_trials:     0,
     new_memberships:0,
+    membership_lead_flips:0,
     new_ancillary:  0,
     new_zero:       0,
     new_other:      0,
     skipped_existing:0,
     sales_upserts:  0,
     trial_inserts:  0,
+    membership_inserts: 0,
     errors:         [] as string[],
   };
 
   const trialEmailsToWelcome: { trial_id: string; email: string; first: string; studio_slug: string }[] = [];
+  // 2026-08-21 (Justin): owners get texted for big purchases too, not just
+  // trials. New PAID membership/contract/PIF sales collect here for the
+  // owner-SMS kickoff at the bottom (send path 'owner_membership_sms').
+  const membershipSalesToNotify: { name: string; items: string; totalCents: number; studio_slug: string; location_id: string | null }[] = [];
+  // 2026-09-02: brand-new membership buyers (no prior lead row) get a one-time
+  // membership welcome email — correct copy, NOT the "2-week trial" template.
+  const membershipWelcomesToSend: { trial_id: string; email: string; first: string; studio_slug: string; items: string }[] = [];
 
   for (const o of allOrders) {
     const a = o.attributes || {};
@@ -422,6 +445,79 @@ serve(async (req) => {
       continue;
     }
     summary.sales_upserts++;
+
+    if (kind === 'membership' && totalCents > 0) {
+      membershipSalesToNotify.push({
+        name: fullName || email || 'Unknown',
+        items: itemNames,
+        totalCents,
+        studio_slug: studioSlug || 'unknown',
+        location_id: loc?.id ?? null,
+      });
+
+      // 2026-08-21 (Justin): membership buyers whose old lead/trial card was
+      // never flipped looked like dead leads forever — 25 real conversions
+      // were found deleted off the board as "new_lead". When a membership
+      // sale lands, promote any matching non-member trial_signups row to
+      // member and restore it to the board so the dashboard counts the win.
+      if (email) {
+        try {
+          const { data: leadRows } = await sb
+            .from('trial_signups')
+            .select('id, front_desk_stage, deleted_at')
+            .eq('email', email)
+            .neq('payment_status', 'attribution_only');
+          const liveMember = (leadRows ?? []).some(t => t.front_desk_stage === 'member' && !t.deleted_at);
+          if (!liveMember && (leadRows ?? []).length > 0) {
+            const target = (leadRows ?? []).find(t => !t.deleted_at) ?? (leadRows ?? [])[0];
+            await sb.from('trial_signups')
+              .update({ front_desk_stage: 'member', deleted_at: null })
+              .eq('id', target.id);
+            summary.membership_lead_flips = (summary.membership_lead_flips || 0) + 1;
+          }
+          // 2026-09-02: WALK-IN membership buyers (no prior lead/trial row at
+          // all — like the Bayside desk's $299 BTS sales) were invisible to
+          // Homebase and the dashboard funnel. Insert them as members, with
+          // every drip suppressed (they are not trial leads, no robo-texts),
+          // and queue a one-time membership welcome email below.
+          if ((leadRows ?? []).length === 0) {
+            const { data: byMt } = userId
+              ? await sb.from('trial_signups').select('id').eq('mariana_tek_id', String(userId)).limit(1)
+              : { data: [] as { id: string }[] };
+            if (!byMt || byMt.length === 0) {
+              const nowIso = new Date().toISOString();
+              const { data: ins, error: insErr } = await sb.from('trial_signups').insert({
+                name: fullName || email,
+                email,
+                phone: phone || null,
+                location_id: loc?.id ?? null,
+                mariana_tek_id: userId,
+                payment_status: 'completed',
+                payment_date: dateIso,
+                front_desk_stage: 'member',
+                source_category: 'direct_membership',
+                lead_source: `mt-membership-${studioSlug || 'unknown'}`,
+                // suppress the trial drip machinery entirely
+                abandoned_email_sent_at: nowIso,
+                abandoned_email2_sent_at: nowIso,
+                welcome_sms_sent_at: nowIso,
+              }).select('id').single();
+              if (insErr) {
+                summary.errors.push(`member insert ${email}: ${insErr.message}`);
+              } else if (ins) {
+                summary.membership_inserts = (summary.membership_inserts || 0) + 1;
+                membershipWelcomesToSend.push({
+                  trial_id: ins.id, email, first: np.first || 'there',
+                  studio_slug: studioSlug || 'unknown', items: itemNames,
+                });
+              }
+            }
+          }
+        } catch (e) {
+          summary.errors.push(`member flip ${email}: ${(e as Error).message}`);
+        }
+      }
+    }
 
     // 2. For $49 trials, also push to trial_signups (so /homebase sees them)
     if (kind === 'trial' && email && loc?.id) {
@@ -482,6 +578,58 @@ serve(async (req) => {
           summary.skipped_existing++;
           continue;
         }
+      }
+
+      // 2026-08-19 FIX (Williamsburg trials silently dropped): the ad-attribution
+      // bridge writes a soft-deleted shadow row (payment_status='attribution_only')
+      // keyed on the buyer's email a few seconds BEFORE the MT sale lands. The
+      // dedup SELECT above deliberately EXCLUDES attribution_only rows, so the
+      // code never sees the shadow — and the plain INSERT below then collides
+      // with it on the (email, location_id) unique constraint and silently fails.
+      // The real trial never lands, so no /homebase card and no studio alert.
+      // This stranded ~1/3 of Williamsburg trials (Simone Singh, Erin Deasy, etc).
+      // Fix: if a shadow already occupies this slot, ADOPT it into the real
+      // trial (flip to completed, un-delete, attach the MT id) instead of
+      // inserting a colliding new row.
+      const { data: shadow } = await sb
+        .from('trial_signups')
+        .select('id')
+        .eq('email', email)
+        .eq('location_id', loc.id)
+        .eq('payment_status', 'attribution_only')
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (shadow && shadow.length) {
+        const { data: adopted, error: adoptErr } = await sb
+          .from('trial_signups')
+          .update({
+            name:            fullName || 'MT App Customer',
+            phone,
+            payment_status:  'completed',
+            payment_date:    dateIso,
+            source_category: 'mt_app',
+            mariana_tek_id:  userId,
+            deleted_at:      null,
+          })
+          .eq('id', shadow[0].id)
+          .select('id')
+          .single();
+        if (adoptErr) {
+          summary.errors.push(`shadow adopt for ${email}: ${adoptErr.message}`);
+          continue;
+        }
+        summary.trial_inserts++;
+        const adoptAgeMs = Date.now() - new Date(dateIso).getTime();
+        const adoptRecent = Number.isFinite(adoptAgeMs) && adoptAgeMs < 3 * 3600 * 1000;
+        if (adopted?.id && email && adoptRecent) {
+          trialEmailsToWelcome.push({
+            trial_id:   adopted.id,
+            email,
+            first:      np.first || 'there',
+            studio_slug: studioSlug || 'unknown',
+          });
+        }
+        continue;
       }
 
       const { data: ins, error: insErr } = await sb.from('trial_signups').insert({
@@ -599,6 +747,178 @@ serve(async (req) => {
     }
   }
 
+  // ─── 5. Owner SMS for new paid membership sales (2026-08-21, Justin) ──
+  // "Carlos should get notified for both trials and large purchases at his
+  // gyms." Trials already text every phone in location_owners via
+  // manual-welcome-batch; this covers contracts / PIFs / month-to-month.
+  // Guards: BBB_SEND_PATHS_ENABLED must contain 'owner_membership_sms';
+  // skipped on dry runs and skip_welcome catch-up backfills; max 3 sales
+  // per run (same anti-machine-gun rule as trial owner texts). Every
+  // attempt logs to sms_messages with send_path='owner_membership_sms'.
+  let membership_sms_kickoff: { sent: number; failed: number; skipped?: string } | null = null;
+  if (membershipSalesToNotify.length > 0) {
+    const paths   = (Deno.env.get('BBB_SEND_PATHS_ENABLED') ?? '').split(',').map((s) => s.trim());
+    const twSid   = Deno.env.get('TWILIO_ACCOUNT_SID') ?? '';
+    const twToken = Deno.env.get('TWILIO_AUTH_TOKEN') ?? '';
+    const twFrom  = Deno.env.get('TWILIO_FROM_NUMBER') ?? '';
+    if (dryRun) {
+      membership_sms_kickoff = { sent: 0, failed: 0, skipped: 'dry_run' };
+    } else if (skipWelcome) {
+      membership_sms_kickoff = { sent: 0, failed: 0, skipped: 'skip_welcome backfill' };
+    } else if (!paths.includes('owner_membership_sms')) {
+      membership_sms_kickoff = { sent: 0, failed: 0, skipped: 'path owner_membership_sms not enabled' };
+    } else if (membershipSalesToNotify.length > 3) {
+      membership_sms_kickoff = { sent: 0, failed: 0, skipped: `${membershipSalesToNotify.length} sales in one run - batch, no texts` };
+    } else if (!twSid || !twToken || !twFrom) {
+      membership_sms_kickoff = { sent: 0, failed: 0, skipped: 'twilio env missing' };
+    } else {
+      membership_sms_kickoff = { sent: 0, failed: 0 };
+      const { data: ownerRows } = await sb.from('location_owners').select('location_id, owner_name, phone');
+      for (const sale of membershipSalesToNotify) {
+        const owners = (ownerRows ?? []).filter((o) => o.location_id === sale.location_id && o.phone);
+        const studioTitle = sale.studio_slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+        const smsBody = `BBB ${studioTitle}: NEW MEMBERSHIP - ${sale.name}, ${sale.items}, $${(sale.totalCents / 100).toFixed(0)} charged today.`;
+        for (const o of owners) {
+          try {
+            const resp = await fetch(
+              `https://api.twilio.com/2010-04-01/Accounts/${twSid}/Messages.json`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': 'Basic ' + btoa(`${twSid}:${twToken}`),
+                  'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({ From: twFrom, To: o.phone, Body: smsBody }),
+              },
+            );
+            const j = await resp.json().catch(() => ({} as Record<string, unknown>));
+            const ok = resp.ok;
+            await sb.from('sms_messages').insert({
+              studio_slug:   sale.studio_slug,
+              direction:     'outbound',
+              from_phone:    twFrom,
+              to_phone:      o.phone,
+              body:          smsBody,
+              twilio_sid:    (j as { sid?: string }).sid ?? null,
+              status:        ok ? ((j as { status?: string }).status ?? 'queued') : 'failed',
+              error_code:    ok ? null : String((j as { code?: unknown }).code ?? resp.status),
+              error_message: ok ? null : String((j as { message?: unknown }).message ?? 'twilio error').slice(0, 200),
+              sent_by:       'mt-orders-sync',
+              sent_at:       new Date().toISOString(),
+              send_path:     'owner_membership_sms',
+            });
+            if (ok) membership_sms_kickoff.sent++; else membership_sms_kickoff.failed++;
+          } catch (e) {
+            membership_sms_kickoff.failed++;
+            summary.errors.push(`owner membership sms ${sale.studio_slug}: ${(e as Error).message}`);
+          }
+        }
+      }
+    }
+  }
+
+  // ─── 6. Membership welcome emails (2026-09-02) ───────────────────────
+  // One-time branded welcome for brand-new membership buyers (walk-ins like
+  // the $299 Back to School desk sales). Only fires for rows THIS run just
+  // inserted, so returning members are never re-welcomed. Skipped on dry
+  // runs and catch-up backfills. Logs to email_log like every other send.
+  let membership_welcome_kickoff: { sent: number; failed: number; skipped?: string } | null = null;
+  if (membershipWelcomesToSend.length > 0) {
+    const resendKey = Deno.env.get('RESEND_API_KEY') ?? '';
+    if (dryRun) {
+      membership_welcome_kickoff = { sent: 0, failed: 0, skipped: 'dry_run' };
+    } else if (skipWelcome) {
+      membership_welcome_kickoff = { sent: 0, failed: 0, skipped: 'skip_welcome backfill' };
+    } else if (!resendKey) {
+      membership_welcome_kickoff = { sent: 0, failed: 0, skipped: 'RESEND_API_KEY missing' };
+    } else {
+      membership_welcome_kickoff = { sent: 0, failed: 0 };
+      // 2026-09-02: branded HTML matching the trial welcome (manual-welcome-
+      // batch template): red hero, logo, CTA pill, offer card, and App Store /
+      // Google Play buttons. The old plain-text version also glued the booking
+      // URL to the next line in some mail clients ("bayside...Or") — real
+      // anchor tags fix that.
+      const HERO_HEX = '#D83B3B';
+      const LOGO_URL = 'https://uracuwugpxqjfgtuobal.supabase.co/storage/v1/object/public/logos/0180_bbb_bbb-newtext_logo_new_black_1%20(1).png';
+      const APP_IOS = 'https://apps.apple.com/us/app/better-body-studios/id6778182425';
+      const APP_PLAY = 'https://play.google.com/store/apps/details?id=com.marianatek.betterbodybootcamp';
+      for (const w of membershipWelcomesToSend) {
+        const studioTitle = w.studio_slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+        const mailbox = `${w.studio_slug.replace(/-/g, '')}@betterbodybootcamp.com`;
+        const subject = `Welcome to Better Body ${studioTitle}!`;
+        const bookUrl = `https://betterbodybootcamp.com/schedule/${w.studio_slug}`;
+        const infoUrl = `https://betterbodybootcamp.com/locations/${w.studio_slug}`;
+        const text = `Hi ${w.first},\n\nWelcome to Better Body Bootcamp ${studioTitle}! Your ${w.items} is active and you are all set.\n\nBook your classes: ${bookUrl}\n\nOr grab the Better Body Studios app:\niPhone: ${APP_IOS}\nAndroid: ${APP_PLAY}\n\nEvery class is coach-led, so just show up and we take care of the rest. See you in the room!\n\nThe Better Body ${studioTitle} Team`;
+        const html = `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:0;color:#111;background:#fff">
+      <div style="background:${HERO_HEX};color:#fff;padding:26px 28px 24px;text-align:center">
+        <img src="${LOGO_URL}" alt="Better Body Bootcamp" width="160" style="max-width:160px;height:auto;margin:0 auto 14px;display:block" />
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;opacity:0.85;margin-bottom:8px">${studioTitle}</div>
+        <h1 style="margin:0;font-size:28px;font-weight:800;letter-spacing:-0.02em;line-height:1.1;color:#fff">Welcome, ${w.first}.</h1>
+      </div>
+      <div style="padding:28px">
+        <p style="margin:0 0 18px;font-size:16px;line-height:1.55;color:#222">Welcome to Better Body Bootcamp ${studioTitle}. Your <strong>${w.items}</strong> is active and you are all set.</p>
+        <p style="margin:0 0 22px;font-size:15px;line-height:1.6;color:#444">Every class is coach-led, so just show up and we take care of the rest. Book your <strong>first class today</strong> and lock in the habit.</p>
+        <div style="text-align:center;margin:26px 0 20px">
+          <a href="${bookUrl}" style="background:${HERO_HEX};color:#fff;text-decoration:none;font-weight:700;padding:14px 28px;border-radius:999px;display:inline-block;font-size:15px;letter-spacing:0.01em">Book My First Class →</a>
+        </div>
+        <div style="text-align:center;margin:0 0 26px">
+          <div style="font-size:12px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px">Or book from your phone</div>
+          <a href="${APP_IOS}" style="background:#000;color:#fff;text-decoration:none;font-weight:700;padding:11px 20px;border-radius:999px;display:inline-block;font-size:13px;margin:0 4px 8px"> App Store</a>
+          <a href="${APP_PLAY}" style="background:#000;color:#fff;text-decoration:none;font-weight:700;padding:11px 20px;border-radius:999px;display:inline-block;font-size:13px;margin:0 4px 8px">▶ Google Play</a>
+        </div>
+        <div style="background:#fafafa;border:1px solid #eee;border-radius:12px;padding:18px 20px;margin-bottom:22px">
+          <div style="font-size:12px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px">What you've got</div>
+          <table style="width:100%;border-collapse:collapse;font-size:14px">
+            <tr><td style="padding:4px 0;color:#666;width:140px">Membership</td><td style="padding:4px 0;font-weight:600">${w.items}</td></tr>
+            <tr><td style="padding:4px 0;color:#666">Studio</td><td style="padding:4px 0;font-weight:600">${studioTitle}</td></tr>
+            <tr><td style="padding:4px 0;color:#666">Access</td><td style="padding:4px 0">Unlimited coach-led classes</td></tr>
+          </table>
+        </div>
+        <div style="font-size:14px;color:#444;line-height:1.55">
+          <p style="margin:0 0 10px"><strong>First class tips:</strong> show up 10 minutes early, wear sneakers, bring water. Coach will get you set up.</p>
+          <p style="margin:0 0 10px">Questions? Just reply to this email — it goes straight to your studio.</p>
+        </div>
+        <div style="border-top:1px solid #eee;margin-top:24px;padding-top:18px;font-size:12px;color:#888;text-align:center">
+          <a href="${infoUrl}" style="color:#888;text-decoration:underline">Studio info &amp; directions</a>
+          &nbsp;·&nbsp; <a href="${bookUrl}" style="color:#888;text-decoration:underline">Class schedule</a>
+        </div>
+      </div>
+    </div>`;
+        try {
+          const r = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              from: `Better Body Bootcamp ${studioTitle} <${mailbox}>`,
+              to: [w.email], reply_to: mailbox, subject, html, text,
+            }),
+          });
+          const ok = r.ok;
+          try {
+            await sb.from('email_log').insert({
+              send_path: 'membership_welcome_email',
+              to_addrs: [w.email],
+              subject,
+              status: ok ? 'sent' : 'failed',
+            });
+          } catch { /* log table variance — never block the send loop */ }
+          if (ok) {
+            membership_welcome_kickoff.sent++;
+            try {
+              await sb.from('trial_signups').update({ welcome_email_sent_at: new Date().toISOString() }).eq('id', w.trial_id);
+            } catch { /* non-fatal */ }
+          } else {
+            membership_welcome_kickoff.failed++;
+          }
+        } catch (e) {
+          membership_welcome_kickoff.failed++;
+          summary.errors.push(`membership welcome ${w.email}: ${(e as Error).message}`);
+        }
+      }
+    }
+  }
+
   return json({
     ok: true,
     dry_run: dryRun,
@@ -607,6 +927,8 @@ serve(async (req) => {
     ...summary,
     capi_kickoff,
     welcome_kickoff,
+    membership_sms_kickoff,
+    membership_welcome_kickoff,
     new_trials_needing_welcome: trialEmailsToWelcome,
   });
 });

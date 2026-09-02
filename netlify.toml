@@ -127,6 +127,114 @@
   to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=gbp-williamsburg"
   status = 302
 
+# Back to School promo short links (2026-08-21) — for Instagram bios.
+# /bts → studio picker; /bts/<studio> → that studio preselected. UTMs ride
+# along so the attribution bridge stamps the signup like /ig/* links do.
+# TODO: once track-link is redeployed with the bts keys, point these at the
+# edge function instead so clicks land in link_clicks too.
+[[redirects]]
+  from   = "/bts"
+  to     = "/backtoschool?utm_source=instagram&utm_medium=social&utm_campaign=back-to-school-299&utm_content=bio"
+  status = 302
+  force  = true
+
+[[redirects]]
+  from   = "/bts/astoria"
+  to     = "/backtoschool?studio=astoria&utm_source=instagram&utm_medium=social&utm_campaign=back-to-school-299&utm_content=bio"
+  status = 302
+  force  = true
+
+[[redirects]]
+  from   = "/bts/bayside"
+  to     = "/backtoschool?studio=bayside&utm_source=instagram&utm_medium=social&utm_campaign=back-to-school-299&utm_content=bio"
+  status = 302
+  force  = true
+
+[[redirects]]
+  from   = "/bts/fresh-meadows"
+  to     = "/backtoschool?studio=fresh-meadows&utm_source=instagram&utm_medium=social&utm_campaign=back-to-school-299&utm_content=bio"
+  status = 302
+  force  = true
+
+[[redirects]]
+  from   = "/bts/williamsburg"
+  to     = "/backtoschool?studio=williamsburg&utm_source=instagram&utm_medium=social&utm_campaign=back-to-school-299&utm_content=bio"
+  status = 302
+  force  = true
+
+# 3 Free Classes claim short links (2026-08-21) — used in the winback texts/emails.
+[[redirects]]
+  from   = "/free3/astoria"
+  to     = "/freeclasses?studio=astoria&utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes"
+  status = 302
+  force  = true
+
+[[redirects]]
+  from   = "/free3/bayside"
+  to     = "/freeclasses?studio=bayside&utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes"
+  status = 302
+  force  = true
+
+[[redirects]]
+  from   = "/free3/fresh-meadows"
+  to     = "/freeclasses?studio=fresh-meadows&utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes"
+  status = 302
+  force  = true
+
+[[redirects]]
+  from   = "/free3/williamsburg"
+  to     = "/freeclasses?studio=williamsburg&utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes"
+  status = 302
+  force  = true
+
+[[redirects]]
+  from   = "/free3"
+  to     = "/freeclasses?utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes"
+  status = 302
+  force  = true
+
+[[redirects]]
+  from   = "/free3/*"
+  to     = "/freeclasses?utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes"
+  status = 302
+  force  = true
+
+[[redirects]]
+  from   = "/3free/astoria"
+  to     = "/freeclasses?studio=astoria&utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes"
+  status = 302
+  force  = true
+
+[[redirects]]
+  from   = "/3free/bayside"
+  to     = "/freeclasses?studio=bayside&utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes"
+  status = 302
+  force  = true
+
+[[redirects]]
+  from   = "/3free/fresh-meadows"
+  to     = "/freeclasses?studio=fresh-meadows&utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes"
+  status = 302
+  force  = true
+
+[[redirects]]
+  from   = "/3free/williamsburg"
+  to     = "/freeclasses?studio=williamsburg&utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes"
+  status = 302
+  force  = true
+
+[[redirects]]
+  from   = "/3free"
+  to     = "/freeclasses?utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes"
+  status = 302
+  force  = true
+
+[[redirects]]
+  from   = "/3free/*"
+  to     = "/freeclasses?utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes"
+  status = 302
+  force  = true
+
 # Mariana Tek staging gate — basic auth on /staging/*. The edge function reads
 # STAGING_USERNAME and STAGING_PASSWORD from Netlify env vars. Without the
 # password set the staging pages return 503 (fail-closed).

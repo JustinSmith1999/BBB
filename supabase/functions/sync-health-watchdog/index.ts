@@ -58,6 +58,14 @@ type Watch = {
 // when the new pipe goes stale.
 const WATCHES: Watch[] = [
   { table: "mariana_tek_sales",   column: "synced_at",   max_age_minutes:  120, display: "Mariana Tek sales" },
+  // 2026-09-01: the clients roster silently froze for 7 WEEKS (July 11 ->
+  // Sept 1) because nothing watched it. Never again — every table Homebase
+  // reads gets a freshness tripwire.
+  { table: "mariana_tek_clients", column: "synced_at",   max_age_minutes: 1560, display: "MT customer roster" },
+  { table: "mariana_tek_visits",  column: "synced_at",   max_age_minutes:  720, display: "MT visits" },
+  { table: "trial_signups",       column: "created_at",  max_age_minutes: 2880, display: "Trial signups (no new rows 2 days)" },
+  { table: "sms_messages",        column: "created_at",  max_age_minutes: 2880, display: "SMS gateway" },
+  { table: "page_views",          column: "ts",          max_age_minutes:  360, display: "Website analytics beacon" },
   // 2026-07-27: REMOVED the stripe_paid_mirror watch. Every studio moved onto
   // Mariana Tek ~mid-July 2026 (Bayside was the last Stripe holdout), so there
   // are no new Stripe payments to mirror — mirrored_at is now PERMANENTLY older

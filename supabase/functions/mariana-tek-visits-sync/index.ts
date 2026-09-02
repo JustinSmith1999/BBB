@@ -96,6 +96,11 @@ async function refreshAccessToken(): Promise<{ ok: boolean; token?: string; erro
 }
 
 async function getAccessToken(): Promise<{ ok: boolean; token?: string; error?: string }> {
+  // 2026-08-28: permanent Admin API key wins outright (no expiry, no refresh).
+  const adminKey = Deno.env.get('MT_ADMIN_API_KEY');
+  if (adminKey && adminKey.trim()) {
+    return { ok: true, token: adminKey.trim() };
+  }
   if (cachedAccessToken && cachedExpiresAt && Date.now() < cachedExpiresAt) {
     return { ok: true, token: cachedAccessToken };
   }

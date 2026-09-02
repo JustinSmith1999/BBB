@@ -187,6 +187,12 @@ Deno.serve(async (req: Request) => {
       : body.priceVariant === "comeback" ? "comeback"
       : "trial";
 
+    // 2026-08-28: native bts299 checkout (replaces the MT widget on
+    // /backtoschool). Uses inline price_data ($299 one-time) so no per-studio
+    // Stripe Price needs configuring; the webhook sees metadata.product and
+    // mt-provision attaches MT contract 14913.
+    const productKind: "trial" | "bts299" = body.product === "bts299" ? "bts299" : "trial";
+
     // For the $29 comeback flow we also carry the original_signup_id so the
     // webhook can credit comeback_converted_at on the right row.
     const comebackOriginalSignupId =
@@ -272,7 +278,7 @@ Deno.serve(async (req: Request) => {
     : priceVariant === "comeback" ? location.stripe_comeback_price_id
     : location.stripe_price_id;
 
-    if (!chosenPriceId) {
+    if (!chosenPriceId && productKind !== "bts299") {
       throw new Error(
         priceVariant === "special"
           ? "Comeback ($129) Stripe price not configured for this location"
@@ -522,7 +528,8 @@ Deno.serve(async (req: Request) => {
     // Cancel back to the page they came from. /special, /comeback, and /trial
     // each have their own funnel page.
     const cancelPath =
-      priceVariant === "special"  ? `/special/${cancelSlug}`
+      productKind === "bts299"    ? `/backtoschool?studio=${cancelSlug}`
+    : priceVariant === "special"  ? `/special/${cancelSlug}`
     : priceVariant === "comeback" ? `/comeback/${cancelSlug}`
     : `/locations/${cancelSlug}`;
 
@@ -552,10 +559,22 @@ Deno.serve(async (req: Request) => {
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card", "link"],
       line_items: [
-        {
-          price: chosenPriceId,
-          quantity: 1,
-        },
+        productKind === "bts299"
+          ? {
+              price_data: {
+                currency: "usd",
+                unit_amount: 29900,
+                product_data: {
+                  name: "2 Months Unlimited — Back to School",
+                  description: `One payment, no auto-renewal. ${locationName ?? location.name ?? ""}`,
+                },
+              },
+              quantity: 1,
+            }
+          : {
+              price: chosenPriceId,
+              quantity: 1,
+            },
       ],
       mode: "payment",
       success_url: `${req.headers.get("origin")}/trial-success?session_id={CHECKOUT_SESSION_ID}`,
@@ -586,6 +605,7 @@ Deno.serve(async (req: Request) => {
         country,
         newsletter: newsletter ? "true" : "false",
         priceVariant,
+        product: productKind,
         trialType:
           priceVariant === "special"  ? "30-day-comeback-129"
         : priceVariant === "comeback" ? "1-week-comeback-29"

@@ -1,10 +1,12 @@
 import { Component, lazy, Suspense, useEffect, useState, type ErrorInfo, type ReactNode } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { captureUtmsFromUrl } from './lib/utm';
+import { trackPageView, trackError } from './lib/track';
 import { HelmetProvider } from 'react-helmet-async';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import ScrollToTop from './components/ScrollToTop';
+import PromoPopup from './components/PromoPopup';
 // Eager: the LCP target for paid ad traffic.
 import LocationTrialSignup from './pages/LocationTrialSignup';
 import TrialSuccess from './pages/TrialSuccess';
@@ -24,12 +26,18 @@ const LocationDetail = lazy(() => import('./pages/LocationDetail'));
 // (currently P66 with /locations/fresh-meadows wrongly ranking). Consolidates
 // Astoria + Bayside + Fresh Meadows into one topically dense landing page.
 const Queens = lazy(() => import('./pages/Queens'));
+// 2026-08-19: /brooklyn hub. Targets "gym brooklyn williamsburg" (1K/mo, KD 15)
+// + "gyms in williamsburg" — mirrors the /queens hub, funnels equity to
+// /locations/williamsburg.
+const Brooklyn = lazy(() => import('./pages/Brooklyn'));
 const Pricing = lazy(() => import('./pages/Pricing'));
 const Classes = lazy(() => import('./pages/Classes'));
 const ClassDetail = lazy(() => import('./pages/ClassDetail'));
 const MyBookings = lazy(() => import('./pages/MyBookings'));
 const TrialSignup = lazy(() => import('./pages/TrialSignup'));
 const LocationSpecialSignup = lazy(() => import('./pages/LocationSpecialSignup'));
+const BackToSchool = lazy(() => import('./pages/BackToSchool'));
+const FreeClasses = lazy(() => import('./pages/FreeClasses'));
 const LocationComebackSignup = lazy(() => import('./pages/LocationComebackSignup'));
 const ComebackIndex = lazy(() => import('./pages/ComebackIndex'));
 const LocationResignSignup = lazy(() => import('./pages/LocationResignSignup'));
@@ -83,6 +91,11 @@ class ChunkErrorBoundary extends Component<{ children: ReactNode }, { hasError: 
     // Surface to console + Sentry-equivalent if wired later
     console.error('[ChunkErrorBoundary] route crashed:', error, info);
 
+    // 2026-08-31: phone home. Every visitor who hits this screen reports the
+    // exact error, page, device, and build to client_errors — so "the site is
+    // down" texts come with a diagnosis attached.
+    trackError(String(error?.message || error || 'unknown'), info?.componentStack ?? undefined);
+
     // 2026-08-05: the #1 cause of this boundary tripping is a STALE CHUNK —
     // after a deploy, Vite renames the lazy-loaded route chunks and deletes
     // the old ones. A visitor whose page (or CDN cache) predates the deploy
@@ -95,9 +108,15 @@ class ChunkErrorBoundary extends Component<{ children: ReactNode }, { hasError: 
     const msg = String(error?.message || error || '');
     const isChunkError =
       /dynamically imported module|Importing a module script failed|ChunkLoadError|Failed to fetch|error loading dynamically imported/i.test(msg);
+    // 2026-08-31: guard changed from once-per-session to once-per-minute.
+    // During the Aug 31 campaign we saw tabs that burned their single reload
+    // while the deploy was still mid-flight and then sat on the manual error
+    // screen forever. A 60s cooldown still prevents reload loops but lets a
+    // stuck tab self-heal the next time the visitor comes back to it.
     try {
-      if (isChunkError && !sessionStorage.getItem('bbb_chunk_reloaded')) {
-        sessionStorage.setItem('bbb_chunk_reloaded', '1');
+      const last = Number(sessionStorage.getItem('bbb_chunk_reloaded_at') || 0);
+      if (isChunkError && Date.now() - last > 60_000) {
+        sessionStorage.setItem('bbb_chunk_reloaded_at', String(Date.now()));
         window.location.reload();
       }
     } catch { /* sessionStorage unavailable — fall through to manual UI */ }
@@ -106,7 +125,7 @@ class ChunkErrorBoundary extends Component<{ children: ReactNode }, { hasError: 
     if (!this.state.hasError) {
       // A route rendered successfully → the reload (if any) worked. Clear the
       // guard so a LATER deploy's stale-chunk error can auto-recover again.
-      try { sessionStorage.removeItem('bbb_chunk_reloaded'); } catch { /* ignore */ }
+      try { sessionStorage.removeItem('bbb_chunk_reloaded_at'); } catch { /* ignore */ }
       return this.props.children;
     }
     return (
@@ -170,6 +189,15 @@ function UtmCapture() {
   return null;
 }
 
+// 2026-08-31: First-party page-view analytics (see src/lib/track.ts).
+// Fires once per route change. If the page_views table doesn't exist yet the
+// insert 404s silently — safe to deploy before the SQL is run.
+function PageViewTracker() {
+  const location = useLocation();
+  useEffect(() => { trackPageView(location.pathname); }, [location.pathname]);
+  return null;
+}
+
 function App() {
   return (
     <HelmetProvider>
@@ -179,9 +207,18 @@ function App() {
             back via the MT widgets on /schedule/[slug], /locations/[slug], and
             /classes. Header reset to top:0. */}
         <UtmCapture />
+        <PageViewTracker />
         <ScrollProgress />
         <ScrollToTop />
+        {/* 2026-09-02: Back to School $299 popup — remove with the promo */}
+        <PromoPopup />
         <Header />
+        {/* 2026-09-02 iOS FIX: horizontally-scrollable content (day-pill rows)
+            gets its own compositing layer on iOS Safari and painted ABOVE the
+            fixed header while scrolling. This wrapper forces ALL page content
+            into one stacking context at z-0 — nothing inside can ever stack
+            above the z-50 header again. */}
+        <div style={{ position: 'relative', zIndex: 0, isolation: 'isolate' }}>
         <ChunkErrorBoundary>
         <Suspense fallback={<RouteLoader />}>
         <Routes>
@@ -197,6 +234,7 @@ function App() {
           <Route path="/locations" element={<Locations />} />
           <Route path="/locations/:slug" element={<LocationDetail />} />
           <Route path="/queens" element={<Queens />} />
+          <Route path="/brooklyn" element={<Brooklyn />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/classes" element={<Classes />} />
           <Route path="/classes/:id" element={<ClassDetail />} />
@@ -204,6 +242,8 @@ function App() {
           <Route path="/trial" element={<TrialSignup />} />
           <Route path="/trial/:location" element={<LocationTrialSignup />} />
           <Route path="/special/:location" element={<LocationSpecialSignup />} />
+          <Route path="/backtoschool" element={<BackToSchool />} />
+          <Route path="/freeclasses" element={<FreeClasses />} />
           <Route path="/comeback" element={<ComebackIndex />} />
           <Route path="/comeback/:location" element={<LocationComebackSignup />} />
           <Route path="/resign/:location" element={<LocationResignSignup />} />
@@ -230,6 +270,7 @@ function App() {
         </Routes>
         </Suspense>
         </ChunkErrorBoundary>
+        </div>
         <Footer />
       </div>
     </Router>

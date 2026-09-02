@@ -62,7 +62,7 @@ export default function TrialForm() {
             text-sm address, 12px CTA, max-w-3xl container. Bumped to
             max-w-5xl + 200px photo + 32px name + 16px address + 14px CTA so
             each studio reads with real weight on this top-of-funnel section. */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-5xl mx-auto">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 max-w-content mx-auto">
           {locations.map(location => {
             const slug = location.name.toLowerCase().replace(/ /g, '-');
             const img = locationImages[location.name] || location.image_url || '';
@@ -87,7 +87,7 @@ export default function TrialForm() {
                 }}
               >
                 {/* Photo */}
-                <div className="w-full overflow-hidden rounded-xl mb-6" style={{ height: '200px' }}>
+                <div className="w-full overflow-hidden rounded-xl mb-6" style={{ height: '340px' }}>
                   <img
                     src={img}
                     alt={location.name}
@@ -98,7 +98,7 @@ export default function TrialForm() {
                 {/* Info */}
                 <h3
                   className="font-display font-black uppercase mb-2"
-                  style={{ fontSize: '32px', lineHeight: '1', letterSpacing: '-0.01em', color: 'var(--text-primary)' }}
+                  style={{ fontSize: 'clamp(32px, 2.6vw, 42px)', lineHeight: '1', letterSpacing: '-0.01em', color: 'var(--text-primary)' }}
                 >
                   {location.name}
                 </h3>

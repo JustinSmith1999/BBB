@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { ArrowRight, CheckCircle, Users, UserRound, Activity, Apple } from 'lucide-react';
+import { ArrowRight, CheckCircle, Users, UserRound, Activity, Apple, Flower2 } from 'lucide-react';
 import { supabase, LOCATION_PUBLIC_COLUMNS, Location } from '../lib/supabase';
 import { getUtmParams } from '../lib/utm';
 import SEOHead from '../components/SEOHead';
+import PageHero, { Red } from '../components/PageHero';
 
 /* ────────────────────────────────────────────────────────────────────────
    PHOTOS / VIDEOS
@@ -20,12 +21,15 @@ import SEOHead from '../components/SEOHead';
 // Real BBB studio photos (Williamsburg shared-album footage, frame-grabbed).
 // inbody + nutrition are intentionally blank until real photos arrive — a blank
 // src shows the clean branded fallback panel (never stock, never dev text).
-const MEDIA: Record<string, { type: 'image' | 'video'; src: string }> = {
+const MEDIA: Record<string, { type: 'image' | 'video'; src: string; fit?: 'contain' }> = {
   'group-training':       { type: 'video', src: '/services/group-training.mp4' },
   'small-group-training': { type: 'video', src: '/services/small-group-training.mp4' },
   'personal-training':    { type: 'video', src: '/services/personal-training.mp4' },
-  'inbody':               { type: 'image', src: '' },
-  'nutrition':            { type: 'image', src: '' },
+  'inbody':               { type: 'image', src: '/services/inbody.webp', fit: 'contain' },
+  'nutrition':            { type: 'image', src: '/services/nutrition.webp', fit: 'contain' },
+  // pilates: blank until real Bayside footage arrives — blank src shows the
+  // clean branded fallback panel (same pattern inbody/nutrition used).
+  'pilates':              { type: 'image', src: '' },
 };
 
 // Hero background — a real Astoria class loop (silent, looping), darkened for legibility.
@@ -52,11 +56,11 @@ const SERVICES: Service[] = [
     name: 'Group Training',
     tagline: 'The signature Better Body experience',
     description:
-      'Coach-led group workouts that blend high-intensity intervals, strength, and conditioning into one 45-minute session. Every class is programmed by our coaches and scaled to your level, so a first-timer and a veteran can train side by side and both leave wrecked in the best way. It is the energy of a team with the structure of a plan.',
+      'Coach-led group workouts that blend strength training, HIIT training, bootcamp classes, and hybrid training into one 45-minute session. Every class is programmed by our coaches and scaled to your level, so a first-timer and a veteran can train side by side and both leave wrecked in the best way. It is the energy of a team with the structure of a plan.',
     bullets: [
       'Coach-led, fully programmed classes — no guesswork',
       'Scales to any fitness level, beginner to advanced',
-      'HIIT, strength, and conditioning in every session',
+      'Strength training, HIIT training, and hybrid conditioning in every session',
     ],
     studios: 'all',
     icon: Users,
@@ -67,9 +71,9 @@ const SERVICES: Service[] = [
     name: 'Small Group Training',
     tagline: 'Semi-private, goal-focused',
     description:
-      'A small crew of two to six people training together with a coach dialed into each of you. You get far more hands-on attention than a full class — form corrections, tailored progressions, real accountability — while keeping the push and camaraderie that only a group brings. The sweet spot between a class and 1-on-1.',
+      'A small crew training together with a coach dialed into each of you. You get far more hands-on attention than a full class — form corrections, tailored progressions, real accountability — while keeping the push and camaraderie that only a group brings. The sweet spot between a class and 1-on-1.',
     bullets: [
-      'Small groups of 2–6 for real coach attention',
+      'Small groups for real coach attention',
       'Programming tailored to the group’s goals',
       'More personal than a class, more fun than solo',
     ],
@@ -92,8 +96,23 @@ const SERVICES: Service[] = [
     icon: UserRound,
   },
   {
-    slug: 'inbody',
+    slug: 'pilates',
     index: '04',
+    name: 'Pilates',
+    tagline: 'Core, control, and mobility',
+    description:
+      'Coach-led Pilates classes built around core strength, control, and mobility. Low impact does not mean easy — expect deep, focused work that improves posture, balance, and the way you move in every other class you take. The perfect complement to bootcamp training, and a strong standalone practice in its own right. Currently offered at our Bayside studio.',
+    bullets: [
+      'Coach-led classes focused on core and control',
+      'Low-impact — easy on joints, brutal on the core',
+      'Builds mobility and posture that carry into every workout',
+    ],
+    studios: ['Bayside'],
+    icon: Flower2,
+  },
+  {
+    slug: 'inbody',
+    index: '05',
     name: 'InBody Body Composition Scans',
     tagline: 'See what the scale can’t',
     description:
@@ -108,7 +127,7 @@ const SERVICES: Service[] = [
   },
   {
     slug: 'nutrition',
-    index: '05',
+    index: '06',
     name: 'Nutritional Consultations',
     tagline: 'Fuel the results you’re training for',
     description:
@@ -131,7 +150,7 @@ function BandMedia({ slug, name, icon: Icon }: { slug: string; name: string; ico
 
   return (
     <div
-      className="relative w-full h-72 sm:h-96 lg:h-full overflow-hidden"
+      className="relative w-full aspect-[3/4] sm:aspect-auto sm:h-[560px] lg:h-full overflow-hidden"
       style={{ backgroundColor: 'var(--bg-elevated)' }}
     >
       {!show && media.type === 'image' && (
@@ -139,14 +158,14 @@ function BandMedia({ slug, name, icon: Icon }: { slug: string; name: string; ico
           src={media.src}
           alt={`${name} at Better Body Bootcamp`}
           onError={() => setFailed(true)}
-          className="absolute inset-0 w-full h-full object-cover"
+          className={`absolute inset-0 w-full h-full ${media.fit === 'contain' ? 'object-contain p-6 sm:p-10' : 'object-cover'}`}
+          style={media.fit === 'contain' ? { backgroundColor: '#0E0F13' } : undefined}
           loading="lazy"
         />
       )}
       {!show && media.type === 'video' && (
         <video
           src={media.src}
-          poster={media.src.replace('.mp4', '-poster.webp')}
           className="absolute inset-0 w-full h-full object-cover"
           autoPlay muted loop playsInline
           onError={() => setFailed(true)}
@@ -425,60 +444,41 @@ export default function ServicesPage() {
   return (
     <>
       <SEOHead
-        title="Services | Better Body Bootcamp NYC"
-        description="Group training, small group training, 1-on-1 personal training, InBody body composition scans, and nutritional consultations across our NYC studios."
+        title="Group Fitness Classes & Training Services | Better Body Bootcamp"
+        description="Strength training, HIIT training, bootcamp classes, hybrid training, small group training, 1-on-1 personal training, Pilates (Bayside), InBody scans, and nutrition coaching across our NYC studios."
         canonical="/services"
       />
 
       <div style={{ backgroundColor: 'var(--bg-primary)' }}>
 
-        {/* ── Full-bleed hero ── */}
-        <div className="relative overflow-hidden" style={{ minHeight: '78vh' }}>
-          <video
-            src={HERO_IMG}
-            poster="/services/hero-poster.webp"
-            aria-label="Better Body Bootcamp training"
-            className="absolute inset-0 w-full h-full object-cover"
-            style={{ objectPosition: 'center 35%' }}
-            autoPlay
-            muted
-            loop
-            playsInline
-          />
-          <div
-            className="absolute inset-0"
-            style={{ background: 'linear-gradient(180deg, rgba(14,15,19,0.55) 0%, rgba(14,15,19,0.42) 45%, rgba(14,15,19,0.85) 100%)' }}
-          />
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6" style={{ paddingTop: '80px' }}>
-            <p className="eyebrow mb-5" style={{ letterSpacing: '0.24em' }}>WHAT WE OFFER</p>
-            <h1
-              className="font-display font-black uppercase"
-              style={{ fontSize: 'clamp(2.75rem, 7vw, 6rem)', lineHeight: 0.9, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}
-            >
-              OUR <span style={{ color: 'var(--brand-red)' }}>SERVICES</span>
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 'clamp(1rem, 1.6vw, 1.2rem)', lineHeight: 1.65, maxWidth: '58ch', margin: '26px auto 0' }}>
-              From high-energy group classes to fully private coaching, body composition scans, and nutrition guidance — everything you need to get real results, across four NYC studios.
-            </p>
+        {/* ── Hero (shared PageHero — one style everywhere; keeps the video bg) ── */}
+        {/* 2026-09-02: hero slimmed to match every other PageHero — the six
+            anchor pills made it read "chunky" (owner) and duplicated the
+            "Six ways to train" divider + bands directly below. */}
+        <PageHero
+          eyebrow="WHAT WE OFFER · NYC"
+          lines={["OUR", <Red key="r">SERVICES</Red>]}
+          sub={'Group classes, private coaching, body scans, and nutrition. Four NYC studios.'}
+          poster="/services/hero-poster.webp"
+        />
 
-            <div className="flex flex-wrap justify-center gap-2.5 mt-10">
-              {SERVICES.map(s => (
-                <a
-                  key={s.slug}
-                  href={`#${s.slug}`}
-                  className="transition-transform hover:-translate-y-0.5"
-                  style={{
-                    fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)', textDecoration: 'none',
-                    padding: '9px 18px', borderRadius: '999px',
-                    backgroundColor: 'rgba(245,241,234,0.08)', border: '1px solid rgba(245,241,234,0.18)',
-                    backdropFilter: 'blur(6px)',
-                  }}
-                >
-                  {s.name}
-                </a>
-              ))}
-            </div>
-          </div>
+        {/* ── 2026-08-25: solid divider band — the hero video ran directly into
+            the first service band's video with no visual reset ("they are
+            clashing"). A quiet solid strip gives the eye a hard break. ── */}
+        <div
+          className="flex items-center justify-center gap-6"
+          style={{
+            backgroundColor: 'var(--bg-primary)',
+            borderTop: '1px solid var(--divider)',
+            borderBottom: '1px solid var(--divider)',
+            padding: '56px 24px',
+          }}
+        >
+          <span className="hidden sm:block h-px w-16" style={{ backgroundColor: 'var(--divider)' }} />
+          <span className="uppercase font-bold" style={{ fontSize: '12px', letterSpacing: '0.3em', color: 'var(--text-secondary)' }}>
+            Six ways to train
+          </span>
+          <span className="hidden sm:block h-px w-16" style={{ backgroundColor: 'var(--divider)' }} />
         </div>
 
         {/* ── Service bands (full width, alternating) ── */}

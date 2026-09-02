@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Calendar, Loader2, AlertCircle, ArrowRight, Sunrise, Sunset } from 'lucide-react';
 import { fetchClassesForLocation, type MTClassSession } from '../lib/mtClient';
-import MTBookingModal from './MTBookingModal';
+import BookClassModal from './BookClassModal';
 
 interface Props {
   mtLocationId: number;
@@ -63,7 +63,7 @@ const TOD_META: Record<TimeOfDay, { label: string; Icon: typeof Sunrise }> = {
 // (instructor avatars removed — BBB brand is black/red/white only)
 
 // ─── Main ─────────────────────────────────────────────────────────────────
-export default function NativeClassList({ mtLocationId, studioName, days = 7, trialHref }: Props) {
+export default function NativeClassList({ mtLocationId, studioName, studioSlug, days = 7, trialHref }: Props) {
   const [sessions, setSessions] = useState<MTClassSession[]>([]);
   const [loading, setLoading]   = useState(true);
   const [error,   setError]     = useState<string | null>(null);
@@ -108,15 +108,24 @@ export default function NativeClassList({ mtLocationId, studioName, days = 7, tr
     return list;
   }, [sessions, days]);
 
-  // Default to today (or first day that has classes if today is empty)
+  // Default to today, or auto-advance to the first day that has classes.
+  // 2026-09-01 owner report: "No classes scheduled for this day" showed on
+  // /trial-success — the old effect ran once DURING loading (sessions still
+  // empty), locked activeDay to today, and never re-checked once the real
+  // schedule arrived. Now: never select while loading, and if the selected
+  // day is empty (e.g. today's classes are all over), jump forward to the
+  // next day that has classes instead of showing a dead end.
   useEffect(() => {
-    if (activeDay || dayList.length === 0) return;
+    if (loading || dayList.length === 0) return;
+    const active = dayList.find(d => d.dayKey === activeDay);
+    if (active && active.classes.length > 0) return; // current pick is fine
     const todayKey = todayKeyET();
     const today = dayList.find(d => d.dayKey === todayKey);
-    if (today && today.classes.length > 0) { setActiveDay(today.dayKey); return; }
-    const firstWithClasses = dayList.find(d => d.classes.length > 0);
-    setActiveDay(firstWithClasses ? firstWithClasses.dayKey : dayList[0].dayKey);
-  }, [dayList, activeDay]);
+    const pick = (today && today.classes.length > 0)
+      ? today
+      : dayList.find(d => d.classes.length > 0);
+    setActiveDay(pick ? pick.dayKey : dayList[0].dayKey);
+  }, [dayList, activeDay, loading]);
 
   // ─── States ────────────────────────────────────────────────────────────
   if (loading) {
@@ -163,10 +172,24 @@ export default function NativeClassList({ mtLocationId, studioName, days = 7, tr
   return (
     <div>
       {/* ───────── Day picker — full-width 7-column grid ──────────────── */}
+      {/* 2026-08-31 MOBILE READABILITY FIX (owner report): 7 columns on a
+          375px phone = ~44px pills — "TOMORROW" truncated to "T…" and the
+          bare class-count number read as noise. Mobile is now a horizontally
+          swipeable row of full-size pills; desktop keeps the 7-col grid. */}
+      {/* Mobile swipe hint — tells the thumb the row scrolls */}
+      <div className="sm:hidden flex items-center justify-center gap-1.5 mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">
+        Swipe for more days
+        <ArrowRight className="w-3 h-3" />
+      </div>
+      <div className="relative">
       <div
         role="tablist"
         aria-label="Pick a day"
-        className="grid grid-cols-7 gap-2 sm:gap-3"
+        className="flex overflow-x-auto gap-2 pb-2 -mx-1 px-1 sm:mx-0 sm:px-0 sm:pb-0 sm:grid sm:grid-cols-7 sm:gap-3 sm:overflow-visible"
+        // 2026-09-02 iOS fix: explicit z-0 + isolate — Safari promoted this
+        // horizontal scroller to its own layer that painted OVER the fixed
+        // header while the page scrolled.
+        style={{ scrollbarWidth: 'none', position: 'relative', zIndex: 0, isolation: 'isolate' }}
       >
         {dayList.map(({ dayKey: k, iso, classes }) => {
           const d = new Date(iso);
@@ -177,7 +200,7 @@ export default function NativeClassList({ mtLocationId, studioName, days = 7, tr
           const isToday    = k === todayKey;
           const isTomorrow = k === tomorrowKey;
           const empty      = classes.length === 0;
-          const label      = isToday ? 'TODAY' : isTomorrow ? 'TOMORROW' : wkday;
+          const label      = isToday ? 'TODAY' : isTomorrow ? 'TMRW' : wkday;
           return (
             <button
               key={k}
@@ -186,7 +209,7 @@ export default function NativeClassList({ mtLocationId, studioName, days = 7, tr
               aria-selected={isActive}
               onClick={() => setActiveDay(k)}
               disabled={empty && !isActive}
-              className={`relative py-4 sm:py-5 px-1 rounded-xl border-2 transition-all text-center select-none ${
+              className={`relative flex-none w-[76px] sm:w-auto py-4 sm:py-5 px-1 rounded-xl border-2 transition-all text-center select-none ${
                 isActive
                   ? 'bg-black text-white border-black shadow-xl shadow-black/25'
                   : empty
@@ -197,7 +220,7 @@ export default function NativeClassList({ mtLocationId, studioName, days = 7, tr
               {isActive && isToday && (
                 <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" aria-hidden />
               )}
-              <div className={`text-[9px] sm:text-[10px] font-black uppercase tracking-[0.15em] truncate px-1 ${
+              <div className={`text-[9px] sm:text-[10px] font-black uppercase tracking-[0.12em] sm:tracking-[0.15em] px-0.5 ${
                 isActive
                   ? (isToday ? 'text-red-400' : 'text-white/60')
                   : (isToday ? 'text-red-600' : 'text-gray-400')
@@ -214,7 +237,8 @@ export default function NativeClassList({ mtLocationId, studioName, days = 7, tr
               }`}>
                 {month}
               </div>
-              <div className={`text-[9px] sm:text-[10px] font-bold uppercase tracking-wider mt-2 sm:mt-3 ${
+              {/* class count — desktop only; on mobile the bare number read as noise */}
+              <div className={`hidden sm:block text-[9px] sm:text-[10px] font-bold uppercase tracking-wider mt-2 sm:mt-3 ${
                 isActive
                   ? 'text-white/80'
                   : (empty ? 'text-gray-300' : 'text-gray-500')
@@ -226,10 +250,17 @@ export default function NativeClassList({ mtLocationId, studioName, days = 7, tr
           );
         })}
       </div>
+      {/* Right-edge fade — visual cue that more days sit off-screen (mobile only) */}
+      <div
+        className="sm:hidden pointer-events-none absolute inset-y-0 right-0 w-10"
+        style={{ background: 'linear-gradient(to left, #ffffff, rgba(255,255,255,0))' }}
+        aria-hidden
+      />
+      </div>
 
       {/* ───────── Day heading ────────────────────────────────────────── */}
       {activeData && (
-        <div className="mt-10 mb-6 flex items-end justify-between gap-4 flex-wrap">
+        <div className="mt-10 mb-6 flex flex-col items-center text-center gap-3 sm:flex-row sm:items-end sm:justify-between sm:text-left sm:gap-4 sm:flex-wrap">
           <div>
             <h3 className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-black leading-[1.05]">
               {fmtFullDate(activeData.iso)}
@@ -272,7 +303,7 @@ export default function NativeClassList({ mtLocationId, studioName, days = 7, tr
               const { Icon, label } = TOD_META[tod];
               return (
                 <div key={tod}>
-                  <div className="flex items-center gap-3 mb-8">
+                  <div className="flex items-center justify-center sm:justify-start gap-3 mb-8">
                     <Icon className="w-5 h-5 text-gray-600" />
                     <span className="text-xs font-black uppercase tracking-[0.22em] text-gray-700">
                       {label}
@@ -280,7 +311,7 @@ export default function NativeClassList({ mtLocationId, studioName, days = 7, tr
                     <span className="text-xs font-bold text-gray-300 tabular-nums">
                       {list.length}
                     </span>
-                    <div className="flex-1 h-px bg-gray-200 ml-1" />
+                    <div className="hidden sm:block flex-1 h-px bg-gray-200 ml-1" />
                   </div>
                   <ul className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-10">
                     {list.map((s) => (
@@ -302,9 +333,10 @@ export default function NativeClassList({ mtLocationId, studioName, days = 7, tr
 
       {/* Booking modal — embeds the MT widget for in-browser reserve */}
       {bookingSession && (
-        <MTBookingModal
+        <BookClassModal
           session={bookingSession}
           studioName={studioName}
+          studioSlug={studioSlug}
           onClose={() => setBookingSession(null)}
         />
       )}
@@ -330,11 +362,17 @@ function NativeClassRow({ session: s, onBook }: { session: MTClassSession; onBoo
 
   return (
     <li className="group/row">
+      {/* 2026-08-31 MOBILE READABILITY FIX (owner report): the 3-column
+          desktop row squeezed the class name into ~80px on a phone —
+          "MUSCLE MONDAY" rendered as a vertical "MU." sliver and the
+          instructor truncated to "W..". Mobile now STACKS: time + chip on
+          top, class name full-width and big, instructor + Reserve on the
+          bottom. Desktop (sm+) keeps the original 3-column row. */}
       <button
         type="button"
         onClick={interactive ? onBook : undefined}
         disabled={!interactive}
-        className={`relative w-full flex items-center gap-5 sm:gap-7 py-7 sm:py-8 pl-7 sm:pl-9 pr-5 sm:pr-7 rounded-2xl border-2 transition-all overflow-hidden text-left ${
+        className={`relative w-full flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-7 py-6 sm:py-8 pl-7 sm:pl-9 pr-5 sm:pr-7 rounded-2xl border-2 transition-all overflow-hidden text-left ${
           interactive
             ? 'bg-white border-gray-200 hover:border-black hover:-translate-y-1 hover:shadow-xl cursor-pointer'
             : 'bg-gray-50 border-gray-100 opacity-60 cursor-not-allowed'
@@ -348,36 +386,56 @@ function NativeClassRow({ session: s, onBook }: { session: MTClassSession; onBoo
           aria-hidden
         />
 
-        {/* Time block */}
-        <div className="flex-none w-28 sm:w-32">
-          <div className="text-2xl sm:text-3xl font-black text-black tabular-nums tracking-tight leading-none whitespace-nowrap">
-            {fmtTime(s.start_datetime)}
+        {/* Time block — on mobile a full-width top row with the chip on the right */}
+        <div className="flex items-center justify-between sm:block flex-none sm:w-32">
+          <div className="flex items-baseline gap-2.5 sm:block">
+            <div className="text-2xl sm:text-3xl font-black text-black tabular-nums tracking-tight leading-none whitespace-nowrap">
+              {fmtTime(s.start_datetime)}
+            </div>
+            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400 sm:mt-2.5 tabular-nums">
+              {s.duration_min} MIN
+            </div>
           </div>
-          <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400 mt-2.5 tabular-nums">
-            {s.duration_min} MIN
-          </div>
+          {chip && (
+            <span
+              className={`sm:hidden inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider whitespace-nowrap ${chip.cls}`}
+            >
+              {chip.text}
+            </span>
+          )}
         </div>
 
         {/* Vertical divider */}
         <span className="hidden sm:block flex-none w-px h-14 bg-gray-200" aria-hidden />
 
-        {/* Class details */}
+        {/* Class details — full width on mobile, so the name actually reads */}
         <div className="flex-1 min-w-0">
           {/* 2026-07-02 QA #16: was `truncate` — clipped names like "THIGHS
               THURSD…" even with vertical room to spare. Two-line clamp keeps
               the card tidy while showing the full class name. */}
-          <div className="text-base sm:text-lg font-black text-black tracking-tight leading-tight line-clamp-2 break-words uppercase">
+          <div className="text-lg sm:text-lg font-black text-black tracking-tight leading-tight line-clamp-2 break-words uppercase">
             {s.class_name}
           </div>
-          {instructor && (
-            <div className="text-xs sm:text-sm text-gray-500 mt-2 truncate">
-              <span className="text-gray-400">w/</span> <span className="font-bold text-gray-800">{instructor}</span>
-            </div>
-          )}
+          <div className="flex items-center justify-between gap-3 mt-2">
+            {instructor ? (
+              <div className="text-xs sm:text-sm text-gray-500 truncate">
+                <span className="text-gray-400">w/</span> <span className="font-bold text-gray-800">{instructor}</span>
+              </div>
+            ) : <span />}
+            {/* Reserve cue — inline on mobile only */}
+            <span
+              className={`sm:hidden inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.2em] whitespace-nowrap ${
+                isFull ? 'text-gray-400' : 'text-red-600'
+              }`}
+            >
+              {isFull ? 'Full' : isWL ? 'Waitlist' : 'Reserve'}
+              {!isFull && <ArrowRight className="w-3 h-3" />}
+            </span>
+          </div>
         </div>
 
-        {/* Status + arrow */}
-        <div className="flex-none flex flex-col items-end gap-2.5">
+        {/* Status + arrow — desktop right column */}
+        <div className="hidden sm:flex flex-none flex-col items-end gap-2.5">
           {chip && (
             <span
               className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider whitespace-nowrap ${chip.cls}`}
