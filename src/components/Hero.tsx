@@ -205,7 +205,7 @@ export default function Hero() {
               >
                 <style>{`@keyframes pickIn{from{opacity:0}to{opacity:1}}@keyframes cardIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}`}</style>
 
-                <div className="flex items-center justify-between px-6 pt-6 pb-2 max-w-5xl mx-auto w-full">
+                <div className="flex items-center justify-between px-6 pt-6 pb-2 max-w-6xl mx-auto w-full">
                   <p className="font-display font-black uppercase" style={{ color: '#F5F1EA', fontSize: 'clamp(1.3rem, 3vw, 1.8rem)', letterSpacing: '-0.01em' }}>
                     Pick your <span style={{ color: 'var(--brand-red)' }}>studio</span>
                   </p>
@@ -219,8 +219,11 @@ export default function Hero() {
                   </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-6 pb-8 pt-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-5xl mx-auto">
+                {/* 2026-09-03 (Justin): on big desktops the 2x2 grid sat top-middle
+                    with a huge dead zone below. Center the grid vertically and let
+                    the cards grow wider so the picker fills the screen. */}
+                <div className="flex-1 overflow-y-auto px-6 pb-8 pt-3 flex flex-col justify-center">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 lg:gap-6 max-w-6xl mx-auto w-full">
                     {(locations.length ? locations : [
                       { id: 'astoria', name: 'Astoria', address: '31-18 Steinway Street' },
                       { id: 'bayside', name: 'Bayside', address: '3447 Bell Blvd' },
