@@ -30,15 +30,13 @@
 /flyer/fresh-meadows  https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=flyer-fresh-meadows        302
 /flyer/williamsburg   https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=flyer-williamsburg         302
 
-# /mb/{slug} → direct to that studio's MindBody classic schedule URL.
-# 2026-06-12: replaces the in-page Healcode widget for SMS schedule sends —
-# the widget was unreliable; the classic URL renders every time. sLoc IDs
-# come from supabase/functions/mindbody-create-trial-client (verified live).
-# 302 (not 301) so we can change destinations later without browser caching.
-/mb/astoria        https://clients.mindbodyonline.com/classic/ws?studioid=5733997&stype=-7&sLoc=2  302
-/mb/bayside        https://clients.mindbodyonline.com/classic/ws?studioid=5733997&stype=-7&sLoc=6  302
-/mb/fresh-meadows  https://clients.mindbodyonline.com/classic/ws?studioid=5733997&stype=-7&sLoc=3  302
-/mb/williamsburg   https://clients.mindbodyonline.com/classic/ws?studioid=5733997&stype=-7&sLoc=1  302
+# /mb/{slug} — legacy MindBody shortlinks that went out in old SMS sends.
+# 2026-09-02: MindBody is retired (MT cutover June 2026). Repointed to our
+# own live schedule pages so any old text/QR still lands somewhere that works.
+/mb/astoria        https://betterbodybootcamp.com/schedule/astoria        302
+/mb/bayside        https://betterbodybootcamp.com/schedule/bayside        302
+/mb/fresh-meadows  https://betterbodybootcamp.com/schedule/fresh-meadows  302
+/mb/williamsburg   https://betterbodybootcamp.com/schedule/williamsburg   302
 
 # 2026-07-02 QA fix #3: bare /comeback used to hit the SPA 404 (LocationComebackSignup
 # is only mounted at /comeback/:studio). Any wild link to the bare URL dead-ended.

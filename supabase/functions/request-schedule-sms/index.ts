@@ -182,14 +182,13 @@ Deno.serve(async (req) => {
     // continue — don't block the SMS
   }
 
-  // Compose the SMS. 2026-06-12: switched the schedule URL from our flaky
-  // /schedule/{slug} (in-page Healcode iframe) to /mb/{slug} — a Netlify
-  // 302 redirect to MindBody's classic schedule URL, which is the most
-  // reliable surface MB offers. See public/_redirects.
+  // Compose the SMS. 2026-09-02: /mb/{slug} pointed at the retired MindBody
+  // schedule; our /schedule/{slug} is now the native MT class list (no more
+  // Healcode iframe). Send customers straight to our own page.
   const greeting = firstName ? `Hi ${firstName}!` : "Hi!";
   const msg =
     `${greeting} Class schedule for Better Body Bootcamp ${studioName}: ` +
-    `https://betterbodybootcamp.com/mb/${studioSlug}\n\n` +
+    `https://betterbodybootcamp.com/schedule/${studioSlug}\n\n` +
     `Drop in any time! Reply HELP for help or STOP to opt out.`;
 
   const sms = await sendSms(phoneE164, msg);

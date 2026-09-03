@@ -390,7 +390,7 @@ serve(async (req) => {
   const membershipSalesToNotify: { name: string; items: string; totalCents: number; studio_slug: string; location_id: string | null }[] = [];
   // 2026-09-02: brand-new membership buyers (no prior lead row) get a one-time
   // membership welcome email — correct copy, NOT the "2-week trial" template.
-  const membershipWelcomesToSend: { trial_id: string; email: string; first: string; studio_slug: string; items: string }[] = [];
+  const membershipWelcomesToSend: { trial_id: string; email: string; first: string; studio_slug: string; items: string; name?: string; phone?: string | null; total_cents?: number }[] = [];
 
   for (const o of allOrders) {
     const a = o.attributes || {};
@@ -447,7 +447,28 @@ serve(async (req) => {
     summary.sales_upserts++;
 
     if (kind === 'membership' && totalCents > 0) {
-      membershipSalesToNotify.push({
+      // 2026-09-03 FIX (Chris): autopay RENEWALS were alerting owners as "New
+      // Membership" every billing night (and could welcome-email longtime
+      // members). A sale is a renewal if this email already has an OLDER paid
+      // sale of the SAME item in our mirror (>7 days older — same-day retries
+      // and split payments still count as the original purchase). Renewals:
+      // no owner email, no owner SMS, no customer welcome. New buyers only.
+      let isRenewal = false;
+      if (email) {
+        try {
+          const cutoff = new Date(Date.parse(dateIso || new Date().toISOString()) - 7 * 864e5).toISOString();
+          const { data: priorSame } = await sb
+            .from('mariana_tek_sales')
+            .select('mt_sale_id')
+            .ilike('customer_email', email)
+            .eq('item_names', itemNames)
+            .lt('sale_date_time', cutoff)
+            .neq('mt_sale_id', mtSaleId)
+            .limit(1);
+          isRenewal = !!(priorSame && priorSame.length);
+        } catch { /* on lookup failure treat as new (fail loud, not silent) */ }
+      }
+      if (!isRenewal) membershipSalesToNotify.push({
         name: fullName || email || 'Unknown',
         items: itemNames,
         totalCents,
@@ -506,9 +527,17 @@ serve(async (req) => {
                 summary.errors.push(`member insert ${email}: ${insErr.message}`);
               } else if (ins) {
                 summary.membership_inserts = (summary.membership_inserts || 0) + 1;
-                membershipWelcomesToSend.push({
+                // 2026-09-03 (Chris): renewals still get a quiet board row so the
+                // member roster is complete, but NO welcome email and NO owner
+                // alert — those are for first-time purchases only.
+                if (!isRenewal) membershipWelcomesToSend.push({
                   trial_id: ins.id, email, first: np.first || 'there',
                   studio_slug: studioSlug || 'unknown', items: itemNames,
+                  name: fullName || email, phone: phone || null,
+                  // 2026-09-02 FIX (Justin): a 12-month contract fired an alert
+                  // labeled "$299 Back to School" — the templates hardcoded the
+                  // promo. Carry the REAL price + whether it's actually BTS.
+                  total_cents: totalCents,
                 });
               }
             }
@@ -839,6 +868,14 @@ serve(async (req) => {
       // URL to the next line in some mail clients ("bayside...Or") — real
       // anchor tags fix that.
       const HERO_HEX = '#D83B3B';
+      // Studio inbox + owner emails per studio — mirrors stripe-webhook's
+      // TRIAL_NOTIFY roster so $299 buyers alert the same people as trials.
+      const MEMBER_NOTIFY: Record<string, string[]> = {
+        'bayside':       ['carlos@betterbodybootcamp.com', 'bayside@betterbodybootcamp.com'],
+        'fresh-meadows': ['carlos@betterbodybootcamp.com', 'freshmeadows@betterbodybootcamp.com'],
+        'williamsburg':  ['steve@betterbodybootcamp.com', 'chris@betterbodybootcamp.com', 'williamsburg@betterbodybootcamp.com'],
+        'astoria':       ['steve@betterbodybootcamp.com', 'chris@betterbodybootcamp.com', 'astoria@betterbodybootcamp.com'],
+      };
       const LOGO_URL = 'https://uracuwugpxqjfgtuobal.supabase.co/storage/v1/object/public/logos/0180_bbb_bbb-newtext_logo_new_black_1%20(1).png';
       const APP_IOS = 'https://apps.apple.com/us/app/better-body-studios/id6778182425';
       const APP_PLAY = 'https://play.google.com/store/apps/details?id=com.marianatek.betterbodybootcamp';
@@ -914,6 +951,52 @@ serve(async (req) => {
         } catch (e) {
           membership_welcome_kickoff.failed++;
           summary.errors.push(`membership welcome ${w.email}: ${(e as Error).message}`);
+        }
+
+        // ── Studio + owner notification (branded internal email) ──────
+        const notifyTo = MEMBER_NOTIFY[w.studio_slug] || [];
+        if (notifyTo.length) {
+          // 2026-09-02 FIX (Justin): a 12-month contract went out labeled
+          // "$299 Back to School". Label + price now come from the actual sale.
+          const isBts = /back to school|2 month|two month/i.test(w.items || '');
+          const priceStr = Number.isFinite(w.total_cents) && (w.total_cents as number) > 0
+            ? `$${Math.round((w.total_cents as number) / 100)}` : '';
+          const dealLabel = isBts ? `$299 Back to School` : `Membership${priceStr ? ' ' + priceStr : ''}`;
+          const nSubject = `💰 New ${dealLabel} — ${w.name || w.email} · ${studioTitle}`;
+          const nHtml = `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#111">
+      <div style="background:${HERO_HEX};color:#fff;padding:20px 24px;border-radius:10px 10px 0 0;margin:-24px -24px 0">
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;opacity:0.9">New Membership · ${studioTitle}</div>
+        <h2 style="margin:6px 0 0;font-size:24px;font-weight:800;letter-spacing:-0.02em">${w.name || w.email}</h2>
+        <div style="font-size:13px;opacity:0.95;margin-top:4px">${w.items}${priceStr ? ` · ${priceStr}` : ''}</div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:20px">
+        <tr><td style="padding:8px 0;color:#666;width:140px;border-bottom:1px solid #f0f0f0">Name</td><td style="padding:8px 0;font-weight:600;border-bottom:1px solid #f0f0f0">${w.name || '—'}</td></tr>
+        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Email</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0"><a href="mailto:${w.email}" style="color:#dc2626;text-decoration:none;font-weight:600">${w.email}</a></td></tr>
+        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Phone</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0">${w.phone ? `<a href="tel:${w.phone}" style="color:#dc2626;text-decoration:none;font-weight:600">${w.phone}</a>` : '—'}</td></tr>
+        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Purchase</td><td style="padding:8px 0;font-weight:600;border-bottom:1px solid #f0f0f0">${w.items}</td></tr>
+        <tr><td style="padding:8px 0;color:#666">Studio</td><td style="padding:8px 0;font-weight:600">${studioTitle}</td></tr>
+      </table>
+      <div style="margin-top:16px;font-size:12px;color:#888;text-align:center">
+        <a href="https://bbbmarketing.netlify.app/?studio=${w.studio_slug}" style="color:#888">Open dashboard</a>
+      </div>
+    </div>`;
+          try {
+            const nr = await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                from: `BBB Alerts <${mailbox}>`,
+                to: notifyTo, subject: nSubject, html: nHtml,
+                text: `New ${dealLabel}: ${w.name || w.email} (${w.email}${w.phone ? ', ' + w.phone : ''}) at ${studioTitle}. ${w.items}.`,
+              }),
+            });
+            try {
+              await sb.from('email_log').insert({ send_path: 'membership_owner_email', to_addrs: notifyTo, subject: nSubject, status: nr.ok ? 'sent' : 'failed' });
+            } catch { /* non-fatal */ }
+          } catch (e) {
+            summary.errors.push(`membership owner email ${w.email}: ${(e as Error).message}`);
+          }
         }
       }
     }

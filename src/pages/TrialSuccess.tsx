@@ -113,7 +113,7 @@ export default function TrialSuccess() {
   return (
     <>
       <SEOHead
-        title="You're in — book your first class"
+        title="You're in! Book your first class"
         description="Your Better Body Bootcamp trial is active. Book your first class now."
         canonical="/trial-success"
         noindex={true}

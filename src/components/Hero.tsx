@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 
@@ -189,7 +190,12 @@ export default function Hero() {
             {/* 2026-09-02 v3: full-screen STUDIO CARD PICKER (owner: "would a
                 locations card picker page be nicer?"). Real studio photos,
                 2x2 on desktop, scrollable single column on mobile. */}
-            {showLocations && (
+            {/* 2026-09-03 FIX (Justin): the picker used position:fixed inside the
+                hero, but an ancestor's isolation/backdrop-filter creates a new
+                containing block, so "fixed" pinned it INSIDE the section and the
+                cards jammed to the top-middle of the page. Portal to <body> so
+                the overlay truly covers the viewport on every browser. */}
+            {showLocations && createPortal(
               <div
                 className="fixed inset-0 z-[90] flex flex-col"
                 style={{ backgroundColor: 'rgba(10,11,14,0.96)', backdropFilter: 'blur(10px)', animation: 'pickIn 220ms ease-out' }}
@@ -257,7 +263,8 @@ export default function Hero() {
                     })}
                   </div>
                 </div>
-              </div>
+              </div>,
+              document.body
             )}
           </div>
         </div>

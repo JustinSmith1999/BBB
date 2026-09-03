@@ -99,7 +99,7 @@ function buildEmail(customerName: string, studio: typeof LOCATION_TO_STUDIO[stri
   const firstName = (customerName || "").split(" ")[0] || "there";
 
   return {
-    subject: `${firstName}, your $49 trial is one click away`,
+    subject: `Still want those 2 weeks, ${firstName}?`,
     html: `
 <!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
@@ -108,31 +108,31 @@ function buildEmail(customerName: string, studio: typeof LOCATION_TO_STUDIO[stri
     <tr><td align="center">
       <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border-radius:8px;overflow:hidden">
         <tr><td style="background:#d63838;padding:32px;text-align:center">
-          <h1 style="margin:0;color:#fff;font-size:28px;letter-spacing:1px">YOU'RE ALMOST IN</h1>
+          <h1 style="margin:0;color:#fff;font-size:28px;letter-spacing:1px">YOUR SPOT IS STILL HERE</h1>
           <p style="margin:8px 0 0;color:#fff;font-size:14px;opacity:0.9">${studio.name.toUpperCase()}</p>
         </td></tr>
         <tr><td style="padding:32px">
-          <h2 style="margin:0 0 16px;font-size:22px">Hey ${firstName} 👋</h2>
+          <h2 style="margin:0 0 16px;font-size:22px">Hey ${firstName},</h2>
           <p style="margin:0 0 16px;line-height:1.6;font-size:16px">
-            You started signing up for our <strong>2-week unlimited trial</strong> at ${studio.shortName} — but didn't finish at checkout.
+            You were signing up for the <strong>2-week trial</strong> at ${studio.shortName} and stopped at the payment page. Happens all the time.
           </p>
           <p style="margin:0 0 24px;line-height:1.6;font-size:16px">
-            <strong>$49 gets you 14 days of unlimited classes.</strong> No long contract, no pressure. Most people who finish the trial stay because they actually feel the results.
+            Your spot is still open. <strong>$49 covers two full weeks, every class we run.</strong> No contract, and nobody is going to chase you into a membership after.
           </p>
 
           <table cellpadding="0" cellspacing="0" border="0"><tr><td style="background:#d63838;border-radius:6px">
-            <a href="${studio.bookingUrl}" style="display:inline-block;padding:16px 32px;color:#fff;text-decoration:none;font-weight:700;font-size:16px;letter-spacing:0.5px">FINISH YOUR TRIAL · $49</a>
+            <a href="${studio.bookingUrl}" style="display:inline-block;padding:16px 32px;color:#fff;text-decoration:none;font-weight:700;font-size:16px;letter-spacing:0.5px">FINISH SIGNING UP · $49</a>
           </td></tr></table>
 
           <p style="margin:32px 0 16px;font-size:15px;line-height:1.6">
-            Have questions before you decide? Call us — we actually answer the phone.<br>
+            If something made you hesitate, call the desk and ask. A real person picks up.<br>
             <strong>${studio.phone}</strong>
           </p>
 
           <p style="margin:24px 0 0;line-height:1.6;font-size:14px;color:#666">
             ${studio.address}, ${studio.city}, NY ${studio.zip}<br>
-            See you on the floor.<br>
-            — Team ${studio.shortName}
+            See you in class,<br>
+            Team ${studio.shortName}
           </p>
         </td></tr>
         <tr><td style="background:#fafafa;padding:16px;text-align:center;font-size:11px;color:#888;border-top:1px solid #eee">
@@ -146,16 +146,17 @@ function buildEmail(customerName: string, studio: typeof LOCATION_TO_STUDIO[stri
 `,
     text: `Hey ${firstName},
 
-You started signing up for our 2-week unlimited trial at ${studio.shortName} but didn't finish at checkout.
+You were signing up for the 2-week trial at ${studio.shortName} and stopped at the payment page. Happens all the time.
 
-$49 gets you 14 days of unlimited classes. No long contract, no pressure.
+Your spot is still open. $49 covers two full weeks, every class we run. No contract, and nobody is going to chase you into a membership after.
 
-Finish your trial: ${studio.bookingUrl}
+Finish signing up: ${studio.bookingUrl}
 
-Questions? Call us at ${studio.phone} — we actually answer.
+If something made you hesitate, call the desk and ask. A real person picks up: ${studio.phone}
 
 ${studio.address}, ${studio.city}, NY ${studio.zip}
-— Team ${studio.shortName}`,
+See you in class,
+Team ${studio.shortName}`,
   };
 }
 
@@ -315,9 +316,17 @@ Deno.serve(async (req: Request) => {
     // pending for hours after Stripe actually charged the card (webhook
     // gap). Checking the mirror catches everyone the webhook hasn't synced
     // through yet. Belt and suspenders.
-    const [paidRowsResult, mirrorResult] = await Promise.all([
+    // 2026-09-03 (Justin): a current annual member (stage=member, but no
+    // completed PAYMENT row and no Stripe history — desk-sold, MT-billed) got
+    // a "finish your $49 trial" email. Two more exclusion sources:
+    //   3. anyone whose board stage is already 'member'
+    //   4. anyone with a paid membership sale in the MT mirror
+    const [paidRowsResult, mirrorResult, memberRowsResult, mtMemberResult] = await Promise.all([
       supabase.from("trial_signups").select("email, phone").eq("payment_status", "completed"),
       supabase.from("stripe_paid_mirror").select("customer_email, customer_phone"),
+      supabase.from("trial_signups").select("email, phone").eq("front_desk_stage", "member"),
+      supabase.from("mariana_tek_sales").select("customer_email").gt("total_cents", 0)
+        .or("item_names.ilike.%membership%,item_names.ilike.%contract%,item_names.ilike.%pif%,item_names.ilike.%month%"),
     ]);
 
     if (paidRowsResult.error) {
@@ -341,6 +350,13 @@ Deno.serve(async (req: Request) => {
     for (const m of mirrorResult.data ?? []) {
       const e = normEmail(m.customer_email);  if (e) paidEmails.add(e);
       const p = normPhone(m.customer_phone); if (p) paidPhones.add(p);
+    }
+    for (const r of memberRowsResult.data ?? []) {
+      const e = normEmail(r.email);  if (e) paidEmails.add(e);
+      const p = normPhone(r.phone); if (p) paidPhones.add(p);
+    }
+    for (const r of mtMemberResult.data ?? []) {
+      const e = normEmail(r.customer_email); if (e) paidEmails.add(e);
     }
     console.log(
       `Paid-customer guard: ${paidEmails.size} emails + ${paidPhones.size} phones ` +

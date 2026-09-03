@@ -128,7 +128,7 @@ function customerSmsBody(firstName: string, studioShort: string, bookingUrl: str
 const HERO_HEX = "#D83B3B"; // 2026-07-27: BBB brand red (was #dc2626 generic red)
 const LOGO_URL = "https://uracuwugpxqjfgtuobal.supabase.co/storage/v1/object/public/logos/0180_bbb_bbb-newtext_logo_new_black_1%20(1).png";
 function customerEmailSubject(_firstName: string, _studioShort: string): string {
-  return `You're in — your 2-week trial at Better Body Bootcamp`;
+  return `You're in! Your 2-week trial at Better Body Bootcamp`;
 }
 function customerEmailText(firstName: string, studioShort: string, bookingUrl: string): string {
   return [

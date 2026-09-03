@@ -93,7 +93,7 @@ function studioMailbox(studioSlug: string): string {
   return `${studioSlug.replace(/-/g, "")}@betterbodybootcamp.com`;
 }
 
-type Variant = "trial" | "special";
+type Variant = "trial" | "special" | "bts299";
 
 // Variant config: subject lines, customer-facing copy, dollar amount, etc.
 // Both $49 trial and $129 comeback share the same checkout path — this just
@@ -107,13 +107,30 @@ function variantConfig(variant: Variant) {
       priceLabel: "$129",
       headerEmoji: "🔥",
       staffSubject: "🔥 New $129 Comeback Purchase",
-      customerSubject: "You're in — your 30-day comeback at Better Body Bootcamp",
+      customerSubject: "You're in! Your 30-day comeback at Better Body Bootcamp",
       smsIntro: "Welcome back to Better Body Bootcamp",
       smsBody: (firstName: string, studioName: string, studioUrl: string) =>
         `Hi ${firstName}! Welcome back to Better Body Bootcamp ${studioName}. ` +
         `Your 30-day comeback is live — book your first class here: ${studioUrl} ` +
         `So glad to see you again. - BBB`,
       heroHex: "#dc2626", // red-600 (match BBB brand across all variants)
+    };
+  }
+  if (variant === "bts299") {
+    return {
+      label: "Back to School",
+      shortLabel: "BTS $299",
+      durationLabel: "2 Months",
+      priceLabel: "$299",
+      headerEmoji: "💰",
+      staffSubject: "💰 New $299 Back to School Purchase",
+      customerSubject: "You're in! Your 2 months at Better Body Bootcamp",
+      smsIntro: "Welcome to Better Body Bootcamp",
+      smsBody: (firstName: string, studioName: string, studioUrl: string) =>
+        `Hi ${firstName}! Welcome to Better Body Bootcamp ${studioName}. ` +
+        `Your 2 months of unlimited classes are live. Book your first class here: ${studioUrl} ` +
+        `Reply with any questions, we are here to help. - BBB`,
+      heroHex: "#dc2626",
     };
   }
   return {
@@ -123,7 +140,7 @@ function variantConfig(variant: Variant) {
     priceLabel: "$49",
     headerEmoji: "🎉",
     staffSubject: "🎉 New $49 Trial Purchase",
-    customerSubject: "You're in — your 2-week trial at Better Body Bootcamp",
+    customerSubject: "You're in! Your 2-week trial at Better Body Bootcamp",
     smsIntro: "Welcome to Better Body Bootcamp",
     smsBody: (firstName: string, studioName: string, studioUrl: string) =>
       `Hi ${firstName}! Welcome to Better Body Bootcamp ${studioName}. ` +
@@ -259,7 +276,7 @@ async function sendMetaPurchaseEvent(
       custom_data: {
         currency: "USD",
         value: valueUsd,
-        content_name: variant === "special" ? "30-Day Comeback" : "2-Week Trial",
+        content_name: variant === "special" ? "30-Day Comeback" : variant === "bts299" ? "2 Months Back to School" : "2-Week Trial",
       },
     }],
     // access_token in the body (not the URL) so it never lands in a request log.
@@ -561,17 +578,10 @@ async function sendTrialWelcomeSms(
     ? `[QA→${realTo ?? "no#"}] `
     : "";
   const firstName = (trial.name || "").trim().split(/\s+/)[0] || "there";
-  // SMS goes straight to MindBody — booking happens there, and a working
-  // direct URL beats our own /schedule page (which iframes MB anyway and
-  // adds an extra hop). Falls back to our page if we ever add a 5th studio
-  // without populating the MB map.
-  const MB_LOC_BY_SLUG_SMS: Record<string, number> = {
-    "astoria": 2, "bayside": 6, "fresh-meadows": 3, "williamsburg": 1,
-  };
-  const mbLocIdSms = MB_LOC_BY_SLUG_SMS[studioSlug] ?? 0;
-  const studioUrl = mbLocIdSms
-    ? `https://clients.mindbodyonline.com/classic/ws?studioid=5733997&stype=-7&sLoc=${mbLocIdSms}`
-    : `https://betterbodybootcamp.com/schedule/${studioSlug}`;
+  // 2026-09-02 FIX: the welcome SMS was still linking customers to the DEAD
+  // MindBody booking page (clients.mindbodyonline.com) months after the
+  // Mariana Tek migration. Booking lives on our native schedule pages now.
+  const studioUrl = `https://betterbodybootcamp.com/schedule/${studioSlug}`;
   const cfg = variantConfig(variant);
   // Single 160-char SMS segment when possible.
   const body = smsOverridePrefix + cfg.smsBody(firstName, studioName, studioUrl);
@@ -691,7 +701,7 @@ async function notifyOwnersOfSignup(
   if (error) { console.error("location_owners lookup failed:", error.message); return; }
   if (!owners || !owners.length) return;
 
-  const priceLabel = variant === "special" ? "$129 comeback" : "$49 trial";
+  const priceLabel = variant === "special" ? "$129 comeback" : variant === "bts299" ? "$299 Back to School" : "$49 trial";
   // Compact, scannable. Phone is tappable on iOS — owners can call from preview.
   const body = `New ${priceLabel} signup · ${studioName}\n` +
                `${trial.name || "(no name)"}\n` +
@@ -820,16 +830,15 @@ async function sendCustomerConfirmationEmail(
   // MT classes and books them natively (NativeClassList + MTBookingModal, signed
   // in with the MT password from step 1). Same domain, guaranteed to load.
   const mtPortalUrl = scheduleUrl;  // https://betterbodybootcamp.com/schedule/<slug>
-  // Pick the booking URL based on which membership system this studio runs on.
-  const isMT = dataSource === 'mariana_tek';
-  const bookingUrl = isMT ? mtPortalUrl : mbDirectScheduleUrl;
-  const bookingSystemName = isMT ? 'Mariana Tek' : 'MindBody';
-  const bookingSenderHint = isMT
-    ? 'an email from Mariana Tek (sender: <em>no-reply@marianatek.com</em>)'
-    : 'an email from MindBody (sender: <em>no-reply@mindbodyonline.com</em>)';
-  const bookingSenderHintPlain = isMT
-    ? 'an email from Mariana Tek (no-reply@marianatek.com)'
-    : 'an email from MindBody (no-reply@mindbodyonline.com)';
+  // 2026-09-02: ALL FOUR studios run Mariana Tek since the June 2026 cutover.
+  // The old MindBody fork could still fire if dataSource was ever not
+  // 'mariana_tek' and would email customers a dead clients.mindbodyonline.com
+  // link. Hard-wire everything to MT / our own schedule page.
+  const isMT = true;
+  const bookingUrl = mtPortalUrl;
+  const bookingSystemName = 'Mariana Tek';
+  const bookingSenderHint = 'an email from Mariana Tek (sender: <em>no-reply@marianatek.com</em>)';
+  const bookingSenderHintPlain = 'an email from Mariana Tek (no-reply@marianatek.com)';
   const studioMail = studioMailbox(studioSlug);
   const intro = variant === "special"
     ? `Welcome back to Better Body Bootcamp ${studioName}. Your 30-day comeback is locked in.`
@@ -2193,7 +2202,9 @@ Deno.serve(async (req: Request) => {
       //   'special'  = $129 / 30-day comeback (legacy)
       //   'comeback' = $29  / 1-week comeback offer (2026-06-11)
       //   else       = $49  / 2-week standard trial
-      const variant: Variant = metadata.priceVariant === "special" ? "special" : "trial";
+      const variant: Variant =
+        metadata.product === "bts299" ? "bts299"
+        : metadata.priceVariant === "special" ? "special" : "trial";
       const isComeback = metadata.priceVariant === "comeback";
 
       // For the $29 comeback flow, stamp comeback_converted_at on the ORIGINAL
