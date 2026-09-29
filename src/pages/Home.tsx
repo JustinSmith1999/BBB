@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 import Hero from '../components/Hero';
 import BrandPillars from '../components/BrandPillars';
-import PromoTicker from '../components/PromoTicker';
 import TrialForm from '../components/TrialForm';
 import SEOHead from '../components/SEOHead';
 import { ReviewTicker } from '../components/GoogleReviews';
@@ -48,8 +47,6 @@ export default function Home() {
         schema={[organizationSchema, websiteSchema, videoSchema]}
       />
       <Hero />
-      {/* 2026-08-28: Back to School $299 promo band — remove when promo ends */}
-      <PromoTicker />
       <BrandPillars />
 
       {/* 2026-08-25: restyled from a plain white text wall into the dark

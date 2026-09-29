@@ -1,12 +1,11 @@
 import { Component, lazy, Suspense, useEffect, useState, type ErrorInfo, type ReactNode } from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { captureUtmsFromUrl } from './lib/utm';
 import { trackPageView, trackError } from './lib/track';
 import { HelmetProvider } from 'react-helmet-async';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import ScrollToTop from './components/ScrollToTop';
-import PromoPopup from './components/PromoPopup';
 // Eager: the LCP target for paid ad traffic.
 import LocationTrialSignup from './pages/LocationTrialSignup';
 import TrialSuccess from './pages/TrialSuccess';
@@ -36,7 +35,6 @@ const ClassDetail = lazy(() => import('./pages/ClassDetail'));
 const MyBookings = lazy(() => import('./pages/MyBookings'));
 const TrialSignup = lazy(() => import('./pages/TrialSignup'));
 const LocationSpecialSignup = lazy(() => import('./pages/LocationSpecialSignup'));
-const BackToSchool = lazy(() => import('./pages/BackToSchool'));
 const FreeClasses = lazy(() => import('./pages/FreeClasses'));
 const LocationComebackSignup = lazy(() => import('./pages/LocationComebackSignup'));
 const ComebackIndex = lazy(() => import('./pages/ComebackIndex'));
@@ -57,6 +55,8 @@ const Staging = lazy(() => import('./pages/Staging'));
 // MT widget design lab — sandbox-tenant rendering of multiple embed treatments
 // so we can pick the look before porting to prod. Also under /staging/* gate.
 const WidgetLab = lazy(() => import('./pages/WidgetLab'));
+// Hidden $1 live-fire test for the MT card checkout — unlisted, noindex.
+const CheckoutTest = lazy(() => import('./pages/CheckoutTest'));
 // 404 page — caught by <Route path="*"> at the end of the route list.
 const NotFound = lazy(() => import('./pages/NotFound'));
 
@@ -153,7 +153,7 @@ class ChunkErrorBoundary extends Component<{ children: ReactNode }, { hasError: 
               Start a Trial
             </a>
             <a
-              href="tel:+16465668870"
+              href="tel:+19178770759"
               className="bg-white/10 hover:bg-white/20 text-white font-bold px-6 py-3 rounded-lg transition-colors"
             >
               Call Us
@@ -210,8 +210,6 @@ function App() {
         <PageViewTracker />
         <ScrollProgress />
         <ScrollToTop />
-        {/* 2026-09-02: Back to School $299 popup — remove with the promo */}
-        <PromoPopup />
         <Header />
         {/* 2026-09-02 iOS FIX: horizontally-scrollable content (day-pill rows)
             gets its own compositing layer on iOS Safari and painted ABOVE the
@@ -242,7 +240,8 @@ function App() {
           <Route path="/trial" element={<TrialSignup />} />
           <Route path="/trial/:location" element={<LocationTrialSignup />} />
           <Route path="/special/:location" element={<LocationSpecialSignup />} />
-          <Route path="/backtoschool" element={<BackToSchool />} />
+          {/* 2026-09-21: BTS $299 promo ended — redirect old ad/QR links home */}
+          <Route path="/backtoschool" element={<Navigate to="/" replace />} />
           <Route path="/freeclasses" element={<FreeClasses />} />
           <Route path="/comeback" element={<ComebackIndex />} />
           <Route path="/comeback/:location" element={<LocationComebackSignup />} />
@@ -263,6 +262,7 @@ function App() {
               it's not crawled or surfaced. Path is reachable to anyone who
               knows it; share it only with people designing. */}
           <Route path="/widget-lab"         element={<WidgetLab />} />
+          <Route path="/checkout-test"      element={<CheckoutTest />} />
           {/* Catch-all 404 — MUST be the last <Route>. Any URL not matched
               above lands here. NotFound.tsx returns its own noindex meta tag
               so Google won't crawl/index soft-404s. */}
