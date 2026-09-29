@@ -121,6 +121,11 @@ Deno.serve(async (req) => {
     .from("trial_signups")
     .select("id, name, email, phone, location_id, created_at, source_category")
     .eq("payment_status", "pending")
+      // 2026-09-10 (Justin): inquiry rows are NOT abandoned carts. Contact-form
+      // and schedule-request leads never started a checkout, so "Still want
+      // those 2 weeks?" 30 min after they asked a question reads as spam.
+      // Null-safe OR: fresh stripe-webhook rows have NULL source_category.
+      .or("source_category.is.null,source_category.not.in.(contact_form,schedule_request)")
     .not("phone", "is", null)
     .is("deleted_at", null)
     .order("created_at", { ascending: false })

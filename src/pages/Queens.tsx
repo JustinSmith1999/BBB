@@ -40,7 +40,7 @@ const QUEENS_LOCATIONS = [
     neighborhood: 'Bayside, Queens',
     address: '34-47 Bell Blvd',
     zip: '11361',
-    phone: '(646) 566-8870',
+    phone: '(917) 877-0759',
     image: '/bayside-final.webp',
     blurb:
       'Bell Boulevard\'s strength + conditioning destination. Free parking, 6am–8pm classes, real coaching for Bayside locals.',
@@ -51,7 +51,7 @@ const QUEENS_LOCATIONS = [
     neighborhood: 'Fresh Meadows, Queens',
     address: '76-46 164th Street',
     zip: '11366',
-    phone: '(646) 566-8207',
+    phone: '(646) 887-6483',
     image: '/freshmeadows-final.webp',
     blurb:
       '164th Street\'s flagship Queens location. Largest training floor in the BBB network. Most class times in the borough.',
@@ -196,7 +196,11 @@ export default function Queens() {
             <p className="text-lg leading-relaxed text-gray-700">
               If you live anywhere in Queens, from LIC to Bayside Hills or Sunnyside to Jamaica
               Estates, there is a BBB studio within a short drive. Start with our $49 two-week
-              unlimited trial and train at any of the three Queens locations.
+              unlimited trial and train at any of the three Queens locations. Looking for a
+              specific neighborhood? See why we're rated the{' '}
+              <Link to="/locations/astoria" className="text-red-600 font-semibold underline">best gym in Astoria</Link>, the{' '}
+              <Link to="/locations/bayside" className="text-red-600 font-semibold underline">best gym in Bayside</Link>, and the{' '}
+              <Link to="/locations/fresh-meadows" className="text-red-600 font-semibold underline">best gym in Fresh Meadows</Link>.
             </p>
           </div>
         </section>

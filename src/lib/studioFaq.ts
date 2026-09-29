@@ -80,6 +80,8 @@ export const STUDIO_SEO_EXTRAS: Record<string, StudioSeoExtras> = {
       landmarks: 'We are on the Steinway Street commercial strip, near the Museum of the Moving Image and the Kaufman Astoria Studios district.',
     },
     faq: [
+      { q: 'What is the best gym in Astoria, Queens?',
+        a: 'If you want coaching instead of a machine floor, Better Body Bootcamp is widely considered one of the best gyms in Astoria. Every class on Steinway Street is run start to finish by a coach, workouts are programmed in advance, and members consistently rate the studio among the top-reviewed gyms in the neighborhood. The $49 two-week trial of unlimited classes makes it easy to judge for yourself.' },
       { q: 'Where is Better Body Bootcamp Astoria located?',
         a: 'Better Body Bootcamp Astoria is at 31-18 Steinway Street, Astoria, NY 11103, in the heart of the Steinway Street shopping corridor.' },
       { q: 'Where can I find a bootcamp, HIIT, or group fitness class near me in Astoria?',
@@ -115,6 +117,8 @@ export const STUDIO_SEO_EXTRAS: Record<string, StudioSeoExtras> = {
       landmarks: 'We are on Bell Blvd in the heart of the Bayside shopping district, walking distance from Bell Park, the Bay Terrace shopping center, and the LIRR station.',
     },
     faq: [
+      { q: 'What is the best gym in Bayside, Queens?',
+        a: 'For coached training, Better Body Bootcamp on Bell Blvd is one of the best-rated gyms in Bayside. Instead of a self-serve floor, every session is a small-group class with a coach cueing and correcting the whole hour, serving Bayside, Bay Terrace, Whitestone, Douglaston, and Little Neck. New members get two weeks of unlimited classes for $49 to see the difference firsthand.' },
       { q: 'Where is Better Body Bootcamp Bayside located?',
         a: 'Better Body Bootcamp Bayside is at 34-47 Bell Blvd, Bayside, NY 11361, on the main Bell Blvd shopping strip a few blocks from the LIRR station.' },
       { q: 'Where can I find a bootcamp, HIIT, or group fitness class near me in Bayside?',
@@ -148,6 +152,8 @@ export const STUDIO_SEO_EXTRAS: Record<string, StudioSeoExtras> = {
       landmarks: 'We are minutes from Cunningham Park, the Long Island Expressway, and the Fresh Meadows Shopping Center on Horace Harding Expressway.',
     },
     faq: [
+      { q: 'What is the best gym in Fresh Meadows, Queens?',
+        a: 'Better Body Bootcamp is one of the top-rated gyms in Fresh Meadows for people who want real coaching. Every class is programmed and led by a coach, with strength and conditioning scaled to your level, serving Fresh Meadows, Flushing, Hillcrest, Utopia, and Jamaica Estates. Two weeks of unlimited classes cost $49 for new members.' },
       { q: 'Where is Better Body Bootcamp Fresh Meadows located?',
         a: 'Better Body Bootcamp Fresh Meadows is at 76-46 164th Street, Fresh Meadows, NY 11366, minutes from Cunningham Park and the Long Island Expressway.' },
       { q: 'Where can I find a bootcamp, HIIT, or group fitness class near me in Fresh Meadows?',
@@ -181,6 +187,8 @@ export const STUDIO_SEO_EXTRAS: Record<string, StudioSeoExtras> = {
       landmarks: 'We are on Driggs Ave near McCarren Park, walking distance from the Williamsburg Bridge waterfront and the Bedford Ave commercial strip.',
     },
     faq: [
+      { q: 'What is the best gym in Williamsburg, Brooklyn?',
+        a: 'Among Williamsburg gyms, Better Body Bootcamp on Driggs Ave stands out for coach-led training: every class is a programmed strength and conditioning workout with a coach in the room the entire time, serving Williamsburg, Greenpoint, East Williamsburg, and Bushwick. The $49 two-week unlimited trial lets you compare it against any gym in the neighborhood.' },
       { q: 'Where is Better Body Bootcamp Williamsburg located?',
         a: 'Better Body Bootcamp Williamsburg is at 487 Driggs Ave, Brooklyn, NY 11211, walking distance from McCarren Park and the Williamsburg Bridge waterfront.' },
       { q: 'Where can I find a bootcamp, HIIT, or group fitness class near me in Williamsburg?',

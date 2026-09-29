@@ -85,8 +85,8 @@ CREATE POLICY "Anyone can sign up for trial"
 -- Insert initial location data
 INSERT INTO locations (name, address, city, state, zip, phone, image_url, schedule_url, display_order) VALUES
   ('Astoria', '31-18 Steinway Street', 'Astoria', 'NY', '11103', '(718) 704-9954', '/astoria.jpeg', '#', 1),
-  ('Bayside', '3447 Bell Blvd', 'Bayside', 'NY', '11361', '(646) 566-8870', '/bayside.png', '#', 2),
-  ('Fresh Meadows', '76-46 164th Street', 'Fresh Meadows', 'NY', '11366', '(646) 566-8207', '/freshmeadows.jpeg', '#', 3),
+  ('Bayside', '3447 Bell Blvd', 'Bayside', 'NY', '11361', '(917) 877-0759', '/bayside.png', '#', 2),
+  ('Fresh Meadows', '76-46 164th Street', 'Fresh Meadows', 'NY', '11366', '(646) 887-6483', '/freshmeadows.jpeg', '#', 3),
   ('Williamsburg', '487 Driggs Ave', 'Brooklyn', 'NY', '11211', '(718) 683-1864', '/williamsburg.jpeg', '#', 4)
 ON CONFLICT (id) DO NOTHING;
 

@@ -77,5 +77,11 @@
 /our-team                /about                                         301!
 /our-team/*              /about                                         301!
 
+# Run Club signup — standalone static landing (public/runclub.html). Must
+# precede the /* SPA catch-all or it gets swallowed into the React app.
+/runclub                 /runclub.html                                  200
+/run-club                /runclub.html                                  200
+/runclub-v2              /runclub-v2.html                               200
+
 # SPA fallback for client-side React Router.
 /*                       /index.html                                    200

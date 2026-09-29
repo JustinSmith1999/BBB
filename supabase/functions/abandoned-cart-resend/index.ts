@@ -68,13 +68,13 @@ const STUDIOS: Record<string, {
   },
   "5c0e8383-dd2f-4f8f-bfea-5cc477cec4c7": {
     slug: "bayside", name: "Better Body Bootcamp Bayside", shortName: "Bayside",
-    phone: "(646) 566-8870", address: "3447 Bell Blvd", city: "Bayside", zip: "11361",
+    phone: "(917) 877-0759", address: "3447 Bell Blvd", city: "Bayside", zip: "11361",
     bookingUrl: "https://betterbodybootcamp.com/trial/bayside",
     studioEmail: "bayside@betterbodybootcamp.com",
   },
   "6bbbe077-bcc6-4d9d-a10b-7605c1484752": {
     slug: "fresh-meadows", name: "Better Body Bootcamp Fresh Meadows", shortName: "Fresh Meadows",
-    phone: "(646) 566-8207", address: "76-46 164th Street", city: "Fresh Meadows", zip: "11366",
+    phone: "(646) 887-6483", address: "76-46 164th Street", city: "Fresh Meadows", zip: "11366",
     bookingUrl: "https://betterbodybootcamp.com/trial/fresh-meadows",
     studioEmail: "freshmeadows@betterbodybootcamp.com",
   },
@@ -157,6 +157,11 @@ Deno.serve(async (req) => {
     .from("trial_signups")
     .select("id, name, email, phone, location_id, created_at, abandoned_email_sent_at, source_category")
     .eq("payment_status", "pending")
+      // 2026-09-10 (Justin): inquiry rows are NOT abandoned carts. Contact-form
+      // and schedule-request leads never started a checkout, so "Still want
+      // those 2 weeks?" 30 min after they asked a question reads as spam.
+      // Null-safe OR: fresh stripe-webhook rows have NULL source_category.
+      .or("source_category.is.null,source_category.not.in.(contact_form,schedule_request)")
     .not("abandoned_email_sent_at", "is", null)
     .not("email", "is", null)
     .is("deleted_at", null)

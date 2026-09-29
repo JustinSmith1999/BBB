@@ -20,7 +20,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 // docs.marianatek.com /api/schema.
 //
 // PRODUCTS (child product id == membership contract id):
-//   trial  → child 14721 "$49 Two Weeks Trial"        ($49)
+//   trial  → child 14944 "$49 Two Weeks Trial (Web)"  ($49)  [was 14721; see PRODUCT map note]
 //   bts299 → child 14913 "2 Months Back to School"    ($299)
 //
 // ALT PAYMENT SOURCE: /api/locations/{id}/alt_payment_sources must contain an
@@ -51,7 +51,14 @@ const STUDIO: Record<string, { mtLoc: string; partner: string; title: string }> 
   "williamsburg":  { mtLoc: "48720", partner: "41365", title: "Williamsburg" },
 };
 const PRODUCT: Record<string, { child: string; amount: string; label: string }> = {
-  "trial":  { child: "14721", amount: "49.00",  label: "$49 Two Weeks Trial" },
+  // 2026-09-03: trial moved 14721 → 14944 "$49 Two Weeks Trial (Web)".
+  // 14721 has Intro Offer=ON, which makes MT demand a stored bankcard at
+  // checkout (the "bankcard rule") → every web trial fell into the credit-pass
+  // fallback (14 credits instead of 14 days unlimited). 14944 is the same $49 /
+  // 2-week unlimited contract minus the intro flag (start=First usage, Bill On
+  // Purchase, non-recurring) so API checkout completes with the alt payment.
+  // Desk keeps selling 14721 as before.
+  "trial":  { child: "14944", amount: "49.00",  label: "$49 Two Weeks Trial (Web)" },
   "bts299": { child: "14913", amount: "299.00", label: "2 Months Back to School Promo" },
 };
 
@@ -138,6 +145,23 @@ async function provision(
     userId = String((c.body as { data?: { id?: string } })?.data?.id ?? "");
     created = true;
     if (!userId) return { ok: false, step: "user_create", detail: "no id in response" };
+  }
+
+  // ── 1b. LINK the MT user back to our trial_signups row ──────────────────
+  // 2026-09-28: this was never written, so every Stripe-path trial we
+  // provisioned looked "unlinked" in Homebase / CAPI / every query (found via
+  // Briana Daza-Lenis: MT user 67087 + 14 credits, but our row had no MT id).
+  // Done as soon as the MT user exists — regardless of how the contract /
+  // credit-pass step turns out — and only fills rows that are still empty.
+  // Best-effort: never fails provisioning.
+  try {
+    await client.from("trial_signups")
+      .update({ mariana_tek_id: userId })
+      .ilike("email", lcEmail)
+      .is("mariana_tek_id", null)
+      .is("deleted_at", null);
+  } catch (e) {
+    console.error("mt-provision: trial_signups link-back failed (non-fatal):", (e as Error).message);
   }
 
   // ── 2. cart ───────────────────────────────────────────────────────────────
@@ -230,6 +254,21 @@ async function provision(
     if (/bankcard/i.test(coErr)) {
       const days = kind === "bts299" ? 62 : 14;
       const exp = new Date(Date.now() + days * 864e5).toISOString().replace(/\.\d+Z$/, "Z");
+      // 2026-09-03 IDEMPOTENCY GUARD (the Hannah incident): a retry after a
+      // previous fallback used to grant ANOTHER credit pass every time. If this
+      // user already holds an unexpired website-paid grant, do NOT grant again.
+      const existing = await mtGet(token, `/api/credit_transactions?user=${userId}`);
+      const priorRows = ((existing.body as { data?: Array<{ attributes?: { transaction_amount?: number; expiration_datetime?: string; note?: string } }> }).data ?? []);
+      const priorGrant = priorRows.find((t) => {
+        const a = t.attributes || {};
+        return Number(a.transaction_amount) > 0 &&
+          /paid on website/i.test(String(a.note || "")) &&
+          a.expiration_datetime && Date.parse(a.expiration_datetime) > Date.now();
+      });
+      if (priorGrant) {
+        console.log(`mt-provision FALLBACK-SKIP: ${lcEmail} already has an active website-paid credit grant; not double-granting. checkout error was: ${coErr}`);
+        return { ok: true, mt_user_id: userId, skipped: `contract blocked (needs stored bankcard) — existing credit pass kept, no double grant. MT error: ${coErr.slice(0, 200)}` };
+      }
       const grant = await mtPost(token, "/api/credit_transactions", {
         data: { type: "credit_transactions", attributes: {
           transaction_amount: days, expiration_datetime: exp,
@@ -276,6 +315,27 @@ Deno.serve(async (req: Request) => {
       } catch (e) { results.push({ id: r.id, error: (e as Error).message }); }
     }
     return json({ ok: true, retried: results.length, results });
+  }
+
+  // adjust_credits: surgical credit correction (e.g. removing accidental
+  // double grants from the fallback path). Positive or negative amount.
+  // POST { action: "adjust_credits", mt_user_id, amount, note }
+  if (body.action === "adjust_credits") {
+    const uid = String(body.mt_user_id || "").trim();
+    const amount = Number(body.amount);
+    const note = String(body.note || "credit adjustment (web provisioning cleanup)");
+    if (!uid || !Number.isFinite(amount) || amount === 0) return json({ ok: false, error: "mt_user_id and non-zero amount required" }, 400);
+    const adj = await mtPost(token, "/api/credit_transactions", {
+      data: { type: "credit_transactions", attributes: {
+        transaction_amount: amount, note,
+      }, relationships: {
+        credit: { data: { type: "credits", id: "2323" } },
+        user: { data: { type: "users", id: uid } },
+      } },
+    });
+    const okAdj = adj.status === 201 || adj.status === 200;
+    console.log(`mt-provision adjust_credits: user=${uid} amount=${amount} -> ${adj.status}`);
+    return json({ ok: okAdj, status: adj.status, detail: okAdj ? undefined : JSON.stringify(adj.body).slice(0, 300) }, okAdj ? 200 : 500);
   }
 
   const email = String(body.email || "").trim();

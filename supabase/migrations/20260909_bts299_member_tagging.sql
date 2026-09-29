@@ -1,0 +1,451 @@
+-- ═════════════════════════════════════════════════════════════════════════
+-- 2026-09-09 · Tag "$299 · 2 Months Back to School Promo" buyers correctly
+--
+-- Problem: get_converted_members matches membership purchases against an
+-- item-name whitelist (membership / pif / contract / month to month /
+-- monthly membership / year monthly / unlimited). "2 Months Back to School
+-- Promo" matches NONE of them, so all ~114 BTS buyers were invisible to the
+-- Converted Members view + dashboard membership revenue, and trial leads who
+-- converted via the $299 promo never counted as conversions.
+-- (mt-orders-sync's classifier got the same fix on 2026-09-02; this brings
+-- the SQL side in line.)
+--
+-- 1. Recreate get_converted_members with the promo patterns added to all
+--    three whitelist sites (direct-member seed, its prior-sale check, and
+--    the MT sales rollup).
+-- 2. Backfill: promote any non-member trial_signups row whose email bought
+--    the BTS promo to front_desk_stage = 'member'.
+-- 3. Insert the 3 BTS buyers who have no trial_signups row at all
+--    (Alef Tadese · WB, Milva Franz · Astoria, Shauna Hutton · Astoria) as
+--    direct_membership members, with all drip-suppression stamps set so no
+--    automated emails/SMS fire at them.
+-- ═════════════════════════════════════════════════════════════════════════
+
+DROP FUNCTION IF EXISTS public.get_converted_members(text, date);
+DROP FUNCTION IF EXISTS public.get_converted_members(date, text);
+
+CREATE OR REPLACE FUNCTION public.get_converted_members(
+  p_since         date DEFAULT '2026-05-15'::date,
+  p_studio_slug   text DEFAULT NULL
+)
+RETURNS TABLE (
+  studio_slug             text,
+  customer_name           text,
+  stripe_email            text,
+  mb_email                text,
+  mindbody_id             text,
+  trial_paid_at           timestamptz,
+  first_conversion_at     timestamptz,
+  latest_conversion_at    timestamptz,
+  days_to_convert         int,
+  total_member_rev_usd    numeric,
+  sale_count              int,
+  packages                text,
+  utm_source              text,
+  utm_medium              text,
+  utm_campaign            text,
+  source_category         text,
+  from_trial              boolean
+)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_catalog
+AS $$
+  WITH
+  stripe_trials AS (
+    SELECT DISTINCT ON (studio_slug, lower(customer_email))
+      studio_slug,
+      lower(customer_email)::text AS email,
+      customer_name,
+      paid_at AS trial_paid_at
+    FROM public.stripe_paid_mirror
+    WHERE paid_at >= p_since::timestamptz
+      AND customer_email IS NOT NULL AND customer_email <> ''
+      AND (p_studio_slug IS NULL OR studio_slug = p_studio_slug)
+    ORDER BY studio_slug, lower(customer_email), paid_at ASC
+  ),
+  mt_trials AS (
+    SELECT DISTINCT ON (lower(replace(l.name, ' ', '-')), lower(t.email))
+      lower(replace(l.name, ' ', '-'))::text AS studio_slug,
+      lower(t.email)::text                   AS email,
+      t.name                                 AS customer_name,
+      COALESCE(t.payment_date, t.created_at) AS trial_paid_at
+    FROM public.trial_signups t
+    JOIN public.locations l ON l.id = t.location_id
+    WHERE t.source_category = 'mt_app'
+      AND t.payment_status = 'completed'
+      AND t.deleted_at IS NULL
+      AND t.email IS NOT NULL AND t.email <> ''
+      AND COALESCE(t.payment_date, t.created_at) >= p_since::timestamptz
+      AND (p_studio_slug IS NULL OR lower(replace(l.name, ' ', '-')) = p_studio_slug)
+    ORDER BY lower(replace(l.name, ' ', '-')), lower(t.email),
+             COALESCE(t.payment_date, t.created_at) ASC
+  ),
+  direct_membership_trials AS (
+    SELECT DISTINCT ON (lower(replace(l.name, ' ', '-')), lower(t.email))
+      lower(replace(l.name, ' ', '-'))::text AS studio_slug,
+      lower(t.email)::text                   AS email,
+      t.name                                 AS customer_name,
+      COALESCE(t.payment_date, t.created_at) AS trial_paid_at
+    FROM public.trial_signups t
+    JOIN public.locations l ON l.id = t.location_id
+    WHERE t.converted_to_member = true
+      AND t.payment_status = 'completed'
+      AND t.deleted_at IS NULL
+      AND t.email IS NOT NULL AND t.email <> ''
+      AND t.mindbody_id IS NOT NULL
+      AND COALESCE(t.payment_date, t.created_at) >= p_since::timestamptz
+      AND COALESCE(t.source_category, '') IN
+            ('direct_membership', 'mb_direct', 'walk_in', 'in_person', 'walk-in')
+      AND (p_studio_slug IS NULL OR lower(replace(l.name, ' ', '-')) = p_studio_slug)
+    ORDER BY lower(replace(l.name, ' ', '-')), lower(t.email),
+             COALESCE(t.payment_date, t.created_at) ASC
+  ),
+  -- Only seed FIRST membership sale per customer (autopay renewals excluded).
+  -- 2026-07-02 QA: restored the batch-window autopay exclusion from
+  -- 20260627_mt_autopay_batch_window.sql (lost when this body was copied from
+  -- the classifier version). Without it, the legacy pre-launch member base's
+  -- nightly autopay batches (12:05 AM / 4:05 AM ET) seeded as "new direct
+  -- members since launch" — the prior-sale NOT EXISTS can't catch them with
+  -- only one billing cycle of MT history — inflating Membership Revenue on
+  -- the Bottom Line card (Astoria showed $108,867 since launch).
+  direct_mt_members AS (
+    SELECT DISTINCT ON (s.studio_slug, lower(COALESCE(s.customer_email, '')))
+      s.studio_slug                                                                AS studio_slug,
+      lower(COALESCE(s.customer_email, ''))::text                                  AS email,
+      NULLIF(TRIM(CONCAT_WS(' ', s.customer_first_name, s.customer_last_name)),'') AS customer_name,
+      s.sale_date_time                                                              AS trial_paid_at
+    FROM public.mariana_tek_sales s
+    WHERE (s.sale_date_time AT TIME ZONE 'America/New_York')::date >= p_since
+      AND s.customer_email IS NOT NULL AND s.customer_email <> ''
+      AND s.total_cents >= 10000
+      AND (
+        COALESCE(lower(s.item_names), '') LIKE '%membership%'
+        OR COALESCE(lower(s.item_names), '') LIKE '%pif%'
+        OR COALESCE(lower(s.item_names), '') LIKE '%contract%'
+        OR COALESCE(lower(s.item_names), '') LIKE '%month to month%'
+        OR COALESCE(lower(s.item_names), '') LIKE '%monthly membership%'
+        OR COALESCE(lower(s.item_names), '') LIKE '%year monthly%'
+        OR COALESCE(lower(s.item_names), '') LIKE '%unlimited%'
+        OR COALESCE(lower(s.item_names), '') LIKE '%back to school%'
+        OR COALESCE(lower(s.item_names), '') LIKE '%2 months%'
+        OR COALESCE(lower(s.item_names), '') LIKE '%two months%'
+      )
+      AND COALESCE(lower(s.item_names), '') NOT LIKE '%two weeks trial%'
+      AND COALESCE(lower(s.item_names), '') NOT LIKE '%week trial%'
+      AND COALESCE(lower(s.item_names), '') NOT LIKE '%no show%'
+      AND COALESCE(lower(s.item_names), '') NOT LIKE '%late cancel%'
+      AND COALESCE(lower(s.item_names), '') NOT LIKE '%drop in%'
+      AND (p_studio_slug IS NULL OR s.studio_slug = p_studio_slug)
+      -- 2026-07-02 QA: EXCLUDE MT autopay batch windows (12:00–12:15 AM and
+      -- 4:00–4:15 AM ET). Real new-member purchases never happen at those
+      -- exact times; legacy-base renewals always do. Defense in depth with
+      -- the prior-sale check below, which needs 2+ billing cycles to fire.
+      AND NOT (
+        (s.sale_date_time AT TIME ZONE 'America/New_York')::time >= '00:00'::time
+        AND (s.sale_date_time AT TIME ZONE 'America/New_York')::time < '00:15'::time
+      )
+      AND NOT (
+        (s.sale_date_time AT TIME ZONE 'America/New_York')::time >= '04:00'::time
+        AND (s.sale_date_time AT TIME ZONE 'America/New_York')::time < '04:15'::time
+      )
+      AND NOT EXISTS (
+        SELECT 1
+          FROM public.mariana_tek_sales s2
+         WHERE s2.customer_mt_id = s.customer_mt_id
+           AND s2.customer_mt_id IS NOT NULL
+           AND s2.studio_slug    = s.studio_slug
+           AND s2.sale_date_time < s.sale_date_time
+           AND (
+             COALESCE(lower(s2.item_names), '') LIKE '%membership%'
+             OR COALESCE(lower(s2.item_names), '') LIKE '%pif%'
+             OR COALESCE(lower(s2.item_names), '') LIKE '%contract%'
+             OR COALESCE(lower(s2.item_names), '') LIKE '%month to month%'
+             OR COALESCE(lower(s2.item_names), '') LIKE '%monthly membership%'
+             OR COALESCE(lower(s2.item_names), '') LIKE '%year monthly%'
+             OR COALESCE(lower(s2.item_names), '') LIKE '%unlimited%'
+             OR COALESCE(lower(s2.item_names), '') LIKE '%back to school%'
+             OR COALESCE(lower(s2.item_names), '') LIKE '%2 months%'
+             OR COALESCE(lower(s2.item_names), '') LIKE '%two months%'
+           )
+           AND COALESCE(lower(s2.item_names), '') NOT LIKE '%two weeks trial%'
+           AND COALESCE(lower(s2.item_names), '') NOT LIKE '%week trial%'
+      )
+    ORDER BY s.studio_slug, lower(COALESCE(s.customer_email, '')), s.sale_date_time ASC
+  ),
+  trials_dedup AS (
+    SELECT DISTINCT ON (studio_slug, email) *
+    FROM (
+      SELECT studio_slug, email, customer_name, trial_paid_at FROM stripe_trials
+      UNION ALL
+      SELECT studio_slug, email, customer_name, trial_paid_at FROM direct_membership_trials
+      UNION ALL
+      SELECT studio_slug, email, customer_name, trial_paid_at FROM mt_trials
+      UNION ALL
+      SELECT studio_slug, email, customer_name, trial_paid_at FROM direct_mt_members
+    ) u
+    WHERE email IS NOT NULL AND email <> ''
+    ORDER BY studio_slug, email, trial_paid_at ASC
+  ),
+  direct_link_c AS (
+    SELECT td.studio_slug, td.email, td.customer_name, td.trial_paid_at,
+           t.mindbody_id, 0 AS priority, 0::numeric AS tdiff
+    FROM trials_dedup td
+    JOIN public.trial_signups t
+      ON lower(t.email) = td.email
+     AND t.mindbody_id IS NOT NULL
+     AND t.deleted_at IS NULL
+  ),
+  email_c AS (
+    SELECT td.studio_slug, td.email, td.customer_name, td.trial_paid_at,
+           c.mindbody_id, 1 AS priority, 0::numeric AS tdiff
+    FROM trials_dedup td
+    JOIN public.mindbody_clients c ON lower(c.email) = td.email
+  ),
+  name_c AS (
+    SELECT td.studio_slug, td.email, td.customer_name, td.trial_paid_at,
+           c.mindbody_id, 2 AS priority, 0::numeric AS tdiff
+    FROM trials_dedup td
+    JOIN public.mindbody_clients c
+      ON lower(c.first_name) = lower(NULLIF(split_part(td.customer_name, ' ', 1), ''))
+     AND lower(c.last_name)  = lower(NULLIF(split_part(td.customer_name, ' ', -1), ''))
+  ),
+  prox_c AS (
+    SELECT td.studio_slug, td.email, td.customer_name, td.trial_paid_at,
+           s.customer_mindbody_id AS mindbody_id, 3 AS priority,
+           ABS(EXTRACT(EPOCH FROM (s.sale_date_time - td.trial_paid_at)))::numeric AS tdiff
+    FROM trials_dedup td
+    JOIN public.mindbody_sales s
+      ON s.studio_slug = td.studio_slug
+     AND COALESCE(lower(s.item_names), '') LIKE '%trial%'
+     AND s.sale_date_time BETWEEN td.trial_paid_at - INTERVAL '3 days'
+                              AND td.trial_paid_at + INTERVAL '3 days'
+  ),
+  cands AS (
+    SELECT * FROM direct_link_c
+    UNION ALL SELECT * FROM email_c
+    UNION ALL SELECT * FROM name_c
+    UNION ALL SELECT * FROM prox_c
+  ),
+  best_per_stripe AS (
+    SELECT DISTINCT ON (studio_slug, email)
+      studio_slug, email, customer_name, trial_paid_at, mindbody_id, priority, tdiff
+    FROM cands
+    WHERE mindbody_id IS NOT NULL
+    ORDER BY studio_slug, email, priority, tdiff
+  ),
+  final_matches AS (
+    SELECT DISTINCT ON (studio_slug, mindbody_id)
+      studio_slug, email, customer_name, trial_paid_at, mindbody_id
+    FROM best_per_stripe
+    ORDER BY studio_slug, mindbody_id, priority, tdiff
+  ),
+  mb_sales_rollup AS (
+    SELECT
+      fm.studio_slug, fm.customer_name, fm.email AS stripe_email,
+      fm.mindbody_id, fm.trial_paid_at,
+      MIN(s.sale_date_time) AS first_conversion_at,
+      MAX(s.sale_date_time) AS latest_conversion_at,
+      SUM(s.total_cents)    AS total_cents,
+      COUNT(*)              AS sale_count,
+      STRING_AGG(s.item_names, ' | ' ORDER BY s.sale_date_time) AS packages
+    FROM final_matches fm
+    JOIN public.mindbody_sales s
+      ON s.customer_mindbody_id = fm.mindbody_id
+     AND s.studio_slug          = fm.studio_slug
+     AND s.sale_date_time       >= fm.trial_paid_at - INTERVAL '7 days'
+     AND s.total_cents          >= 10000
+     AND COALESCE(lower(s.item_names), '') NOT LIKE '%trial%'
+     AND COALESCE(lower(s.item_names), '') NOT LIKE '%water%'
+     AND COALESCE(lower(s.item_names), '') NOT LIKE '%towel%'
+     AND COALESCE(lower(s.item_names), '') NOT LIKE '%snack%'
+     AND COALESCE(lower(s.item_names), '') NOT LIKE '%no show%'
+     AND COALESCE(lower(s.item_names), '') NOT LIKE '%no-show%'
+     AND COALESCE(lower(s.item_names), '') NOT LIKE '%late cancel%'
+     AND COALESCE(lower(s.item_names), '') NOT LIKE '%late-cancel%'
+     AND COALESCE(lower(s.item_names), '') NOT LIKE '%cancellation fee%'
+     AND COALESCE(lower(s.item_names), '') !~ '\m(fee)\M'
+    GROUP BY fm.studio_slug, fm.customer_name, fm.email,
+             fm.mindbody_id, fm.trial_paid_at
+  ),
+  mt_sales_rollup AS (
+    SELECT
+      td.studio_slug,
+      td.customer_name,
+      td.email                                  AS stripe_email,
+      td.trial_paid_at,
+      MIN(s.sale_date_time)                     AS first_conversion_at,
+      MAX(s.sale_date_time)                     AS latest_conversion_at,
+      SUM(s.total_cents)                        AS total_cents,
+      COUNT(*)                                  AS sale_count,
+      STRING_AGG(s.item_names, ' | ' ORDER BY s.sale_date_time) AS packages
+    FROM trials_dedup td
+    JOIN public.mariana_tek_sales s
+      ON s.studio_slug = td.studio_slug
+     AND lower(COALESCE(s.customer_email, '')) = td.email
+     AND s.sale_date_time >= td.trial_paid_at - INTERVAL '7 days'
+     AND s.total_cents    >= 10000
+     AND (
+       COALESCE(lower(s.item_names), '') LIKE '%membership%'
+       OR COALESCE(lower(s.item_names), '') LIKE '%pif%'
+       OR COALESCE(lower(s.item_names), '') LIKE '%contract%'
+       OR COALESCE(lower(s.item_names), '') LIKE '%month to month%'
+       OR COALESCE(lower(s.item_names), '') LIKE '%monthly membership%'
+       OR COALESCE(lower(s.item_names), '') LIKE '%year monthly%'
+       OR COALESCE(lower(s.item_names), '') LIKE '%unlimited%'
+       OR COALESCE(lower(s.item_names), '') LIKE '%back to school%'
+       OR COALESCE(lower(s.item_names), '') LIKE '%2 months%'
+       OR COALESCE(lower(s.item_names), '') LIKE '%two months%'
+     )
+     AND COALESCE(lower(s.item_names), '') NOT LIKE '%two weeks trial%'
+     AND COALESCE(lower(s.item_names), '') NOT LIKE '%week trial%'
+     AND COALESCE(lower(s.item_names), '') NOT LIKE '%no show%'
+     AND COALESCE(lower(s.item_names), '') NOT LIKE '%late cancel%'
+     AND COALESCE(lower(s.item_names), '') NOT LIKE '%drop in%'
+    GROUP BY td.studio_slug, td.customer_name, td.email, td.trial_paid_at
+  ),
+  combined_rollup AS (
+    SELECT
+      COALESCE(mb.studio_slug, mt.studio_slug)        AS studio_slug,
+      COALESCE(mb.customer_name, mt.customer_name)    AS customer_name,
+      COALESCE(mb.stripe_email, mt.stripe_email)      AS stripe_email,
+      mb.mindbody_id                                  AS mindbody_id,
+      COALESCE(mb.trial_paid_at, mt.trial_paid_at)    AS trial_paid_at,
+      LEAST(COALESCE(mb.first_conversion_at, mt.first_conversion_at),
+            COALESCE(mt.first_conversion_at, mb.first_conversion_at))   AS first_conversion_at,
+      GREATEST(COALESCE(mb.latest_conversion_at, mt.latest_conversion_at),
+               COALESCE(mt.latest_conversion_at, mb.latest_conversion_at)) AS latest_conversion_at,
+      COALESCE(mb.total_cents, 0) + COALESCE(mt.total_cents, 0)         AS total_cents,
+      COALESCE(mb.sale_count, 0)  + COALESCE(mt.sale_count, 0)          AS sale_count,
+      NULLIF(CONCAT_WS(' | ', NULLIF(mb.packages, ''), NULLIF(mt.packages, '')), '')   AS packages
+    FROM mb_sales_rollup mb
+    FULL OUTER JOIN mt_sales_rollup mt
+      ON mt.studio_slug  = mb.studio_slug
+     AND mt.stripe_email = mb.stripe_email
+    WHERE (COALESCE(mb.total_cents,0) + COALESCE(mt.total_cents,0)) > 0
+  ),
+  source_per_customer AS (
+    SELECT DISTINCT ON (lower(t.email))
+      lower(t.email)            AS email,
+      t.utm_source,
+      t.utm_medium,
+      t.utm_campaign,
+      t.source_category
+    FROM public.trial_signups t
+    WHERE t.payment_status = 'completed'
+      AND t.deleted_at IS NULL
+      AND t.email IS NOT NULL
+    ORDER BY lower(t.email), t.payment_date DESC NULLS LAST, t.created_at DESC
+  )
+  SELECT
+    cr.studio_slug,
+    cr.customer_name,
+    cr.stripe_email,
+    c.email                                            AS mb_email,
+    cr.mindbody_id,
+    cr.trial_paid_at,
+    cr.first_conversion_at,
+    cr.latest_conversion_at,
+    GREATEST(0, EXTRACT(DAY FROM (cr.first_conversion_at - cr.trial_paid_at))::int) AS days_to_convert,
+    ROUND(cr.total_cents::numeric / 100.0, 2)          AS total_member_rev_usd,
+    cr.sale_count::int                                 AS sale_count,
+    cr.packages,
+    spc.utm_source,
+    spc.utm_medium,
+    spc.utm_campaign,
+    COALESCE(spc.source_category, 'mt_direct_member') AS source_category,
+    -- ── 2026-07-02 from_trial ──────────────────────────────────────────
+    -- TRUE only when there is EVIDENCE of a real $49/$29 trial purchase
+    -- dated at/before this member's first membership sale. Direct seeds
+    -- reuse the membership timestamp as trial_paid_at, so trial_paid_at
+    -- alone cannot distinguish trial converts from direct signups.
+    (
+      EXISTS (
+        SELECT 1 FROM public.stripe_paid_mirror m
+        WHERE lower(m.customer_email) = cr.stripe_email
+          AND m.amount_cents IN (4900, 2900)
+          AND m.stripe_charge_id NOT LIKE 'walkin_%'
+          AND m.stripe_charge_id NOT LIKE 'walk_in_%'
+          AND m.stripe_charge_id <> 'sync_heartbeat'
+          AND m.paid_at <= cr.first_conversion_at
+      )
+      OR EXISTS (
+        SELECT 1 FROM public.trial_signups t2
+        WHERE lower(t2.email) = cr.stripe_email
+          AND t2.deleted_at IS NULL
+          AND t2.payment_status = 'completed'
+          AND t2.source_category = 'mt_app'
+          AND COALESCE(t2.payment_date, t2.created_at) <= cr.first_conversion_at
+      )
+      OR (cr.mindbody_id IS NOT NULL AND EXISTS (
+        SELECT 1 FROM public.mindbody_sales s5
+        WHERE s5.customer_mindbody_id = cr.mindbody_id
+          AND lower(COALESCE(s5.item_names, '')) LIKE '%trial%'
+          AND s5.total_cents IN (4900, 2900)
+          AND s5.sale_date_time <= cr.first_conversion_at
+      ))
+      OR EXISTS (
+        SELECT 1 FROM public.mariana_tek_sales s6
+        WHERE lower(COALESCE(s6.customer_email, '')) = cr.stripe_email
+          AND s6.total_cents IN (4900, 2900)
+          AND (lower(COALESCE(s6.item_names, '')) LIKE '%two weeks trial%'
+               OR lower(COALESCE(s6.item_names, '')) LIKE '%week trial%')
+          AND s6.sale_date_time <= cr.first_conversion_at
+      )
+    ) AS from_trial
+  FROM combined_rollup cr
+  LEFT JOIN public.mindbody_clients c ON c.mindbody_id = cr.mindbody_id
+  LEFT JOIN source_per_customer spc   ON spc.email = cr.stripe_email
+  ORDER BY cr.total_cents DESC, cr.first_conversion_at ASC;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_converted_members(date, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_converted_members(date, text) TO anon;
+
+-- ── 2. Promote existing rows for BTS buyers to Member ─────────────────────
+UPDATE public.trial_signups t
+SET front_desk_stage   = 'member',
+    converted_to_member = true,
+    front_desk_updated_at = now(),
+    front_desk_updated_by = 'bts299-backfill'
+WHERE t.deleted_at IS NULL
+  AND COALESCE(t.front_desk_stage, '') <> 'member'
+  AND lower(t.email) IN (
+    SELECT lower(s.customer_email)
+    FROM public.mariana_tek_sales s
+    WHERE lower(COALESCE(s.item_names, '')) LIKE '%back to school%'
+      AND s.customer_email IS NOT NULL
+  );
+
+-- ── 3. Insert BTS buyers with no trial_signups row (drips suppressed) ─────
+INSERT INTO public.trial_signups
+  (name, email, location_id, payment_status, payment_date, source_category,
+   front_desk_stage, converted_to_member, lead_source, mariana_tek_id,
+   verification_status,
+   welcome_sms_sent_at, welcome_email_sent_at,
+   abandoned_email_sent_at, abandoned_email2_sent_at)
+SELECT DISTINCT ON (lower(s.customer_email))
+  NULLIF(TRIM(CONCAT_WS(' ', s.customer_first_name, s.customer_last_name)), ''),
+  lower(s.customer_email),
+  l.id,
+  'completed',
+  s.sale_date_time,
+  'direct_membership',
+  'member',
+  true,
+  'bts299-backfill',
+  s.customer_mt_id,
+  'verified',
+  now(), now(), now(), now()
+FROM public.mariana_tek_sales s
+JOIN public.locations l
+  ON lower(replace(l.name, ' ', '-')) = s.studio_slug
+WHERE lower(COALESCE(s.item_names, '')) LIKE '%back to school%'
+  AND s.customer_email IS NOT NULL AND s.customer_email <> ''
+  AND NOT EXISTS (
+    SELECT 1 FROM public.trial_signups t
+    WHERE lower(t.email) = lower(s.customer_email)
+      AND t.deleted_at IS NULL
+  )
+ORDER BY lower(s.customer_email), s.sale_date_time ASC;
+
+-- Sanity: should return ~114 rows with the promo in packages afterwards
+-- SELECT count(*) FROM get_converted_members() WHERE packages ILIKE '%back to school%';

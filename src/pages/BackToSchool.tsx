@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { CheckCircle, MapPin, ChevronDown, Lock } from 'lucide-react';
+import { MapPin, Lock } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
 import { captureUtmsFromUrl, getUtmParams } from '../lib/utm';
 
@@ -36,6 +36,17 @@ const headline: React.CSSProperties = { fontFamily: "'BlackLives', Impact, sans-
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+// Meta click ids for CAPI match quality (same logic as LocationTrialSignup).
+function getMetaClickIds(): { fbp: string; fbc: string } {
+  if (typeof document === 'undefined') return { fbp: '', fbc: '' };
+  const readCookie = (n: string) =>
+    document.cookie.split('; ').find((c) => c.startsWith(`${n}=`))?.slice(n.length + 1) ?? '';
+  let fbc = readCookie('_fbc');
+  const fbclid = new URLSearchParams(window.location.search).get('fbclid');
+  if (!fbc && fbclid) fbc = `fb.1.${Date.now()}.${fbclid}`;
+  return { fbp: readCookie('_fbp'), fbc };
+}
+
 export default function BackToSchool() {
   const [params] = useSearchParams();
   const paramStudio = params.get('studio') ?? '';
@@ -45,6 +56,9 @@ export default function BackToSchool() {
   const studio = STUDIOS.find((s) => s.slug === slug) ?? null;
 
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', phone: '' });
+  // 2026-09-03: card capture through MT's Stripe (mt-card-checkout), same as
+  // the trial pages. MT vaults + charges the card; our Stripe is out of it.
+  const [cardForm, setCardForm] = useState({ number: '', exp: '', ccv: '', zip: '' });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const submittingRef = useRef(false);
@@ -54,10 +68,6 @@ export default function BackToSchool() {
   useEffect(() => {
     captureUtmsFromUrl();
   }, []);
-
-  const scrollToCheckout = () => {
-    document.getElementById('bts-checkout')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,10 +82,21 @@ export default function BackToSchool() {
     if (!mail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) { setError('Please enter a valid email address.'); return; }
     if (!tel || tel.replace(/\D/g, '').length < 10) { setError('Please enter a valid phone number.'); return; }
 
+    // card validation (in-page card, charged + stored via MT's Stripe)
+    const cardNumber = cardForm.number.replace(/[\s-]/g, '');
+    const expMatch = cardForm.exp.trim().match(/^(0?[1-9]|1[0-2])\s*[\/\s-]?\s*(\d{2}|\d{4})$/);
+    if (!/^\d{12,19}$/.test(cardNumber)) { setError('Please enter a valid card number.'); return; }
+    if (!expMatch) { setError('Expiration should look like MM/YY.'); return; }
+    if (!/^\d{3,4}$/.test(cardForm.ccv.trim())) { setError('Please enter the 3 or 4 digit security code.'); return; }
+    if (!/^\d{5}(-\d{4})?$/.test(cardForm.zip.trim())) { setError('Please enter your billing ZIP code.'); return; }
+    const expMonth = expMatch[1].padStart(2, '0');
+    const expYear = expMatch[2].length === 2 ? `20${expMatch[2]}` : expMatch[2];
+
     submittingRef.current = true;
     setSubmitting(true);
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/create-trial-checkout`, {
+      const { fbp, fbc } = getMetaClickIds();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/mt-card-checkout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -83,22 +104,29 @@ export default function BackToSchool() {
           apikey: SUPABASE_ANON_KEY,
         },
         body: JSON.stringify({
-          product: 'bts299',
-          locationId: studio.locationId,
-          locationName: studio.name,
-          customerEmail: mail,
-          customerFirstName: first,
-          customerLastName: last,
-          customerName: `${first} ${last}`.trim(),
-          customerPhone: tel,
+          first_name: first,
+          last_name: last,
+          email: mail,
+          phone: tel,
+          studio_slug: studio.slug,
+          kind: 'bts299',
+          card: { number: cardNumber, exp_month: expMonth, exp_year: expYear, ccv: cardForm.ccv.trim(), postal_code: cardForm.zip.trim() },
+          fbp, fbc,
           ...getUtmParams(),
         }),
       });
       const data = await res.json();
-      if (!res.ok || !data?.url) {
-        throw new Error(data?.error || 'Could not start checkout. Please try again.');
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.message || data?.error || 'Could not complete checkout. Please try again.');
       }
-      window.location.href = data.url;
+      if (window.fbq) {
+        window.fbq('track', 'Purchase', {
+          content_name: `${studio.name} Back to School ($299)`,
+          value: 299, currency: 'USD',
+        });
+      }
+      setCardForm({ number: '', exp: '', ccv: '' });
+      window.location.href = `/trial-success?studio=${studio.slug}&native=1&kind=bts299`;
     } catch (err) {
       setError((err as Error).message || 'Something went wrong. Please try again.');
       submittingRef.current = false;
@@ -114,51 +142,24 @@ export default function BackToSchool() {
         noindex
       />
 
-      {/* ── Video hero, ad-card style ── */}
-      {/* 2026-08-28: was lg:min-h-[calc(100svh-5.5rem)] — full-height centering
-          left a huge dead band above the headline on desktop ("hero is too
-          low"). The follow-up lg:pt-24 over-compacted it. Middle ground: 72vh
-          min-height with centered content — presence without the dead band. */}
-      <section className="relative flex items-center overflow-hidden pt-40 pb-12 sm:pt-40 sm:pb-14 lg:min-h-[88vh] lg:pt-28 lg:pb-16 text-center text-white">
-        <video
-          className="absolute inset-0 h-full w-full object-cover"
-          src="/services/hero.mp4"
-          poster="/services/hero-poster.webp"
-          autoPlay
-          muted
-          loop
-          playsInline
-        />
-        <div className="absolute inset-0 bg-black/70" />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black" />
-
-        <div className="relative z-10 mx-auto w-full max-w-4xl px-4">
+      {/* ── Compact offer statement ── */}
+      {/* 2026-09-11 (Justin): page stripped to the offer line + the form.
+          Video hero, checkmark row, scroll CTA, offer panel and the $49
+          fallback section are gone so checkout is on screen immediately. */}
+      <section className="pt-28 pb-6 sm:pt-32 sm:pb-8 text-center text-white">
+        <div className="mx-auto w-full max-w-3xl px-4">
           <p className="mb-3 inline-block border border-red-600/60 bg-red-600/15 px-4 py-1.5 text-xs sm:text-sm font-bold uppercase tracking-[0.3em] text-red-500">
             Back to School Special
           </p>
           <h1 style={headline} className="uppercase leading-[0.95]">
-            <span className="block text-[clamp(2.4rem,7vw,4.8rem)]">2 Months Unlimited</span>
-            <span style={{ ...headline, ...redText }} className="block text-[clamp(3.2rem,10vw,6.5rem)] drop-shadow-[0_2px_14px_rgba(225,29,42,0.4)]">
+            <span className="block text-[clamp(2rem,6vw,3.6rem)]">2 Months Unlimited</span>
+            <span style={{ ...headline, ...redText }} className="block text-[clamp(2.6rem,8vw,4.8rem)] drop-shadow-[0_2px_14px_rgba(225,29,42,0.4)]">
               $299
             </span>
           </h1>
-          <p className="mx-auto mt-4 max-w-xl text-base sm:text-lg text-gray-300">
+          <p className="mx-auto mt-3 max-w-xl text-sm sm:text-base text-gray-300">
             One payment. No auto-renewal. Your 2 months start at your first class.
           </p>
-
-          <div className="mx-auto mt-5 flex flex-col items-center justify-center gap-y-1.5 text-sm text-gray-200 sm:flex-row sm:gap-x-6 sm:gap-y-0 sm:whitespace-nowrap">
-            <span className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-red-500" />Unlimited classes</span>
-            <span className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-red-500" />One payment, nothing recurring</span>
-            <span className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-red-500" />Starts at your first class</span>
-          </div>
-
-          <button
-            onClick={scrollToCheckout}
-            className="mt-7 inline-flex items-center gap-2 rounded-full bg-red-600 px-10 py-4 text-base sm:text-lg font-extrabold uppercase tracking-wider text-white shadow-[0_8px_30px_rgba(225,29,42,0.45)] transition-transform hover:scale-105 hover:bg-red-700"
-          >
-            Claim the offer
-            <ChevronDown className="h-5 w-5" />
-          </button>
         </div>
       </section>
 
@@ -196,24 +197,8 @@ export default function BackToSchool() {
           </div>
 
           {studio ? (
-            <div className="mx-auto grid max-w-4xl gap-6 lg:grid-cols-5 lg:gap-0 lg:overflow-hidden lg:rounded-2xl lg:border lg:border-white/10">
-              {/* Offer panel */}
-              <div className="rounded-xl border border-red-600/40 bg-red-600/10 p-5 text-center lg:col-span-2 lg:flex lg:flex-col lg:justify-center lg:rounded-none lg:border-0 lg:bg-red-950/40 lg:p-8 lg:text-left">
-                <p style={headline} className="uppercase text-white text-2xl lg:text-3xl">
-                  <span style={redText}>$299.</span> Two months.
-                </p>
-                <p style={headline} className="uppercase text-white text-2xl lg:text-3xl">Every class at {studio.name}.</p>
-                <p className="mt-3 text-sm text-gray-300">
-                  Pay once, train for two months. When it ends, it ends. Nothing renews, nothing to cancel.
-                </p>
-                <ul className="mt-5 hidden space-y-2 text-sm text-gray-200 lg:block">
-                  <li className="flex items-center gap-2"><CheckCircle className="h-4 w-4 flex-shrink-0 text-red-500" />Unlimited classes, 7 days a week</li>
-                  <li className="flex items-center gap-2"><CheckCircle className="h-4 w-4 flex-shrink-0 text-red-500" />Starts at your first class, not today</li>
-                  <li className="flex items-center gap-2"><CheckCircle className="h-4 w-4 flex-shrink-0 text-red-500" />{studio.address}</li>
-                </ul>
-              </div>
-
-              <form onSubmit={handleSubmit} className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-5 sm:p-6 lg:col-span-3 lg:rounded-none lg:border-0 lg:p-8">
+            <div className="mx-auto max-w-xl">
+              <form onSubmit={handleSubmit} className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-5 sm:p-6">
                 <div className="grid grid-cols-2 gap-3">
                   <input
                     type="text" required autoComplete="given-name" placeholder="First name"
@@ -244,33 +229,65 @@ export default function BackToSchool() {
                   disabled={submitting}
                   className="w-full px-3 py-3 rounded-lg bg-black/40 border border-white/20 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"
                 />
+                {/* card fields — vaulted + charged via Mariana Tek's Stripe */}
+                <input
+                  type="text" required inputMode="numeric" autoComplete="cc-number" placeholder="Card number"
+                  value={cardForm.number}
+                  onChange={(e) => setCardForm((f) => ({ ...f, number: e.target.value.replace(/[^\d\s]/g, '') }))}
+                  disabled={submitting}
+                  className="w-full px-3 py-3 rounded-lg bg-black/40 border border-white/20 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"
+                />
+                <div className="grid grid-cols-3 gap-3">
+                  <input
+                    type="text" required inputMode="numeric" autoComplete="cc-exp" placeholder="MM/YY" maxLength={7}
+                    value={cardForm.exp}
+                    onChange={(e) => {
+                      // Mobile numeric keypads have no "/" key, so auto-insert it.
+                      const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
+                      const formatted = digits.length >= 3 ? `${digits.slice(0, 2)}/${digits.slice(2)}` : digits;
+                      setCardForm((f) => ({ ...f, exp: formatted }));
+                    }}
+                    disabled={submitting}
+                    className="px-3 py-3 rounded-lg bg-black/40 border border-white/20 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"
+                  />
+                  <input
+                    type="text" required inputMode="numeric" autoComplete="cc-csc" placeholder="CVC"
+                    value={cardForm.ccv}
+                    onChange={(e) => setCardForm((f) => ({ ...f, ccv: e.target.value.replace(/\D/g, '') }))}
+                    disabled={submitting}
+                    className="px-3 py-3 rounded-lg bg-black/40 border border-white/20 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"
+                  />
+                  <input
+                    type="text" required inputMode="numeric" autoComplete="postal-code" placeholder="ZIP"
+                    value={cardForm.zip}
+                    onChange={(e) => setCardForm((f) => ({ ...f, zip: e.target.value.replace(/[^\d-]/g, '') }))}
+                    disabled={submitting}
+                    className="px-3 py-3 rounded-lg bg-black/40 border border-white/20 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"
+                  />
+                </div>
                 {error && <p className="text-xs text-red-400 leading-relaxed">{error}</p>}
                 <button
                   type="submit"
                   disabled={submitting}
                   className="w-full rounded-xl bg-red-600 py-4 text-base font-extrabold uppercase tracking-wider text-white transition-colors hover:bg-red-700 disabled:cursor-wait disabled:opacity-60"
                 >
-                  {submitting ? 'Starting checkout…' : 'Get 2 months for $299 →'}
+                  {submitting ? 'Processing…' : 'Get 2 months for $299 →'}
                 </button>
                 <p className="text-xs leading-relaxed text-gray-500">
                   By signing up you agree to our{' '}
                   <a href="/privacy" className="underline">Privacy Policy</a> and{' '}
-                  <a href="/terms" className="underline">Terms</a>. Payment handled securely by Stripe;
-                  your membership is activated automatically.
+                  <a href="/terms" className="underline">Terms</a>. You pay $299 today, one time.
+                  Nothing recurring; your membership is activated automatically.
                 </p>
                 <div className="flex items-center justify-center gap-2 pt-1 text-xs text-gray-500">
                   <Lock className="h-3.5 w-3.5" />
-                  Secure checkout — Apple Pay, Google Pay, Link supported
+                  Payment processed securely by Mariana Tek + Stripe
                 </div>
               </form>
             </div>
           ) : (
             <p className="text-center text-sm text-gray-500">The checkout appears once you pick a studio.</p>
           )}
-
-          <p className="mt-8 text-center text-xs uppercase tracking-[0.25em] text-gray-600">
-            New York's group fitness bootcamp since 2011
-          </p>
         </div>
       </section>
     </div>

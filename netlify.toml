@@ -283,6 +283,23 @@
   status = 301
   force  = true
 
+# Run Club signup — standalone static landing (public/runclub.html). Must
+# precede the /* SPA catch-all below or it gets swallowed into the React app.
+[[redirects]]
+  from   = "/runclub"
+  to     = "/runclub.html"
+  status = 200
+
+[[redirects]]
+  from   = "/run-club"
+  to     = "/runclub.html"
+  status = 200
+
+[[redirects]]
+  from   = "/runclub-v2"
+  to     = "/runclub-v2.html"
+  status = 200
+
 # SPA fallback for everything else — React Router handles client-side routing.
 [[redirects]]
   from   = "/*"

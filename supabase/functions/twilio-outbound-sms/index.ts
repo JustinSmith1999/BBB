@@ -45,6 +45,27 @@ function normalizeUsPhone(p: string | null | undefined): string | null {
   return null;
 }
 
+// 2026-09-23 · Bayside + Fresh Meadows now text from their OWN Quo studio line
+// (local caller ID + lands in the Quo shared inbox) instead of the shared 877
+// Twilio number. Studios without a Quo line, and all automated flows, keep
+// using Twilio (the block further down).
+const QUO_STUDIO_NUMBER: Record<string, string> = {
+  'bayside': '+19178770759',
+  'fresh-meadows': '+16468876483',
+};
+async function quoSend(fromE164: string, toE164: string, content: string): Promise<{ ok: boolean; id?: string; error?: string }> {
+  const key = Deno.env.get('QUO_API_KEY');
+  if (!key) return { ok: false, error: 'QUO_API_KEY missing' };
+  const r = await fetch('https://api.quo.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Authorization': key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: fromE164, to: [toE164], content }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (r.ok) return { ok: true, id: (j as any)?.data?.id };
+  return { ok: false, error: (j as any)?.message || `HTTP ${r.status}` };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST')    return json({ ok: false, error: 'POST only' }, 405);
@@ -117,6 +138,32 @@ serve(async (req) => {
   const finalBody = (studioName && !alreadyBranded)
     ? `— BBB ${studioName} —\n${text}`
     : text;
+
+  // ── Quo path (Bayside / Fresh Meadows) ────────────────────────────────────
+  // Send from the studio's own local Quo number. No brand header needed: it's a
+  // local number and the customer is a named Quo contact. Logs to sms_messages
+  // exactly like the Twilio path so /homebase renders the thread unchanged.
+  const quoSlug = (studioName || '').toLowerCase().replace(/\s+/g, '-');
+  const quoFrom = QUO_STUDIO_NUMBER[quoSlug];
+  if (quoFrom) {
+    const q = await quoSend(quoFrom, toPhone, text);
+    const { error: qErr } = await sb.from('sms_messages').insert({
+      trial_signup_id: trialId ?? null,
+      studio_slug: quoSlug || null,
+      send_path: trialId ? null : 'homebase_manual',
+      direction: 'outbound',
+      from_phone: quoFrom,
+      to_phone: toPhone,
+      body: text,
+      twilio_sid: q.ok ? (q.id ?? null) : null,
+      status: q.ok ? 'sent' : 'failed',
+      sent_by: sentBy,
+      ...(q.ok ? {} : { error_code: 'quo', error_message: q.error }),
+    });
+    if (!q.ok) return json({ ok: false, error: `quo send failed: ${q.error}` }, 502);
+    return json({ ok: true, sent: true, provider: 'quo', quo_id: q.id ?? null, to: toPhone,
+      ...(qErr ? { warning: `sms_messages insert failed: ${qErr.message}` } : {}) });
+  }
 
   // Status webhook so we get queued → sent → delivered updates.
   const statusCallback = `${sbUrl}/functions/v1/twilio-status-webhook`;

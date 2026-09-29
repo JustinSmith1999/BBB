@@ -1,0 +1,208 @@
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BBB Run Club</title>
+<link rel="icon" type="image/png" href="https://uracuwugpxqjfgtuobal.supabase.co/storage/v1/object/public/logos/cropped-0140_bbb_newstrike_logo-design_black_1.png" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  @font-face{font-family:'Bebas';src:url('/fonts/BebasNeue-Bold.otf') format('opentype');font-weight:700;font-display:swap}
+  :root{--ink:#090807;--acid:#c7ff2c;--acid2:#a5d325;--line:#201f1c;--muted:#8b8b83;--card:#111110}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--ink);color:#fff;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  .disp{font-family:'Bebas',Impact,sans-serif;text-transform:uppercase;letter-spacing:.01em;line-height:.9}
+  a{color:inherit;text-decoration:none}
+  .acid{color:var(--acid)}
+
+  /* top menu */
+  .topnav{position:fixed;top:0;right:0;z-index:40;padding:18px 22px}
+  .menu-btn{font-family:'Bebas',sans-serif;font-size:20px;letter-spacing:.14em;color:#fff;background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.28);padding:9px 20px;border-radius:6px;cursor:pointer;backdrop-filter:blur(4px);transition:.12s}
+  .menu-btn:hover{background:var(--acid);color:#000;border-color:var(--acid)}
+  .menu-overlay{position:fixed;inset:0;z-index:60;background:rgba(9,8,7,.98);display:none;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+  .menu-overlay.open{display:flex}
+  .menu-overlay a{font-family:'Bebas',sans-serif;font-size:clamp(32px,7vw,58px);letter-spacing:.03em;color:#fff;padding:7px 0;transition:color .12s}
+  .menu-overlay a:hover{color:var(--acid)}
+  .menu-close{position:absolute;top:20px;right:26px;background:none;border:0;color:#fff;font-size:30px;line-height:1;cursor:pointer}
+  .menu-close:hover{color:var(--acid)}
+
+  /* marquee bands */
+  .marq{background:var(--acid);color:#000;overflow:hidden;white-space:nowrap;border-top:1px solid #000;border-bottom:1px solid #000}
+  .marq .track{display:inline-block;padding:9px 0;animation:scroll 22s linear infinite}
+  .marq.rev .track{animation-direction:reverse}
+  .marq span{font-family:'Bebas',sans-serif;font-size:19px;letter-spacing:.14em;padding:0 14px}
+  @keyframes scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+  /* hero */
+  .hero{position:relative;overflow:hidden;min-height:92vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px 20px 60px;background:var(--ink)}
+  .hero video.bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
+  .hero .overlay{position:absolute;inset:0;z-index:1;pointer-events:none;
+    background:radial-gradient(55% 50% at 50% 42%, rgba(199,255,44,.10), transparent 66%),
+    linear-gradient(180deg, rgba(9,8,7,.76) 0%, rgba(9,8,7,.80) 45%, rgba(9,8,7,.97) 100%)}
+  .hero>.bbb,.hero>.ring,.hero>.promo,.hero>.sub,.hero>.cta,.hero>.scrollcue{position:relative;z-index:2}
+  .bbb{height:26px;opacity:.9;margin-bottom:6px}
+  .ring{width:min(72vw,440px);height:auto;filter:drop-shadow(0 0 60px rgba(199,255,44,.18));margin:8px 0 30px}
+  .ring:hover{animation:spin 18s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .promo{display:inline-flex;align-items:center;gap:16px;background:var(--acid);color:#000;padding:14px 26px;border-radius:4px;margin-bottom:26px}
+  .promo b{font-family:'Bebas',sans-serif;font-size:26px;letter-spacing:.03em;line-height:1}
+  .promo em{width:1px;height:22px;background:rgba(0,0,0,.45);display:inline-block}
+  .promo span{font-size:17px;font-weight:700}
+  .sub{max-width:580px;color:#fff;font-size:20px;font-weight:500;line-height:1.6;margin-bottom:36px;text-shadow:0 2px 14px rgba(0,0,0,.7)}
+  @media(max-width:600px){.sub{font-size:18px}}
+  .cta{display:inline-block;background:var(--acid);color:#000;font-family:'Bebas',sans-serif;font-size:24px;letter-spacing:.05em;padding:16px 46px;border-radius:4px;transition:transform .12s ease, box-shadow .2s ease}
+  .cta:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(199,255,44,.3)}
+  .scrollcue{margin-top:38px;color:var(--muted);font-size:12px;letter-spacing:.25em;text-transform:uppercase}
+
+  /* content */
+  .wrap{max-width:1040px;margin:0 auto;padding:70px 22px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:44px;max-width:1000px;margin:0 auto;align-items:start}
+  @media(max-width:820px){.grid{grid-template-columns:1fr;gap:44px;max-width:520px;text-align:center}.ring{width:76vw}}
+  .eyebrow{font-family:'Bebas',sans-serif;font-size:15px;letter-spacing:.2em;color:var(--acid);margin-bottom:8px}
+  h2.disp{font-size:clamp(34px,5vw,52px);margin-bottom:22px}
+  .runcard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 24px}
+  .runcard .k{font-family:'Bebas',sans-serif;font-size:15px;letter-spacing:.12em;color:var(--acid)}
+  .runcard .d{font-family:'Bebas',sans-serif;font-size:40px;line-height:1;margin:6px 0 8px}
+  .runcard .i{color:var(--muted);font-size:14px}
+  .note{color:var(--muted);font-size:14px;line-height:1.55;margin-top:16px}
+
+  /* form */
+  .formcard{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:26px;text-align:left}
+  label{display:block;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#b9b9b2;margin:16px 0 7px}
+  input[type=text],input[type=email],input[type=tel]{width:100%;height:50px;background:#0a0a09;border:1px solid var(--line);border-radius:10px;color:#fff;padding:0 14px;font-size:15px;outline:none}
+  input:focus{border-color:var(--acid)}
+  .studio-row,.shirt{display:flex;gap:10px;margin-top:4px}
+  .radio{flex:1}
+  .radio input{position:absolute;opacity:0;pointer-events:none}
+  .radio span{display:block;text-align:center;padding:13px 8px;border:1px solid var(--line);border-radius:10px;font-family:'Bebas',sans-serif;letter-spacing:.08em;font-size:17px;cursor:pointer;color:#e7e7e2}
+  .radio input:checked + span{background:var(--acid);color:#000;border-color:var(--acid)}
+  .shirt-toggle{display:flex;gap:12px;align-items:flex-start;margin-top:22px;padding:14px;border:1px solid var(--line);border-radius:12px;cursor:pointer}
+  .shirt-toggle input{width:20px;height:20px;accent-color:var(--acid);margin-top:2px}
+  .shirt-toggle .t{font-weight:700}
+  .shirt-toggle .s{color:var(--acid);font-size:12.5px}
+  button.submit{width:100%;height:56px;margin-top:24px;background:var(--acid);border:0;border-radius:12px;color:#000;font-family:'Bebas',sans-serif;font-size:24px;letter-spacing:.05em;cursor:pointer;transition:filter .15s}
+  button.submit:hover{filter:brightness(1.05)}
+  button.submit:disabled{opacity:.6;cursor:wait}
+  .err{color:#ff6b6b;font-size:13px;margin-top:12px;min-height:16px}
+  .success{text-align:center;padding:26px 6px}
+  .success .big{font-size:52px;margin-bottom:6px}
+  .success h3{font-family:'Bebas',sans-serif;font-size:34px;letter-spacing:.03em;margin-bottom:8px}
+  .foot{border-top:1px solid var(--line);text-align:center;color:var(--muted);font-size:13px;padding:26px 20px}
+</style>
+
+<nav class="topnav">
+  <button class="menu-btn" id="menuBtn" aria-label="Open menu">MENU</button>
+</nav>
+<div class="menu-overlay" id="menuOverlay">
+  <button class="menu-close" id="menuClose" aria-label="Close menu">✕</button>
+  <a href="/">Home</a>
+  <a href="/classes">Classes</a>
+  <a href="/pricing">Pricing</a>
+  <a href="/locations">Locations</a>
+  <a href="/trial">2-Week Trial</a>
+  <a href="/contact">Contact</a>
+</div>
+
+<section class="hero">
+  <video class="bg" id="herovid" autoplay muted playsinline preload="auto" poster="/runclub-poster.jpg">
+    <source src="/runclub-bg.mp4#t=3" type="video/mp4" />
+  </video>
+  <div class="overlay"></div>
+  <img class="ring" src="/bbr-logo.png" alt="Better Body Run" />
+  <div class="promo"><b>FIRST 5</b><em></em><span>get a free Run Club shirt 🎁</span></div>
+  <p class="sub">Free group runs, all paces welcome. Show up, get moving, meet the crew. Kicking off at Bayside and Fresh Meadows.</p>
+  <a class="cta" href="#signup">Count me in →</a>
+  <div class="scrollcue">↓ sign up below</div>
+</section>
+
+<section class="wrap">
+  <div class="grid">
+    <div>
+      <div class="eyebrow">First Run</div>
+      <h2 class="disp">Kickoff is Oct 3</h2>
+      <div class="runcard">
+        <div class="k">Saturday · Kickoff 🎉</div>
+        <div class="d">Oct 3</div>
+        <div class="i">Meetup time &amp; route announced soon</div>
+      </div>
+      <p class="note">Sign up and we'll text you the meeting spot and time before the first run. New runs added every week.</p>
+    </div>
+
+    <div id="signup">
+      <div class="eyebrow">Sign Up</div>
+      <h2 class="disp">Get on the list</h2>
+      <div class="formcard" id="card">
+        <form id="form">
+          <label for="name">Name *</label>
+          <input id="name" type="text" required autocomplete="name" />
+          <label for="email">Email</label>
+          <input id="email" type="email" autocomplete="email" />
+          <label for="phone">Phone</label>
+          <input id="phone" type="tel" autocomplete="tel" />
+          <label>Which studio? *</label>
+          <div class="studio-row">
+            <label class="radio"><input type="radio" name="studio" value="bayside" required /><span>Bayside</span></label>
+            <label class="radio"><input type="radio" name="studio" value="fresh-meadows" /><span>Fresh Meadows</span></label>
+          </div>
+          <label class="shirt-toggle" for="wantsShirt">
+            <input type="checkbox" id="wantsShirt" />
+            <span><span class="t">Reserve a Run Club shirt</span><br><span class="s">One size fits all · FREE for the first 5 signups</span></span>
+          </label>
+          <button class="submit" id="submit" type="submit">I'm in →</button>
+          <div class="err" id="err"></div>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="foot">Better Body Bootcamp Run Club · Bayside &amp; Fresh Meadows, Queens NY</div>
+
+<script>
+// menu toggle
+(()=>{const b=document.getElementById('menuBtn'),o=document.getElementById('menuOverlay'),c=document.getElementById('menuClose');
+  b.addEventListener('click',()=>o.classList.add('open'));
+  c.addEventListener('click',()=>o.classList.remove('open'));
+  o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');});})();
+
+// Start the hero video 3s in, and loop from 3s (skip the intro).
+const _hv=document.getElementById('herovid');
+if(_hv){
+  const seek=()=>{try{_hv.currentTime=3;}catch(e){}};
+  _hv.addEventListener('loadedmetadata',seek);
+  _hv.addEventListener('ended',()=>{seek();_hv.play().catch(()=>{});});
+}
+
+const SUPABASE_URL='https://uracuwugpxqjfgtuobal.supabase.co';
+const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVyYWN1d3VncHhxamZndHVvYmFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzOTkxMDksImV4cCI6MjA3ODk3NTEwOX0.DFlpeS3mh4ZL6aFEBUXg5biZ6wLXQyxjkrX66hnNgso';
+const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+const wants=document.getElementById('wantsShirt');
+
+document.getElementById('form').addEventListener('submit',async(e)=>{
+  e.preventDefault();
+  const btn=document.getElementById('submit'), err=document.getElementById('err');
+  err.textContent='';
+  const name=document.getElementById('name').value.trim();
+  const studioEl=document.querySelector('input[name=studio]:checked');
+  if(!name){ err.textContent='Please enter your name.'; return; }
+  if(!studioEl){ err.textContent='Please pick a studio.'; return; }
+  btn.disabled=true; btn.textContent='Signing you up…';
+  const row={
+    name,
+    email:document.getElementById('email').value.trim()||null,
+    phone:document.getElementById('phone').value.trim()||null,
+    studio:studioEl.value,
+    wants_tshirt:wants.checked,
+    tshirt_size:null
+  };
+  const {error}=await sb.from('run_club_signups').insert(row);
+  if(error){
+    btn.disabled=false; btn.textContent="I'm in →";
+    err.textContent='Could not sign you up ('+error.message+'). If this keeps happening the table may not be set up yet.';
+    return;
+  }
+  const studioName=studioEl.value==='bayside'?'Bayside':'Fresh Meadows';
+  document.getElementById('card').innerHTML=
+    '<div class="success"><div class="big">🏃</div><h3>You\'re in, '+name.split(' ')[0]+'!</h3>'+
+    '<p style="color:#d7d7d2">We\'ll see you at the '+studioName+' run.'+(wants.checked?' Your shirt is reserved.':'')+
+    ' Keep an eye out for the schedule and details.</p></div>';
+});
+</script>

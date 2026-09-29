@@ -10,6 +10,7 @@ const sections = [
   { id: 'conduct', label: 'Code of Conduct' },
   { id: 'ip', label: 'Intellectual Property' },
   { id: 'media', label: 'Photography & Media' },
+  { id: 'sms', label: 'SMS/Text Messaging' },
   { id: 'liability', label: 'Limitation of Liability' },
   { id: 'governing', label: 'Governing Law' },
   { id: 'changes', label: 'Changes' },
@@ -218,10 +219,46 @@ export default function Terms() {
                 </div>
               </section>
 
-              <section id="liability">
+
+              <section id="sms">
                 <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
                   <div className="flex items-center gap-4 bg-gray-50 px-6 py-4 border-b border-gray-200">
                     <span className="text-red-500 font-black text-sm tracking-widest">08</span>
+                    <h2 className="text-lg font-black text-gray-900 tracking-tight">SMS/Text Messaging Program Terms</h2>
+                  </div>
+                  <div className="px-6 py-6 space-y-5 text-gray-600 text-sm leading-relaxed">
+                    <div className="space-y-2">
+                      <SubHead>Program Description</SubHead>
+                      <p>By opting in, you agree to receive recurring automated text messages from Better Body Bootcamp ("we," "us," "our") at the mobile number you provided. Messages may include class and appointment reminders, booking confirmations, account and trial updates, promotional offers, and customer support follow-ups. Consent to receive these messages is not a condition of any purchase.</p>
+                    </div>
+                    <div className="space-y-2">
+                      <SubHead>Message Frequency</SubHead>
+                      <p>You may receive up to 8 messages per month. Message frequency may vary depending on your activity and interactions with us.</p>
+                    </div>
+                    <div className="space-y-2">
+                      <SubHead>Message and Data Rates</SubHead>
+                      <p>Message and data rates may apply. Charges are billed by and payable to your mobile service provider. Please contact your wireless carrier for details about your messaging plan.</p>
+                    </div>
+                    <div className="space-y-2">
+                      <SubHead>How to Opt Out and Get Help</SubHead>
+                      <p>You can unsubscribe from the SMS service at any time by replying STOP to any message we send you. After you send STOP, you will receive a one-time confirmation message, and no further messages will be sent. If you want to rejoin, you can sign up again using the original opt-in method or reply START. For help or more information at any time, reply HELP to any of our messages. You can also contact our support team at <a href="mailto:info@betterbodybootcamp.com" className="text-red-600 hover:text-red-700 underline">info@betterbodybootcamp.com</a>.</p>
+                    </div>
+                    <div className="space-y-2">
+                      <SubHead>Carrier Liability Disclaimer</SubHead>
+                      <p>Carriers are not liable for any delayed or undelivered messages.</p>
+                    </div>
+                    <div className="space-y-2">
+                      <SubHead>Privacy</SubHead>
+                      <p>For details on how we collect and handle your information, see our <a href="/privacy" className="text-red-600 hover:text-red-700 underline">Privacy Policy</a>. No mobile information will be shared with third parties or affiliates for marketing or promotional purposes.</p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section id="liability">
+                <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+                  <div className="flex items-center gap-4 bg-gray-50 px-6 py-4 border-b border-gray-200">
+                    <span className="text-red-500 font-black text-sm tracking-widest">09</span>
                     <h2 className="text-lg font-black text-gray-900 tracking-tight">Limitation of Liability</h2>
                   </div>
                   <div className="px-6 py-6 space-y-4 text-gray-600 text-sm leading-relaxed">
@@ -234,7 +271,7 @@ export default function Terms() {
               <section id="governing">
                 <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
                   <div className="flex items-center gap-4 bg-gray-50 px-6 py-4 border-b border-gray-200">
-                    <span className="text-red-500 font-black text-sm tracking-widest">09</span>
+                    <span className="text-red-500 font-black text-sm tracking-widest">10</span>
                     <h2 className="text-lg font-black text-gray-900 tracking-tight">Governing Law and Dispute Resolution</h2>
                   </div>
                   <div className="px-6 py-6 space-y-4 text-gray-600 text-sm leading-relaxed">
@@ -247,7 +284,7 @@ export default function Terms() {
               <section id="changes">
                 <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
                   <div className="flex items-center gap-4 bg-gray-50 px-6 py-4 border-b border-gray-200">
-                    <span className="text-red-500 font-black text-sm tracking-widest">10</span>
+                    <span className="text-red-500 font-black text-sm tracking-widest">11</span>
                     <h2 className="text-lg font-black text-gray-900 tracking-tight">Changes to These Terms</h2>
                   </div>
                   <div className="px-6 py-6 text-gray-600 text-sm leading-relaxed">
@@ -259,7 +296,7 @@ export default function Terms() {
               <section id="contact">
                 <div className="bg-white border border-red-200 rounded-2xl overflow-hidden shadow-sm">
                   <div className="flex items-center gap-4 bg-red-50 px-6 py-4 border-b border-red-200">
-                    <span className="text-red-500 font-black text-sm tracking-widest">11</span>
+                    <span className="text-red-500 font-black text-sm tracking-widest">12</span>
                     <h2 className="text-lg font-black text-gray-900 tracking-tight">Contact Us</h2>
                   </div>
                   <div className="px-6 py-6 text-gray-600 text-sm leading-relaxed space-y-4 text-center">

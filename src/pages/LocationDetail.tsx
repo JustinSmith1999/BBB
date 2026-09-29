@@ -105,7 +105,7 @@ export default function LocationDetailPage() {
     facebook?: string;
   }> = {
     'Astoria': {
-      title: 'Gyms in Astoria, Queens · Group Fitness Classes · $49 Trial',
+      title: 'Best Gym in Astoria, Queens · Group Fitness & Bootcamp Classes · $49 Trial',
       description: 'Group fitness classes, bootcamp & HIIT gym in Astoria, Queens on Steinway St — also serving Long Island City, Sunnyside & Woodside. 2 weeks unlimited classes for $49.',
       address: '31-18 Steinway Street', city: 'Astoria', state: 'NY', zip: '11103', phone: '+1-718-704-9954',
       lat: 40.7634, lng: -73.9148,
@@ -113,23 +113,23 @@ export default function LocationDetailPage() {
       facebook:  'https://www.facebook.com/betterbodybootcampastoria',
     },
     'Bayside': {
-      title: 'Gyms in Bayside, Queens · Group Fitness Classes · $49 Trial',
+      title: 'Best Gym in Bayside, Queens · Group Fitness & Bootcamp Classes · $49 Trial',
       description: 'Group fitness classes, bootcamp & HIIT gym in Bayside, Queens on Bell Blvd — also serving Bay Terrace, Whitestone, Douglaston & Little Neck. 2 weeks unlimited for $49.',
-      address: '34-47 Bell Blvd', city: 'Bayside', state: 'NY', zip: '11361', phone: '+1-646-566-8870',
+      address: '34-47 Bell Blvd', city: 'Bayside', state: 'NY', zip: '11361', phone: '+1-917-877-0759',
       lat: 40.7666, lng: -73.7732,
       instagram: 'https://www.instagram.com/betterbodybootcampbayside',
       facebook:  'https://www.facebook.com/betterbodybootcampbayside',
     },
     'Fresh Meadows': {
-      title: 'Gyms in Fresh Meadows, Queens · Group Fitness Classes · $49 Trial',
+      title: 'Best Gym in Fresh Meadows, Queens · Group Fitness & Bootcamp Classes · $49 Trial',
       description: 'Group fitness classes, bootcamp & HIIT gym in Fresh Meadows, Queens — also serving Flushing, Hillcrest, Utopia & Jamaica Estates. 2 weeks unlimited classes for $49.',
-      address: '76-46 164th Street', city: 'Fresh Meadows', state: 'NY', zip: '11366', phone: '+1-646-566-8207',
+      address: '76-46 164th Street', city: 'Fresh Meadows', state: 'NY', zip: '11366', phone: '+1-646-887-6483',
       lat: 40.7345, lng: -73.7906,
       instagram: 'https://www.instagram.com/betterbodyfreshmeadows',
       facebook:  'https://www.facebook.com/betterbodybootcampfreshmeadows',
     },
     'Williamsburg': {
-      title: 'Gyms in Williamsburg, Brooklyn · Group Fitness Classes · $49 Trial',
+      title: 'Best Gym in Williamsburg, Brooklyn · Group Fitness & Bootcamp Classes · $49 Trial',
       description: "Group fitness classes, bootcamp & HIIT gym in Williamsburg, Brooklyn on Driggs Ave — also serving Greenpoint, East Williamsburg & Bushwick. 2 weeks unlimited for $49.",
       address: '487 Driggs Ave', city: 'Brooklyn', state: 'NY', zip: '11211', phone: '+1-718-683-1864',
       lat: 40.7146, lng: -73.9602,
@@ -518,6 +518,14 @@ export default function LocationDetailPage() {
               >
                 Book a Class
               </Link>
+              {(locationSlug === 'bayside' || locationSlug === 'fresh-meadows') && (
+                <a
+                  href="/runclub"
+                  className="inline-flex items-center justify-center border border-[#c6ff3a] text-[#c6ff3a] hover:bg-[#c6ff3a] hover:text-black text-sm font-bold tracking-[0.15em] uppercase px-8 py-4 transition-colors"
+                >
+                  Join Run Club
+                </a>
+              )}
             </div>
           </div>
         </div>

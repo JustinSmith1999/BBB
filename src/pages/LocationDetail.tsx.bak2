@@ -83,7 +83,7 @@ export default function LocationDetailPage() {
     'Bayside': {
       title: 'Gyms in Bayside, Queens · $49 Trial | Better Body Bootcamp',
       description: 'Top-rated gym in Bayside, Queens at 3447 Bell Blvd. Bootcamp classes, expert trainers, real results. Try 2 weeks for $49. Under new ownership since Oct 2025.',
-      address: '3447 Bell Blvd', city: 'Bayside', state: 'NY', zip: '11361', phone: '+1-646-566-8870',
+      address: '3447 Bell Blvd', city: 'Bayside', state: 'NY', zip: '11361', phone: '+1-917-877-0759',
       lat: 40.7666, lng: -73.7732,
       instagram: 'https://www.instagram.com/betterbodybootcampbayside',
       facebook:  'https://www.facebook.com/betterbodybootcampbayside',
@@ -91,7 +91,7 @@ export default function LocationDetailPage() {
     'Fresh Meadows': {
       title: 'Gyms in Fresh Meadows, Queens · $49 Trial | Better Body Bootcamp',
       description: 'Top-rated gym in Fresh Meadows at 76-46 164th Street. Bootcamp classes, expert trainers, real results. Try 2 weeks for $49. Under new ownership since Oct 2025.',
-      address: '76-46 164th Street', city: 'Fresh Meadows', state: 'NY', zip: '11366', phone: '+1-646-566-8207',
+      address: '76-46 164th Street', city: 'Fresh Meadows', state: 'NY', zip: '11366', phone: '+1-646-887-6483',
       lat: 40.7345, lng: -73.7906,
       instagram: 'https://www.instagram.com/betterbodyfreshmeadows',
       facebook:  'https://www.facebook.com/betterbodybootcampfreshmeadows',

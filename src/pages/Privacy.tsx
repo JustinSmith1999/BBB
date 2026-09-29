@@ -174,6 +174,10 @@ export default function Privacy() {
                       <p><strong className="text-gray-900">Resend</strong> (transactional and marketing email), <strong className="text-gray-900">Twilio</strong> (SMS notifications and marketing), <strong className="text-gray-900">GoHighLevel</strong> (CRM and conversation history).</p>
                     </div>
                     <div className="space-y-2">
+                      <SubHead>Mobile Information &amp; SMS Consent</SubHead>
+                      <p>No mobile information will be shared with third parties or affiliates for marketing or promotional purposes. All other categories exclude text messaging originator opt-in data and consent; this information will not be shared with any third parties.</p>
+                    </div>
+                    <div className="space-y-2">
                       <SubHead>Hosting &amp; Infrastructure</SubHead>
                       <p><strong className="text-gray-900">Supabase</strong> (database and authentication), <strong className="text-gray-900">Netlify</strong> (web hosting and content delivery).</p>
                     </div>

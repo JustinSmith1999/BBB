@@ -83,11 +83,11 @@ export default function NotFound() {
 
             {/* Call fallback */}
             <a
-              href="tel:+16465668870"
+              href="tel:+19178770759"
               className="inline-flex items-center gap-2 text-sm font-bold text-gray-400 hover:text-white transition-colors"
             >
               <Phone className="w-4 h-4 text-red-500" />
-              Or call us: (646) 566-8870
+              Or call us: (917) 877-0759
             </a>
           </div>
         </div>

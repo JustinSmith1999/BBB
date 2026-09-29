@@ -25,8 +25,8 @@ type Studio = { name: string; phone: string; email: string; paymentLink: string 
 const STUDIOS: Record<string, Studio> = {
   "williamsburg":  { name: "Williamsburg",  phone: "(718) 683-1864", email: "williamsburg@betterbodybootcamp.com",  paymentLink: "https://buy.stripe.com/eVq28s3LBg4w3C6ac7fbq04" },
   "astoria":       { name: "Astoria",       phone: "(718) 704-9954", email: "astoria@betterbodybootcamp.com",       paymentLink: "https://buy.stripe.com/00w5kCdC20iYbue0jq24002" },
-  "bayside":       { name: "Bayside",       phone: "(646) 566-8870", email: "bayside@betterbodybootcamp.com",       paymentLink: "https://buy.stripe.com/14A4gy33kcS3foi9oEfbq02" },
-  "fresh-meadows": { name: "Fresh Meadows", phone: "(646) 566-8207", email: "freshmeadows@betterbodybootcamp.com",  paymentLink: "https://buy.stripe.com/cNifZhbDN4iJ5wU72j7EQ04" },
+  "bayside":       { name: "Bayside",       phone: "(917) 877-0759", email: "bayside@betterbodybootcamp.com",       paymentLink: "https://buy.stripe.com/14A4gy33kcS3foi9oEfbq02" },
+  "fresh-meadows": { name: "Fresh Meadows", phone: "(646) 887-6483", email: "freshmeadows@betterbodybootcamp.com",  paymentLink: "https://buy.stripe.com/cNifZhbDN4iJ5wU72j7EQ04" },
 };
 
 function firstNameOf(full: string | null): string {

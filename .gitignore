@@ -28,3 +28,7 @@ dist-ssr
 dist_tmp/
 vite.config.ts.timestamp-*.mjs
 dist_v2/
+
+# Netlify/MCP deploy artifacts + stale builds — never commit
+deploy-*.zip
+dist_stale_*/

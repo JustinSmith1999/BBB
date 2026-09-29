@@ -49,7 +49,7 @@ const STUDIO: Record<string, {
   "bayside": {
     name: "Bayside", slug: "bayside",
     locationId: "5c0e8383-dd2f-4f8f-bfea-5cc477cec4c7",
-    phone: "(646) 566-8870",
+    phone: "(917) 877-0759",
     replyTo: "bayside@betterbodybootcamp.com",
     senderName: "BBB Bayside",
     paymentLink: "https://buy.stripe.com/14A4gy33kcS3foi9oEfbq02",
@@ -57,7 +57,7 @@ const STUDIO: Record<string, {
   "fresh-meadows": {
     name: "Fresh Meadows", slug: "fresh-meadows",
     locationId: "6bbbe077-bcc6-4d9d-a10b-7605c1484752",
-    phone: "(646) 566-8207",
+    phone: "(646) 887-6483",
     replyTo: "freshmeadows@betterbodybootcamp.com",
     senderName: "BBB Fresh Meadows",
     paymentLink: "https://buy.stripe.com/cNifZhbDN4iJ5wU72j7EQ04",

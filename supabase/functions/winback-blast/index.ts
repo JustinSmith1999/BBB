@@ -124,27 +124,34 @@ function free3Html(slug: string): string {
 
 function bts299Html(slug: string, first: string): string {
   const studio = STUDIO_TITLE[slug] || "BBB";
-  // 2026-08-30: direct link with honest email/winback UTMs (was /bts/* which
-  // stamps instagram attribution).
   const cta = `https://betterbodybootcamp.com/backtoschool?studio=${slug}&utm_source=email&utm_medium=winback&utm_campaign=back-to-school-299`;
+  // 2026-09-10 (Justin): v4 — flyer-grade native design. Lime top rule,
+  // editorial header, display headline with offset shadow, lime OFFER PANEL
+  // with black type (the flyer's signature block), centered throughout.
   return `<!DOCTYPE html><html><head>
-<meta name="color-scheme" content="light">
-<meta name="supported-color-schemes" content="light">
-<style>:root{color-scheme:light;supported-color-schemes:light;} .bbb-green{background-color:#C8FF2D !important;} .bbb-green-txt{color:#C8FF2D !important;}</style>
+<meta name="color-scheme" content="dark">
+<style>.bbb-green{background-color:#C8FF2D !important;} .bbb-green-txt{color:#C8FF2D !important;}</style>
 </head><body style="margin:0;padding:0;background-color:#0D0D0D;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0D0D0D;"><tr><td align="center">
 <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="width:640px;max-width:100%;background-color:#0D0D0D;font-family:Arial,Helvetica,sans-serif;">
-<tr><td style="padding:28px 32px 8px 32px;"><img src="${LOGO}" alt="bbb" width="74" style="display:block;border:0;"></td></tr>
-${BTS_CARD[slug] ? `<tr><td style="padding:18px 32px 0 32px;"><a href="${cta}"><img src="${BTS_CARD[slug]}" alt="Back to School: 2 months unlimited classes, $299, ends Sep 21" width="576" style="display:block;width:100%;height:auto;border:0;"></a></td></tr>` : ""}
-<tr><td align="center" style="padding:30px 24px 0 24px;">
-<div class="bbb-green-txt" style="font-size:13px;font-weight:bold;letter-spacing:4px;color:#C8FF2D !important;">BACK&nbsp;TO&nbsp;SCHOOL&nbsp;SPECIAL</div>
-<div style="font-family:'Arial Black',Arial,sans-serif;font-size:38px;line-height:44px;font-weight:900;color:#F2EFE6;padding-top:14px;white-space:nowrap;">2&nbsp;MONTHS&nbsp;UNLIMITED</div>
-<div class="bbb-green-txt" style="font-family:'Arial Black',Arial,sans-serif;font-size:74px;line-height:76px;font-weight:900;color:#C8FF2D !important;">$299</div>
-<div style="padding-top:14px;font-size:16px;line-height:25px;color:#CFCFCF;">Hi ${first}, this is a different gym than the one you left. <span style="color:#F2EFE6;font-weight:bold;">A year of new ownership, new coaches, rebuilt&nbsp;programming.</span> Come back for the fall push: one&nbsp;payment, no&nbsp;auto-renewal, and your 2&nbsp;months start at your first&nbsp;class.</div>
+<tr><td class="bbb-green" style="height:6px;background-color:#C8FF2D !important;font-size:0;line-height:0;">&nbsp;</td></tr>
+<tr><td align="center" style="padding:22px 30px 0 30px;text-align:center;font-size:11px;font-weight:bold;letter-spacing:3px;color:#9A9A9A;">BETTER&nbsp;BODY&nbsp;<span class="bbb-green-txt" style="color:#C8FF2D !important;">/</span>&nbsp;PROMO&nbsp;&nbsp;&middot;&nbsp;&nbsp;AUG&nbsp;21&nbsp;&ndash;&nbsp;SEP&nbsp;21</td></tr>
+<tr><td style="padding:14px 30px 0 30px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #2E2E2E;"><tr><td style="font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
+<tr><td align="center" style="padding:26px 24px 0 24px;text-align:center;">
+<div style="font-size:12px;font-weight:bold;letter-spacing:6px;color:#F2EFE6;">${studio.toUpperCase()}&nbsp;&middot;&nbsp;UNDER&nbsp;NEW&nbsp;OWNERSHIP</div>
+<div class="bbb-green-txt" style="font-family:'Arial Black',Arial,sans-serif;font-size:76px;line-height:72px;font-weight:900;color:#C8FF2D !important;letter-spacing:-2px;padding-top:22px;text-shadow:4px 4px 0 #3A4A00;">BACK&nbsp;TO<br>SCHOOL</div>
 </td></tr>
-<tr><td style="padding:26px 32px 0 32px;"><a href="${cta}" class="bbb-green" style="display:block;background-color:#C8FF2D !important;color:#0D0D0D !important;font-family:'Arial Black',Arial,sans-serif;font-size:24px;font-weight:900;letter-spacing:6px;text-align:center;text-decoration:none;padding:22px 10px;">CLAIM&nbsp;THE&nbsp;OFFER</a></td></tr>
-<tr><td align="center" style="padding:14px 24px 0 24px;font-size:14px;color:#9A9A9A;">Better Body Bootcamp ${studio} &middot; small group classes &middot; coach-led every set</td></tr>
-<tr><td style="padding:38px 32px 34px 32px;font-size:12px;line-height:19px;color:#8A8A8A;">You are receiving this because you trained with us.<br>Don't want these? Just reply "unsubscribe" and we'll take you off the list. &middot; Better Body Bootcamp, NYC</td></tr>
+<tr><td style="padding:30px 30px 0 30px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="bbb-green" style="background-color:#C8FF2D !important;"><tr>
+<td align="center" style="padding:28px 20px 26px 20px;text-align:center;">
+<div style="font-family:'Arial Black',Arial,sans-serif;font-size:30px;line-height:34px;font-weight:900;color:#0D0D0D;">2&nbsp;MONTHS&nbsp;UNLIMITED&nbsp;CLASSES</div>
+<div style="font-family:'Arial Black',Arial,sans-serif;font-size:92px;line-height:94px;font-weight:900;color:#0D0D0D;letter-spacing:-2px;">$299</div>
+<div style="font-size:12px;font-weight:bold;letter-spacing:4px;color:#0D0D0D;padding-top:4px;">ONE&nbsp;PAYMENT&nbsp;&middot;&nbsp;NOTHING&nbsp;RECURRING</div>
+</td></tr></table></td></tr>
+<tr><td align="center" style="padding:24px 34px 0 34px;text-align:center;font-size:16px;line-height:26px;color:#CFCFCF;">Hi ${first}, this is a different gym than the one you left. <span style="color:#F2EFE6;font-weight:bold;">A year of new ownership, new coaches, rebuilt&nbsp;programming.</span> Your 2&nbsp;months start at your first&nbsp;class.</td></tr>
+<tr><td style="padding:24px 30px 0 30px;"><a href="${cta}" style="display:block;border:2px solid #C8FF2D;background-color:#0D0D0D;color:#C8FF2D !important;font-family:'Arial Black',Arial,sans-serif;font-size:22px;font-weight:900;letter-spacing:6px;text-align:center;text-decoration:none;padding:20px 10px;" class="bbb-green-txt">CLAIM&nbsp;THE&nbsp;OFFER&nbsp;&rarr;</a></td></tr>
+<tr><td align="center" style="padding:14px 24px 0 24px;font-size:12px;font-weight:bold;letter-spacing:2px;color:#8A8A8A;text-align:center;">OFFER&nbsp;ENDS&nbsp;SEPTEMBER&nbsp;21</td></tr>
+<tr><td align="center" style="padding:18px 24px 0 24px;font-size:13px;color:#9A9A9A;text-align:center;">Better Body Bootcamp ${studio} &middot; small group classes &middot; coach-led every set<br><span style="font-size:11px;letter-spacing:3px;font-weight:bold;color:#5A5A5A;">BETTER&nbsp;THAN&nbsp;YESTERDAY</span></td></tr>
+<tr><td align="center" style="padding:20px 32px 26px 32px;font-size:11px;line-height:18px;color:#6E6E6E;text-align:center;">You are receiving this because you trained with us. Don't want these? Just reply "unsubscribe". &middot; Better Body Bootcamp, NYC</td></tr>
 </table></td></tr></table></body></html>`;
 }
 
@@ -224,7 +231,10 @@ Deno.serve(async (req: Request) => {
   const studioFilter = typeof body.studio === "string" ? body.studio : null;
 
   const client = sb();
-  const dl = await client.storage.from("campaigns").download(BATCH_PATH);
+  // 2026-09-03: batch_path override — lets us run other audiences (e.g. the
+  // former-members list) through the same guarded send machinery.
+  const batchPath = typeof body.batch_path === "string" && body.batch_path ? String(body.batch_path) : BATCH_PATH;
+  const dl = await client.storage.from("campaigns").download(batchPath);
   if (dl.error) return json({ ok: false, error: "batch file: " + dl.error.message }, 500);
   const batch = JSON.parse(await dl.data.text());
   let rows: Array<{ studio: string; name: string; email: string; phone: string; offer: string; channel: string }> = batch.rows || [];
@@ -232,13 +242,30 @@ Deno.serve(async (req: Request) => {
   if (studioFilter) rows = rows.filter((r) => r.studio === studioFilter);
 
   // Already-sent registry (idempotency)
-  const { data: sentSms } = await client.from("sms_messages")
-    .select("to_phone").in("send_path", ["winback_free3", "winback_bts299"]);
-  const sentPhones = new Set((sentSms ?? []).map((r) => r.to_phone));
-  const { data: sentEm } = await client.from("email_log")
-    .select("to_addrs").in("send_path", ["winback_free3", "winback_bts299"]);
+  // 2026-09-15 FIX: PostgREST caps un-paged selects at 1000 rows. Once the
+  // winback_bts299 log crossed 1000 rows (mid 09-14 run) the registry was
+  // silently truncated and ~350 people were emailed 2-5x. Page through ALL rows.
+  async function pageAll<T>(build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> {
+    const out: T[] = []; const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await build(from, from + PAGE - 1);
+      if (error) throw new Error("registry read failed: " + JSON.stringify(error));
+      out.push(...(data ?? []));
+      if (!data || data.length < PAGE) break;
+    }
+    return out;
+  }
+  const sentSms = await pageAll<{ to_phone: string }>((f, t) => client.from("sms_messages")
+    .select("to_phone").in("send_path", ["winback_free3", "winback_bts299"]).order("id").range(f, t));
+  const sentPhones = new Set(sentSms.map((r) => r.to_phone));
+  const sentEm = await pageAll<{ to_addrs: string[] }>((f, t) => client.from("email_log")
+    .select("to_addrs").in("send_path", ["winback_free3", "winback_bts299"]).order("id").range(f, t));
   const sentEmails = new Set<string>();
-  for (const r of (sentEm ?? [])) for (const a of (r.to_addrs || [])) sentEmails.add(String(a).toLowerCase());
+  for (const r of sentEm) for (const a of (r.to_addrs || [])) sentEmails.add(String(a).toLowerCase());
+  // Refuse to send if the registry is implausibly small vs. the batch (belt-and-braces).
+  if (live && sentEmails.size === 0 && sentPhones.size === 0) {
+    return json({ ok: false, error: "already-sent registry came back EMPTY; refusing to send (would duplicate)." }, 500);
+  }
 
   const twSid = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "";
   const twToken = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
@@ -291,7 +318,10 @@ Deno.serve(async (req: Request) => {
         const resp = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { "Authorization": `Bearer ${resendKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ from: fromEmail, to: [r.email], subject, html }),
+          // List-Unsubscribe header: Gmail/Yahoo bulk-sender requirement.
+          // Keeps us out of the spam folder and gives the one-click unsub UI.
+          body: JSON.stringify({ from: fromEmail, to: [r.email], subject, html,
+            headers: { "List-Unsubscribe": "<mailto:hello@betterbodybootcamp.com?subject=unsubscribe>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } }),
         });
         const j = await resp.json().catch(() => ({} as Record<string, unknown>));
         await client.from("email_log").insert({

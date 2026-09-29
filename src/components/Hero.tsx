@@ -205,14 +205,14 @@ export default function Hero() {
               >
                 <style>{`@keyframes pickIn{from{opacity:0}to{opacity:1}}@keyframes cardIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}`}</style>
 
-                <div className="flex items-center justify-between px-6 pt-6 pb-2 max-w-6xl mx-auto w-full">
+                <div className="relative flex items-center justify-center px-6 pt-6 pb-2 max-w-6xl mx-auto w-full">
                   <p className="font-display font-black uppercase" style={{ color: '#F5F1EA', fontSize: 'clamp(1.3rem, 3vw, 1.8rem)', letterSpacing: '-0.01em' }}>
                     Pick your <span style={{ color: 'var(--brand-red)' }}>studio</span>
                   </p>
                   <button
                     onClick={() => setShowLocations(false)}
                     aria-label="Close"
-                    className="flex items-center justify-center rounded-full transition-transform hover:scale-110"
+                    className="absolute right-6 flex items-center justify-center rounded-full transition-transform hover:scale-110"
                     style={{ width: 38, height: 38, backgroundColor: 'rgba(245,241,234,0.08)', border: '1px solid rgba(245,241,234,0.2)', color: '#F5F1EA', fontSize: 18, cursor: 'pointer' }}
                   >
                     ✕

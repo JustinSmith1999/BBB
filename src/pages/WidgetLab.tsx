@@ -217,11 +217,11 @@ export default function WidgetLab() {
                     </h3>
                   </div>
                   <a
-                    href="tel:+16465668870"
+                    href="tel:+19178770759"
                     className="inline-flex items-center gap-2 text-sm font-bold text-white/80 hover:text-white"
                   >
                     <Phone className="w-4 h-4 text-red-400" />
-                    Or call (646) 566-8870
+                    Or call (917) 877-0759
                   </a>
                 </div>
                 <div className="bg-white p-2 sm:p-4">

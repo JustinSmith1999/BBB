@@ -69,7 +69,7 @@ const LOCATION_TO_STUDIO: Record<string, {
     slug: "bayside",
     name: "Better Body Bootcamp Bayside",
     shortName: "Bayside",
-    phone: "(646) 566-8870",
+    phone: "(917) 877-0759",
     bookingUrl: "https://betterbodybootcamp.com/trial/bayside",
     studioEmail: "bayside@betterbodybootcamp.com",
   },
@@ -77,7 +77,7 @@ const LOCATION_TO_STUDIO: Record<string, {
     slug: "fresh-meadows",
     name: "Better Body Bootcamp Fresh Meadows",
     shortName: "Fresh Meadows",
-    phone: "(646) 566-8207",
+    phone: "(646) 887-6483",
     bookingUrl: "https://betterbodybootcamp.com/trial/fresh-meadows",
     studioEmail: "freshmeadows@betterbodybootcamp.com",
   },
@@ -263,6 +263,11 @@ Deno.serve(async (req: Request) => {
       .gt("abandoned_email_sent_at", fourteenDaysAgo)
       .is("abandoned_email2_sent_at", null)
       .neq("payment_status", "completed")
+      // 2026-09-10 (Justin): inquiry rows are NOT abandoned carts. Contact-form
+      // and schedule-request leads never started a checkout, so "Still want
+      // those 2 weeks?" 30 min after they asked a question reads as spam.
+      // Null-safe OR: fresh stripe-webhook rows have NULL source_category.
+      .or("source_category.is.null,source_category.not.in.(contact_form,schedule_request)")
       .neq("payment_status", "paid")
       .is("deleted_at", null)
       .order("abandoned_email_sent_at", { ascending: true })

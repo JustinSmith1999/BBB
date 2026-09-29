@@ -72,7 +72,7 @@ const LOCATION_TO_STUDIO: Record<string, {
     slug: "bayside",
     name: "Better Body Bootcamp Bayside",
     shortName: "Bayside",
-    phone: "(646) 566-8870",
+    phone: "(917) 877-0759",
     address: "3447 Bell Blvd",
     city: "Bayside",
     zip: "11361",
@@ -83,7 +83,7 @@ const LOCATION_TO_STUDIO: Record<string, {
     slug: "fresh-meadows",
     name: "Better Body Bootcamp Fresh Meadows",
     shortName: "Fresh Meadows",
-    phone: "(646) 566-8207",
+    phone: "(646) 887-6483",
     address: "76-46 164th Street",
     city: "Fresh Meadows",
     zip: "11366",
@@ -288,6 +288,11 @@ Deno.serve(async (req: Request) => {
       .from("trial_signups")
       .select("id, name, email, phone, location_id, created_at")
       .eq("payment_status", "pending")
+      // 2026-09-10 (Justin): inquiry rows are NOT abandoned carts. Contact-form
+      // and schedule-request leads never started a checkout, so "Still want
+      // those 2 weeks?" 30 min after they asked a question reads as spam.
+      // Null-safe OR: fresh stripe-webhook rows have NULL source_category.
+      .or("source_category.is.null,source_category.not.in.(contact_form,schedule_request)")
       .lt("created_at", tenMinAgo)          // older than 10 minutes
       .gt("created_at", fourteenDaysAgo)    // but newer than 14 days (cold-cart cap)
       .is("abandoned_email_sent_at", null)  // not yet emailed

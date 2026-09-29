@@ -48,7 +48,7 @@ const LOCATIONS = [
     path: '/locations/astoria',
     name: 'Astoria',
     borough: 'Queens',
-    title: 'Gym in Astoria, Queens · Group Fitness Classes · $49 Trial',
+    title: 'Best Gym in Astoria, Queens · Group Fitness & Bootcamp Classes · $49 Trial',
     description:
       'Bootcamp and HIIT gym on Steinway Street in Astoria, Queens. Coach-led classes 7 days a week for all levels, expert trainers, real results. Try 2 weeks for $49.',
     address: '31-18 Steinway Street, Astoria, NY 11103',
@@ -65,11 +65,11 @@ const LOCATIONS = [
     path: '/locations/bayside',
     name: 'Bayside',
     borough: 'Queens',
-    title: 'Gym in Bayside, Queens · Group Fitness Classes · $49 Trial',
+    title: 'Best Gym in Bayside, Queens · Group Fitness & Bootcamp Classes · $49 Trial',
     description:
       'Bootcamp, HIIT, and personal training on Bell Blvd in Bayside, Queens. Coach-led group classes plus 1-on-1 and small group training. Try 2 weeks for $49.',
     address: '34-47 Bell Blvd, Bayside, NY 11361',
-    phone: '(646) 566-8870',
+    phone: '(917) 877-0759',
     nearby: 'right on Bell Boulevard, steps from the LIRR Bayside station and Bell Blvd’s restaurant row',
     serves: 'Bayside, Bay Terrace, Whitestone, Auburndale, Douglaston, Little Neck, and Oakland Gardens',
     unique: [
@@ -81,11 +81,11 @@ const LOCATIONS = [
     path: '/locations/fresh-meadows',
     name: 'Fresh Meadows',
     borough: 'Queens',
-    title: 'Gym in Fresh Meadows, Queens · Group Fitness Classes · $49 Trial',
+    title: 'Best Gym in Fresh Meadows, Queens · Group Fitness & Bootcamp Classes · $49 Trial',
     description:
       'Bootcamp, HIIT, and personal training on 164th Street in Fresh Meadows, Queens. Coach-led group classes plus 1-on-1 and small group training. Try 2 weeks for $49.',
     address: '76-46 164th Street, Fresh Meadows, NY 11366',
-    phone: '(646) 566-8207',
+    phone: '(646) 887-6483',
     nearby: 'on 164th Street near the Fresh Meadows shopping center and Utopia Parkway',
     serves: 'Fresh Meadows, Utopia, Hillcrest, Jamaica Estates, Flushing, Kew Gardens Hills, and Briarwood',
     unique: [
@@ -97,7 +97,7 @@ const LOCATIONS = [
     path: '/locations/williamsburg',
     name: 'Williamsburg',
     borough: 'Brooklyn',
-    title: 'Gym in Williamsburg, Brooklyn · Group Fitness Classes · $49 Trial',
+    title: 'Best Gym in Williamsburg, Brooklyn · Group Fitness & Bootcamp Classes · $49 Trial',
     description:
       'Bootcamp and HIIT gym on Driggs Ave in Williamsburg, Brooklyn. Coach-led group classes 7 days a week for all levels. Try 2 weeks for $49.',
     address: '487 Driggs Ave, Brooklyn, NY 11211',

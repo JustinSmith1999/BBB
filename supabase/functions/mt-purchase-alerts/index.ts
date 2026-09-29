@@ -22,7 +22,11 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const ADMIN_SECRET = Deno.env.get("BBB_ADMIN_SECRET") || "bbb-test-2026-05-27";
 const MIN_CENTS = 4900; // strictly ABOVE $49.00
 
-// Only these two studios, by locations.id.
+// Only these two studios, by locations.id. (2026-09-21: Astoria + Williamsburg
+// were briefly added to email Steve/Chris on purchases, but Justin wants those
+// two notified for TRIALS only, not purchases — so this stays Bayside/FM,
+// Carlos's SMS, as it originally was. Trials to Steve/Chris are handled by
+// manual-welcome-batch, untouched.)
 const STUDIOS: Record<string, string> = {
   "5c0e8383-dd2f-4f8f-bfea-5cc477cec4c7": "Bayside",
   "6bbbe077-bcc6-4d9d-a10b-7605c1484752": "Fresh Meadows",
@@ -41,6 +45,10 @@ function classifyOrder(summary: string, total: number): string {
   const s = (summary || "").toLowerCase();
   if (total === 0) return "zero";
   if (s.includes("two weeks trial") || s.includes("$49") || s.includes("week trial")) return "trial";
+  // 2026-09-21: promo memberships ("2 Months Back to School Promo") carry none
+  // of the words below, so they were slipping through as "other" and never
+  // alerting. Match mt-orders-sync's classifier, which already counts these.
+  if (s.includes("back to school") || s.includes("2 months") || s.includes("two months")) return "membership";
   if (s.includes("membership") || s.includes(" pif") || s.includes("pif ") || s.includes("contract") || s.includes("month to month")) return "membership";
   if (s.includes("drop in") || s.includes("late cancel") || s.includes("no show") || s.includes("water") || s.includes("celcius")) return "ancillary";
   return "other";

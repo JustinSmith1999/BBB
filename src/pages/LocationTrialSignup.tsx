@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Navigate } from 'react-router-dom';
-import { CheckCircle, Clock, Users, Zap, MapPin, Phone, Lock } from 'lucide-react';
+import { CheckCircle, Lock } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
 import { getUtmParams, captureUtmsFromUrl } from '../lib/utm';
 
@@ -60,7 +60,7 @@ const LOCATIONS: Record<string, LocationConfig> = {
     city: 'Bayside',
     state: 'NY',
     zip: '11361',
-    phone: '(646) 566-8870',
+    phone: '(917) 877-0759',
     image: '/bayside-final.webp',
     metaPixelId: '931144729719242',
     mtLocationId: 48718,
@@ -76,7 +76,7 @@ const LOCATIONS: Record<string, LocationConfig> = {
     city: 'Fresh Meadows',
     state: 'NY',
     zip: '11366',
-    phone: '(646) 566-8207',
+    phone: '(646) 887-6483',
     image: '/freshmeadows-final.webp',
     metaPixelId: '979328851475276',
     mtLocationId: 48719,
@@ -221,6 +221,12 @@ export default function LocationTrialSignup() {
   const [baysideForm,       setBaysideForm]       = useState({
     firstName: '', lastName: '', email: '', phone: '', newsletter: false,
   });
+  // ── 2026-09-03: CARD CAPTURE THROUGH MT'S STRIPE (Justin, ~3 months asking).
+  // The form now takes the card directly and posts to mt-card-checkout, which
+  // stores the card in Mariana Tek (MT tokenizes into ITS Stripe) and charges
+  // it there. Our Stripe is out of the money path; the customer gets a real
+  // "$49 Two Weeks Trial (Web)" membership + card on file, instantly.
+  const [cardForm, setCardForm] = useState({ number: '', exp: '', ccv: '', zip: '' });
   const [baysideSubmitting, setBaysideSubmitting] = useState(false);
   const [baysideError,      setBaysideError]      = useState('');
   const baysideSubmittingRef = useRef(false);
@@ -265,10 +271,27 @@ export default function LocationTrialSignup() {
     }
     if (!location) return;
 
+    // ── card validation (2026-09-03: in-page card, charged via MT's Stripe) ──
+    const cardNumber = cardForm.number.replace(/[\s-]/g, '');
+    const expMatch = cardForm.exp.trim().match(/^(0?[1-9]|1[0-2])\s*[\/\s-]?\s*(\d{2}|\d{4})$/);
+    if (!/^\d{12,19}$/.test(cardNumber)) { setBaysideError('Please enter a valid card number.'); return; }
+    if (!expMatch) { setBaysideError('Expiration should look like MM/YY.'); return; }
+    if (!/^\d{3,4}$/.test(cardForm.ccv.trim())) { setBaysideError('Please enter the 3 or 4 digit security code.'); return; }
+    if (!/^\d{5}(-\d{4})?$/.test(cardForm.zip.trim())) { setBaysideError('Please enter your billing ZIP code.'); return; }
+    const expMonth = expMatch[1].padStart(2, '0');
+    const expYear = expMatch[2].length === 2 ? `20${expMatch[2]}` : expMatch[2];
+
     baysideSubmittingRef.current = true;
     setBaysideSubmitting(true);
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/create-trial-checkout`, {
+      if (location.metaPixelId && window.fbq) {
+        window.fbq('track', 'InitiateCheckout', {
+          content_name: `${location.name} 2-Week Trial ($49)`,
+          value: 49, currency: 'USD',
+        });
+      }
+      const { fbp, fbc } = getMetaClickIds();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/mt-card-checkout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -276,30 +299,32 @@ export default function LocationTrialSignup() {
           apikey: SUPABASE_ANON_KEY,
         },
         body: JSON.stringify({
-          locationId: location.locationId,
-          locationName: location.name,
-          customerEmail: mail,
-          customerFirstName: first,
-          customerLastName: last,
-          customerName: `${first} ${last}`.trim(),
-          customerPhone: tel,
+          first_name: first,
+          last_name: last,
+          email: mail,
+          phone: tel,
+          studio_slug: location.slug,
+          kind: 'trial',
           newsletter: baysideForm.newsletter,
+          card: { number: cardNumber, exp_month: expMonth, exp_year: expYear, ccv: cardForm.ccv.trim(), postal_code: cardForm.zip.trim() },
+          fbp, fbc,
           ...getUtmParams(),
-          priceVariant: 'trial',
         }),
       });
       const data = await res.json();
-      if (!res.ok || !data?.url) {
-        throw new Error(data?.error || 'Could not start checkout. Please try again.');
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.message || data?.error || 'Could not complete checkout. Please try again.');
       }
       if (location.metaPixelId && window.fbq) {
-        window.fbq('track', 'InitiateCheckout', {
+        window.fbq('track', 'Purchase', {
           content_name: `${location.name} 2-Week Trial ($49)`,
           value: 49, currency: 'USD',
         });
       }
       try { sessionStorage.setItem('bbb_last_trial_studio', location.slug); } catch { /* ignore */ }
-      window.location.href = data.url;
+      // Card data lives only in component state; clear before navigating.
+      setCardForm({ number: '', exp: '', ccv: '' });
+      window.location.href = `/trial-success?studio=${location.slug}&native=1`;
     } catch (err) {
       setBaysideError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
       baysideSubmittingRef.current = false;
@@ -581,150 +606,33 @@ export default function LocationTrialSignup() {
     />
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
       {/* HERO ─────────────────────────────────────────────────────────────── */}
-      {/* 2026-06-19: Per-studio branded banner hero when heroImageWeb is set
-          (Bayside + Fresh Meadows). Banner artwork already contains the
-          "TWO WEEKS FOR $49" headline + studio name + subhead baked in, so we
-          render the image alone — no text overlay needed. Astoria + WB still
-          use the original red gradient hero below. */}
-      {location.heroImageWeb ? (
-        <div className="relative w-full pt-28 sm:pt-24 lg:pt-28 bg-black">
-          <picture>
-            <source media="(min-width: 640px)" srcSet={location.heroImageWeb} />
-            <img
-              src={location.heroImageMobile || location.heroImageWeb}
-              alt={`Better Body Bootcamp ${location.name} — Two Weeks for $49`}
-              className="w-full h-auto block"
-              loading="eager"
-              fetchPriority="high"
-            />
-          </picture>
+      {/* 2026-09-11 (Justin): page stripped to "just the form and the menu".
+          The banner-image hero, feature chips, benefit columns, reviews and
+          FAQ are gone; this compact block is the entire offer statement so
+          the form is visible without scrolling on mobile. */}
+      <div className="relative bg-gradient-to-br from-red-600 via-red-700 to-red-800 text-white pt-28 pb-8 sm:pt-32 sm:pb-12 overflow-hidden">
+        <div className="absolute inset-0 bg-black/10"></div>
+        <div className="max-w-3xl mx-auto px-3 sm:px-6 text-center relative z-10">
+          <span className="inline-block px-3 py-1 sm:px-4 sm:py-1.5 bg-white/15 backdrop-blur-sm rounded-full text-[10px] sm:text-xs font-bold tracking-[0.2em] uppercase border border-white/30 mb-3 sm:mb-4 whitespace-nowrap">
+            {location.badge}
+          </span>
+          <h1 className="font-black leading-[0.95] tracking-tight text-3xl sm:text-5xl md:text-6xl">
+            TWO WEEKS FOR $49
+          </h1>
+          <p className="text-sm sm:text-lg font-medium leading-snug mt-2 sm:mt-3">
+            Unlimited classes at <span className="whitespace-nowrap">Better Body Bootcamp {location.name}</span>.
+          </p>
         </div>
-      ) : (
-        <div className="relative bg-gradient-to-br from-red-600 via-red-700 to-red-800 text-white pt-36 pb-10 sm:pt-32 sm:pb-16 lg:pt-36 lg:pb-20 overflow-hidden">
-          <div className="absolute inset-0 bg-black/10"></div>
-          <div className="absolute inset-0 opacity-10">
-            <div className="absolute top-20 left-10 w-72 h-72 bg-white rounded-full blur-3xl"></div>
-            <div className="absolute bottom-10 right-10 w-96 h-96 bg-white rounded-full blur-3xl"></div>
-          </div>
-
-          <div className="max-w-5xl mx-auto px-3 sm:px-6 lg:px-8 text-center relative z-10">
-            <span className="inline-block px-3 py-1 sm:px-4 sm:py-1.5 bg-white/15 backdrop-blur-sm rounded-full text-[10px] sm:text-xs font-bold tracking-[0.2em] uppercase border border-white/30 mb-4 sm:mb-10 whitespace-nowrap">
-              {location.badge}
-            </span>
-            <h1 className="font-black mb-3 sm:mb-6 leading-[0.95] tracking-tight">
-              <span className="block text-3xl sm:text-6xl md:text-7xl lg:text-8xl">TWO WEEKS</span>
-              <span className="block text-4xl sm:text-7xl md:text-8xl lg:text-[9rem] mt-1 sm:mt-3">FOR $49</span>
-            </h1>
-            <p className="text-sm sm:text-lg md:text-xl lg:text-2xl font-medium leading-snug sm:leading-relaxed max-w-md sm:max-w-3xl mx-auto mb-0 sm:mb-8 px-2">
-              Unlimited classes at <span className="whitespace-nowrap">Better Body Bootcamp {location.name}</span>. Real training. Real results.
-            </p>
-
-            <div className="hidden sm:flex flex-nowrap justify-center items-center gap-1.5 sm:gap-4 lg:gap-8 mt-6 sm:mt-10 px-1">
-              <div className="flex items-center justify-center gap-1 sm:gap-2 bg-white/10 backdrop-blur-sm px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg border border-white/20 flex-1 sm:flex-initial">
-                <Clock className="w-3.5 h-3.5 sm:w-5 sm:h-5 flex-shrink-0" />
-                <span className="font-semibold text-[10px] sm:text-base whitespace-nowrap">14 Days</span>
-              </div>
-              <div className="flex items-center justify-center gap-1 sm:gap-2 bg-white/10 backdrop-blur-sm px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg border border-white/20 flex-1 sm:flex-initial">
-                <Users className="w-3.5 h-3.5 sm:w-5 sm:h-5 flex-shrink-0" />
-                <span className="font-semibold text-[10px] sm:text-base whitespace-nowrap">Expert Trainers</span>
-              </div>
-              <div className="flex items-center justify-center gap-1 sm:gap-2 bg-white/10 backdrop-blur-sm px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg border border-white/20 flex-1 sm:flex-initial">
-                <Zap className="w-3.5 h-3.5 sm:w-5 sm:h-5 flex-shrink-0" />
-                <span className="font-semibold text-[10px] sm:text-base whitespace-nowrap">High-Energy</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
 
       {/* MAIN CARD ────────────────────────────────────────────────────────── */}
       {/* No overlap on mobile so the hero subtitle is fully visible. Desktop
           keeps the -mt-8 lift for the existing layered look. */}
-      <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 mt-0 sm:-mt-8 relative z-20">
-        <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl p-4 sm:p-10 lg:p-12 mb-8 sm:mb-12">
+      <div className="max-w-2xl mx-auto px-3 sm:px-6 mt-0 sm:-mt-6 relative z-20">
+        <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl p-4 sm:p-8 mb-8 sm:mb-12">
 
-          <div className="grid lg:grid-cols-5 gap-6 sm:gap-8 lg:gap-12">
-
-            {/* LEFT: Why + What's Included + Studio Card */}
-            {/* order-2 on mobile so the FORM lands above this block (form is order-1).
-                Desktop (lg) flips back to natural source order via lg:order-none. */}
-            <div className="lg:col-span-2 space-y-5 sm:space-y-6 order-2 lg:order-none">
-              <div>
-                <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold mb-4 sm:mb-6 text-gray-900 text-center lg:text-left">Why Better Body?</h2>
-                <div className="space-y-3 sm:space-y-4 max-w-xs sm:max-w-none mx-auto">
-                  <div className="flex items-start gap-3">
-                    <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0 mt-0.5 sm:mt-1" />
-                    <div>
-                      <h3 className="font-bold text-gray-900 mb-0.5 sm:mb-1 text-sm sm:text-base">Real Strength Training</h3>
-                      <p className="text-gray-600 text-xs sm:text-sm">Proven methods that deliver lasting results.</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0 mt-0.5 sm:mt-1" />
-                    <div>
-                      <h3 className="font-bold text-gray-900 mb-0.5 sm:mb-1 text-sm sm:text-base">Dynamic Workouts</h3>
-                      <p className="text-gray-600 text-xs sm:text-sm">Never boring, always challenging.</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0 mt-0.5 sm:mt-1" />
-                    <div>
-                      <h3 className="font-bold text-gray-900 mb-0.5 sm:mb-1 text-sm sm:text-base">Engaged Trainers</h3>
-                      <p className="text-gray-600 text-xs sm:text-sm">Coaches who care about your progress.</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0 mt-0.5 sm:mt-1" />
-                    <div>
-                      <h3 className="font-bold text-gray-900 mb-0.5 sm:mb-1 text-sm sm:text-base">Community Driven</h3>
-                      <p className="text-gray-600 text-xs sm:text-sm">Train alongside people serious about their goals.</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-gradient-to-br from-red-50 to-white border-2 border-red-100 rounded-2xl p-5 sm:p-6">
-                <h3 className="font-bold text-base sm:text-lg text-gray-900 mb-3 text-center lg:text-left">Your 2-Week Trial Includes:</h3>
-                <ul className="space-y-1.5 sm:space-y-2 text-gray-700 text-xs sm:text-sm max-w-xs sm:max-w-none mx-auto">
-                  <li className="flex items-start gap-2"><span className="text-red-600 mt-0.5">•</span> Unlimited access to all classes</li>
-                  <li className="flex items-start gap-2"><span className="text-red-600 mt-0.5">•</span> Complete fitness assessment</li>
-                  <li className="flex items-start gap-2"><span className="text-red-600 mt-0.5">•</span> Personalized goal setting</li>
-                  <li className="flex items-start gap-2"><span className="text-red-600 mt-0.5">•</span> Full access at our {location.name} studio</li>
-                </ul>
-                <div className="border-t border-red-100 mt-4 pt-3 flex justify-between items-center">
-                  <span className="font-bold text-gray-700 uppercase text-xs tracking-wider">Total</span>
-                  <span className="text-2xl sm:text-3xl font-black text-red-600">$49</span>
-                </div>
-                <p className="text-[10px] sm:text-xs text-gray-500 mt-2 italic">
-                  You have 60 days to claim and start your trial.
-                </p>
-                <p className="text-xs sm:text-sm text-red-600 font-bold mt-2">
-                  Two-week trial available only to New York City residents.
-                </p>
-                <p className="text-[9px] sm:text-[10px] text-gray-400 mt-3 leading-tight">
-                  All trials non-refundable.
-                </p>
-              </div>
-
-              <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 sm:p-5">
-                <h4 className="font-bold text-gray-900 mb-2 sm:mb-3 text-xs sm:text-sm uppercase tracking-wide text-center lg:text-left">Your Studio</h4>
-                <div className="space-y-2 text-xs sm:text-sm text-gray-700 max-w-xs sm:max-w-none mx-auto">
-                  <div className="flex items-start gap-2">
-                    <MapPin className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
-                    <span>{location.address}<br/>{location.city}, {location.state} {location.zip}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Phone className="w-4 h-4 text-red-600 flex-shrink-0" />
-                    <a href={`tel:${location.phone}`} className="hover:text-red-600 transition-colors font-semibold">{location.phone}</a>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* RIGHT: Form ─────────────────────────────────────────────── */}
-            {/* order-1 on mobile so the form sits at the TOP of the card,
-                directly under the shrunk hero. Sticky bottom CTA scrolls here. */}
-            <div className="lg:col-span-3 order-1 lg:order-none" id="trial-form">
+            {/* Form ─────────────────────────────────────────────────────── */}
+            <div id="trial-form">
               <div className="bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-2xl p-4 sm:p-8 scroll-mt-24">
                 <div className="mb-5 sm:mb-6 text-center lg:text-left">
                   <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-1">Claim Your Trial</h2>
@@ -826,6 +734,48 @@ export default function LocationTrialSignup() {
                       disabled={baysideSubmitting}
                       className="w-full px-3 py-3 rounded-lg border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"
                     />
+                    {/* 2026-09-03: card fields — charged + stored via Mariana
+                        Tek's own Stripe (mt-card-checkout). Never touches our
+                        servers' storage; posted once over TLS. */}
+                    <input
+                      type="text" required inputMode="numeric" autoComplete="cc-number"
+                      placeholder="Card number"
+                      value={cardForm.number}
+                      onChange={e => setCardForm(f => ({ ...f, number: e.target.value.replace(/[^\d\s]/g, '') }))}
+                      disabled={baysideSubmitting}
+                      className="w-full px-3 py-3 rounded-lg border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"
+                    />
+                    <div className="grid grid-cols-3 gap-3">
+                      <input
+                        type="text" required inputMode="numeric" autoComplete="cc-exp"
+                        placeholder="MM/YY" maxLength={7}
+                        value={cardForm.exp}
+                        onChange={e => {
+                          // Mobile numeric keypads have no "/" key, so auto-insert it.
+                          const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
+                          const formatted = digits.length >= 3 ? `${digits.slice(0, 2)}/${digits.slice(2)}` : digits;
+                          setCardForm(f => ({ ...f, exp: formatted }));
+                        }}
+                        disabled={baysideSubmitting}
+                        className="px-3 py-3 rounded-lg border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"
+                      />
+                      <input
+                        type="text" required inputMode="numeric" autoComplete="cc-csc"
+                        placeholder="CVC"
+                        value={cardForm.ccv}
+                        onChange={e => setCardForm(f => ({ ...f, ccv: e.target.value.replace(/\D/g, '') }))}
+                        disabled={baysideSubmitting}
+                        className="px-3 py-3 rounded-lg border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"
+                      />
+                      <input
+                        type="text" required inputMode="numeric" autoComplete="postal-code"
+                        placeholder="ZIP"
+                        value={cardForm.zip}
+                        onChange={e => setCardForm(f => ({ ...f, zip: e.target.value.replace(/[^\d-]/g, '') }))}
+                        disabled={baysideSubmitting}
+                        className="px-3 py-3 rounded-lg border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"
+                      />
+                    </div>
                     <label className="flex items-start gap-2 text-xs text-gray-600 min-h-[24px] pt-1">
                       <input
                         type="checkbox"
@@ -843,17 +793,17 @@ export default function LocationTrialSignup() {
                       disabled={baysideSubmitting}
                       className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-xl text-base transition-colors disabled:opacity-60 disabled:cursor-wait"
                     >
-                      {baysideSubmitting ? 'Starting checkout…' : 'Claim my $49 trial →'}
+                      {baysideSubmitting ? 'Processing…' : 'Claim my $49 trial →'}
                     </button>
                     <p className="text-xs text-gray-600 leading-relaxed">
                       By starting your trial you agree to our{' '}
                       <a href="/privacy" className="underline">Privacy Policy</a> and{' '}
-                      <a href="/terms" className="underline">Terms</a>. Payment
-                      handled securely by Stripe.
+                      <a href="/terms" className="underline">Terms</a>. You pay
+                      $49 today, one time. Nothing recurring.
                     </p>
                     <div className="flex items-center justify-center gap-2 text-xs text-gray-500 pt-1">
                       <Lock className="w-3.5 h-3.5" />
-                      Powered by Stripe — Apple Pay, Google Pay, Link supported
+                      Payment processed securely by Mariana Tek + Stripe
                     </div>
                   </form>
                 )}
@@ -956,7 +906,6 @@ export default function LocationTrialSignup() {
                 </div>
               </div>
             </div>
-          </div>
         </div>
       </div>
     </div>

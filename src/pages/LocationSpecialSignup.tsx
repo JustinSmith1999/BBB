@@ -45,7 +45,7 @@ const LOCATIONS: Record<string, LocationConfig> = {
     city: 'Bayside',
     state: 'NY',
     zip: '11361',
-    phone: '(646) 566-8870',
+    phone: '(917) 877-0759',
     metaPixelId: '931144729719242',
   },
   'fresh-meadows': {
@@ -57,7 +57,7 @@ const LOCATIONS: Record<string, LocationConfig> = {
     city: 'Fresh Meadows',
     state: 'NY',
     zip: '11366',
-    phone: '(646) 566-8207',
+    phone: '(646) 887-6483',
     metaPixelId: '979328851475276',
   },
   'williamsburg': {

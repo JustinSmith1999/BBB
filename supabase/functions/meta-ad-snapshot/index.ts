@@ -79,7 +79,16 @@ async function snapshotStudio(s: typeof STUDIOS[0], days: number) {
   const token = Deno.env.get(s.tokenEnv);
   if (!token) return { studio: s.slug, error: `missing env var ${s.tokenEnv}` };
 
-  const datePreset = days <= 7 ? "last_7d" : days <= 14 ? "last_14d" : days <= 30 ? "last_30d" : "last_90d";
+  // EXACT date window in the studio's timezone (America/New_York), so days=1 is
+  // TODAY (partial day so far), days=7 is the last 7 calendar days, etc. The old
+  // code mapped days<=7 → "last_7d" for everything, so a 1-day and a 7-day pull
+  // returned the identical 7-day total — which looked like a terrifying daily
+  // spend. time_range fixes that: the number now matches the window asked for.
+  const until = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" }); // YYYY-MM-DD
+  const sinceDate = new Date(`${until}T12:00:00Z`);
+  sinceDate.setUTCDate(sinceDate.getUTCDate() - (days - 1));
+  const since = sinceDate.toISOString().slice(0, 10);
+  const timeRange = JSON.stringify({ since, until });
 
   try {
     // Account status
@@ -88,7 +97,7 @@ async function snapshotStudio(s: typeof STUDIOS[0], days: number) {
     // Account-level rollup (totals across everything in window)
     const acctInsightsRes = await fbGet(`${s.adAccount}/insights`, token, {
       fields: "spend,impressions,clicks,actions",
-      date_preset: datePreset,
+      time_range: timeRange,
     });
     const acctTotals = pickInsights((acctInsightsRes.data || [])[0]);
 
@@ -97,16 +106,16 @@ async function snapshotStudio(s: typeof STUDIOS[0], days: number) {
     const camp = await fbGet(`${s.adAccount}/campaigns`, token, {
       fields: [
         "id,name,status,effective_status,objective,daily_budget,lifetime_budget",
-        `insights.date_preset(${datePreset}){spend,impressions,clicks,actions}`,
+        `insights.time_range(${timeRange}){spend,impressions,clicks,actions}`,
         // Adsets nested under each campaign
         "adsets{id,name,status,effective_status,daily_budget,lifetime_budget,targeting{geo_locations,age_min,age_max,publisher_platforms,facebook_positions,instagram_positions,audience_network_positions,messenger_positions,flexible_spec,interests}," +
-        `insights.date_preset(${datePreset}){spend,impressions,clicks,actions},` +
+        `insights.time_range(${timeRange}){spend,impressions,clicks,actions},` +
         // Ads nested under each adset. Pull object_story_spec to learn which
         // Facebook Page owns the ad — that's what shows at the top of every ad
         // in feed (the page name + avatar). Mismatched page name → confused
         // customer → bounce.
         "ads{id,name,status,effective_status,creative{id,name,thumbnail_url,object_story_spec{page_id,instagram_actor_id},effective_object_story_id}," +
-        `insights.date_preset(${datePreset}){spend,impressions,clicks,actions}}}`,
+        `insights.time_range(${timeRange}){spend,impressions,clicks,actions}}}`,
       ].join(","),
       filtering: JSON.stringify([{ field: "effective_status", operator: "IN", value: ["ACTIVE","PAUSED","CAMPAIGN_PAUSED","ADSET_PAUSED","WITH_ISSUES","PENDING_REVIEW","DISAPPROVED","PENDING_BILLING_INFO","IN_PROCESS"] }]),
       limit: "100",
@@ -189,6 +198,21 @@ async function snapshotStudio(s: typeof STUDIOS[0], days: number) {
     // Studio-level summary: which Page(s) are running ads here?
     const pagesUsed = Object.entries(pageById).map(([id, p]) => ({ page_id: id, ...p }));
 
+    // Real $/day cap for the studio: CBO budget on ACTIVE campaigns, else the
+    // sum of ACTIVE adset (ABO) budgets. This is what the dashboard should show
+    // next to spend so a multi-day total can never masquerade as a daily number.
+    let dailyBudgetUsd = 0;
+    for (const c of campaigns) {
+      if (c.daily_budget_usd && c.effective_status === "ACTIVE") {
+        dailyBudgetUsd += c.daily_budget_usd;                       // CBO: campaign-level
+      } else {
+        for (const a of (c.adsets || [])) {
+          if (a.daily_budget_usd && a.effective_status === "ACTIVE") dailyBudgetUsd += a.daily_budget_usd; // ABO
+        }
+      }
+    }
+    const spend = Number(acctTotals?.spend || 0);
+
     return {
       studio: s.slug,
       name: s.name,
@@ -197,6 +221,10 @@ async function snapshotStudio(s: typeof STUDIOS[0], days: number) {
       account_disable_reason: acct.disable_reason,
       balance: acct.balance,
       window_days: days,
+      window_since: since,
+      window_until: until,
+      daily_budget_usd: +dailyBudgetUsd.toFixed(2),
+      avg_spend_per_day: days > 0 ? +(spend / days).toFixed(2) : spend,
       totals_window: acctTotals,
       ads_active: activeAds,
       ads_paused: pausedAds,

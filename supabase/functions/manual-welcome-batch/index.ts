@@ -54,6 +54,18 @@ function studioSlugOf(name: string | null | undefined): string {
 function studioMailboxOf(slug: string): string {
   return `${slug.replace(/-/g, "")}@betterbodybootcamp.com`;
 }
+// 2026-09-14 (Justin): managers who also get the trial-alert email per studio,
+// in addition to the studio inbox. Devonte + Salim run Bayside + Fresh Meadows.
+const EXTRA_STUDIO_NOTIFY: Record<string, string[]> = {
+  "bayside": ["devonte@betterbodybootcamp.com", "salim@betterbodybootcamp.com"],
+  "fresh-meadows": ["devonte@betterbodybootcamp.com", "salim@betterbodybootcamp.com"],
+  // 2026-09-15 (Chris): trial alerts only ever hit the studio inbox, never the
+  // owners' own inboxes — so Chris/Steve never saw a trial email unless they
+  // watched williamsburg@/astoria@. CC them directly, matching the member-alert
+  // roster in mt-orders-sync, so trials reach them by email even with texts down.
+  "williamsburg": ["steve@betterbodybootcamp.com", "chris@betterbodybootcamp.com"],
+  "astoria": ["steve@betterbodybootcamp.com", "chris@betterbodybootcamp.com"],
+};
 function firstNameOf(name: string | null | undefined): string {
   return (name || "").trim().split(/\s+/)[0] || "there";
 }
@@ -67,8 +79,8 @@ function studioPhoneOf(slug: string): string {
   const m: Record<string, string> = {
     "williamsburg":  "(718) 683-1864",
     "astoria":       "(718) 704-9954",
-    "bayside":       "(646) 566-8870",
-    "fresh-meadows": "(646) 566-8207",
+    "bayside":       "(917) 877-0759",
+    "fresh-meadows": "(646) 887-6483",
   };
   return m[slug] || "";
 }
@@ -91,7 +103,7 @@ async function twilioSend(opts: {
 }
 
 async function resendSend(opts: {
-  apiKey: string; from: string; to: string; replyTo?: string;
+  apiKey: string; from: string; to: string | string[]; replyTo?: string;
   subject: string; html: string; text: string;
   tags?: Array<{ name: string; value: string }>;
 }): Promise<{ ok: boolean; status: number; id?: string; error?: any }> {
@@ -100,7 +112,7 @@ async function resendSend(opts: {
     headers: { Authorization: `Bearer ${opts.apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       from: opts.from,
-      to: [opts.to],
+      to: Array.isArray(opts.to) ? opts.to : [opts.to],
       reply_to: opts.replyTo,
       subject: opts.subject,
       html: opts.html,
@@ -182,12 +194,53 @@ function customerEmailHtml(firstName: string, studioShort: string, bookingUrl: s
 }
 function ownerSmsBody(studioShort: string, customerName: string, customerPhone: string, customerEmail: string): string {
   return [
-    `New $49 trial signup · ${studioShort}`,
+    `🟢 New $49 trial · ${studioShort}`,
+    ``,
     customerName || "(no name)",
-    customerPhone || "",
-    customerEmail || "",
-    `Call today to book class 1.`,
-  ].filter(Boolean).join("\n");
+    customerPhone ? `📞 ${customerPhone}` : ``,
+    customerEmail ? `✉️ ${customerEmail}` : ``,
+    `\nCall today to book class 1.`,
+  ].filter((l) => l !== ``).join("\n");
+}
+
+// Studios live on Quo → give their trial leads the named-contact treatment.
+const QUO_STUDIO_SLUGS = new Set(["bayside", "fresh-meadows"]);
+const QUO_STUDIO_NUMBER: Record<string, string> = {
+  "bayside": "+19178770759",
+  "fresh-meadows": "+16468876483",
+};
+// Send the welcome FROM the studio's Quo number so the trial gets its OWN named
+// conversation in the shared inbox (self-threading). Falls back to Twilio while
+// 10DLC is still pending (a2pBlocked / any error) so behaviour is unchanged
+// until the registration clears.
+async function quoSendMessage(fromE164: string, toE164: string, content: string): Promise<{ ok: boolean; a2pBlocked?: boolean; error?: string }> {
+  const key = Deno.env.get("QUO_API_KEY");
+  if (!key) return { ok: false, error: "QUO_API_KEY missing" };
+  const r = await fetch("https://api.quo.com/v1/messages", {
+    method: "POST",
+    headers: { "Authorization": key, "Content-Type": "application/json" },
+    body: JSON.stringify({ from: fromE164, to: [toE164], content }),
+  });
+  if (r.ok) return { ok: true };
+  const j = await r.json().catch(() => ({}));
+  const code = String((j as any)?.code || "");
+  return { ok: false, a2pBlocked: code === "0206400" || r.status === 400, error: (j as any)?.message || `HTTP ${r.status}` };
+}
+// Create the trial customer as a NAMED Quo contact so their number resolves to
+// the person (one-tap call/text) in the shared inbox. No outbound message.
+async function quoCreateContact(firstName: string, lastName: string, phone: string | null, email: string | null): Promise<{ ok: boolean; id?: string; error?: string }> {
+  const key = Deno.env.get("QUO_API_KEY");
+  if (!key) return { ok: false, error: "QUO_API_KEY missing" };
+  const defaultFields: any = { firstName: firstName || "Trial", lastName: lastName || "Lead" };
+  if (phone) defaultFields.phoneNumbers = [{ name: "mobile", value: phone }];
+  if (email) defaultFields.emails = [{ name: "email", value: email }];
+  const r = await fetch("https://api.quo.com/v1/contacts", {
+    method: "POST",
+    headers: { "Authorization": key, "Content-Type": "application/json" },
+    body: JSON.stringify({ defaultFields, source: "website-49-trial" }),
+  });
+  const j = await r.json().catch(() => ({}));
+  return r.ok ? { ok: true, id: (j as any)?.data?.id } : { ok: false, error: (j as any)?.message || `HTTP ${r.status}` };
 }
 function studioEmailSubject(customerName: string, studioShort: string): string {
   return `🎉 New $49 Trial — ${customerName || "(no name)"} · ${studioShort}`;
@@ -359,39 +412,70 @@ Deno.serve(async (req) => {
       : "(not set)";
     const out: any = { id: t.id, name: t.name, email: t.email, studio: studioShort };
 
+    // ── Idempotency claims (2026-09-16, Justin: Salma Naoum got two welcomes) ──
+    // The checkout flow and mt-orders-sync can both fire a welcome for the same
+    // signup seconds apart. Previously nothing guarded the SEND — the email was
+    // never even stamped — so the second run re-sent the customer email + studio
+    // alert. Fix: atomically claim each channel by flipping its *_sent_at column
+    // from NULL. Only the run that wins the flip actually sends. On send failure
+    // we release the claim so a later run can retry.
+    let smsClaimed = false, emailClaimed = false;
+    if (!dryRun && sendCustomerSms) {
+      try {
+        const { data } = await sb.from("trial_signups")
+          .update({ welcome_sms_sent_at: new Date().toISOString() })
+          .eq("id", t.id).is("welcome_sms_sent_at", null).select("id");
+        smsClaimed = !!(data && data.length);
+      } catch { smsClaimed = false; }
+    }
+    if (!dryRun && (sendCustomerEmail || sendStudioEmail)) {
+      try {
+        const { data } = await sb.from("trial_signups")
+          .update({ welcome_email_sent_at: new Date().toISOString() })
+          .eq("id", t.id).is("welcome_email_sent_at", null).select("id");
+        emailClaimed = !!(data && data.length);
+      } catch { emailClaimed = false; }
+    }
+
     // 1. Customer SMS
-    if (sendCustomerSms) {
+    if (sendCustomerSms && (dryRun || smsClaimed)) {
       const txt = customerSmsBody(firstName, studioShort, bookingUrl);
       if (!customerTo) {
         out.customer_sms = { ok: false, error: "invalid phone" };
+        if (smsClaimed) { try { await sb.from("trial_signups").update({ welcome_sms_sent_at: null }).eq("id", t.id); } catch {} }
       } else if (dryRun) {
         out.customer_sms = { ok: true, dry_run: true, preview: { to: customerTo, body: txt } };
       } else {
-        const r = await twilioSend({ sid: twSid, token: twToken, from: twFrom, to: customerTo, body: txt });
-        out.customer_sms = { ok: r.ok, status: r.status, sid: r.sid, error: r.error };
+        // Prefer the studio's Quo number so the welcome self-threads the trial
+        // in the shared inbox. Falls back to Twilio while 10DLC is pending.
+        let r: any = null;
+        let fromUsed = twFrom;
+        const quoFrom = QUO_STUDIO_NUMBER[studioSlug];
+        if (quoFrom) {
+          const q = await quoSendMessage(quoFrom, customerTo, txt);
+          if (q.ok) { r = { ok: true, status: 202, sid: null }; fromUsed = quoFrom; }
+        }
+        if (!r) r = await twilioSend({ sid: twSid, token: twToken, from: twFrom, to: customerTo, body: txt });
+        out.customer_sms = { ok: r.ok, status: r.status, sid: r.sid, error: r.error, channel: fromUsed === quoFrom ? "quo" : "twilio" };
         if (r.ok) {
           try {
             await sb.from("sms_messages").insert({
               trial_signup_id: t.id, studio_slug: studioSlug, direction: "outbound",
-              from_phone: twFrom, to_phone: customerTo, body: txt,
+              from_phone: fromUsed, to_phone: customerTo, body: txt,
               twilio_sid: r.sid ?? null, status: "queued", sent_by: "manual_welcome_batch",
             });
           } catch {}
-          // 2026-07-22: stamp welcome_sms_sent_at (same column stripe-webhook
-          // sets for website trials) so the welcome text shows in Homebase Comms
-          // and a re-run won't double-text a customer who was already welcomed.
-          try {
-            await sb.from("trial_signups")
-              .update({ welcome_sms_sent_at: new Date().toISOString() })
-              .eq("id", t.id)
-              .is("welcome_sms_sent_at", null);
-          } catch {}
+        } else {
+          // send failed — release the claim so a later run retries
+          try { await sb.from("trial_signups").update({ welcome_sms_sent_at: null }).eq("id", t.id); } catch {}
         }
       }
+    } else if (sendCustomerSms && !smsClaimed) {
+      out.customer_sms = { skipped: "already_welcomed" };
     }
 
     // 2. Customer Email
-    if (sendCustomerEmail) {
+    if (sendCustomerEmail && (dryRun || emailClaimed)) {
       const subject = customerEmailSubject(firstName, studioShort);
       const text    = customerEmailText(firstName, studioShort, bookingUrl);
       const html    = customerEmailHtml(firstName, studioShort, bookingUrl, studioSlug);
@@ -421,49 +505,78 @@ Deno.serve(async (req) => {
               raw: { studio_slug: studioSlug, manual: true },
             });
           } catch {}
+        } else {
+          // send failed — release the email claim so a later run retries
+          try { await sb.from("trial_signups").update({ welcome_email_sent_at: null }).eq("id", t.id); } catch {}
+          emailClaimed = false;
         }
       }
+    } else if (sendCustomerEmail && !emailClaimed) {
+      out.customer_email = { skipped: "already_welcomed" };
     }
 
-    // 3. Owner SMS
+    // 3. Owner alert
     if (sendOwnerSms) {
       const owners = studioOwners[t.location_id] || [];
-      const txt = ownerSmsBody(studioShort, t.name || "", t.phone || "", t.email || "");
-      const sent: any[] = [];
-      for (const o of owners) {
-        const to = normalizeE164(o.phone);
-        if (!to) { sent.push({ owner: o.owner_name, ok: false, error: "bad phone" }); continue; }
-        if (dryRun) { sent.push({ owner: o.owner_name, ok: true, dry_run: true, to, body: txt }); continue; }
-        const r = await twilioSend({ sid: twSid, token: twToken, from: twFrom, to, body: txt });
-        sent.push({ owner: o.owner_name, to, ok: r.ok, status: r.status, sid: r.sid, error: r.error });
-        if (r.ok) {
+
+      if (QUO_STUDIO_SLUGS.has(studioSlug)) {
+        // Quo studios (Bayside / Fresh Meadows): route the trial into the
+        // customer's OWN Quo thread — named contact + a Quo Task on the studio
+        // line — via quo-lead-router, instead of the shared 877 relay alert
+        // that bounced with "Could not tell who this reply is for." Staff work
+        // it from the Tasks tab and reply straight to the customer. No auto-text.
+        if (dryRun) {
+          out.owner_sms = [{ ok: true, dry_run: true, routed: "quo-lead-router", kind: "trial" }];
+        } else {
           try {
-            await sb.from("sms_messages").insert({
-              // Tag with the trial id so /homebase comms history can surface
-              // these owner pings under the customer's card. Was previously
-              // null which made them invisible.
-              trial_signup_id: t.id, studio_slug: studioSlug, direction: "outbound",
-              from_phone: twFrom, to_phone: to, body: txt,
-              twilio_sid: r.sid ?? null, status: "queued", sent_by: "manual_owner_alert",
+            const rr = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/quo-lead-router`, {
+              method: "POST",
+              headers: { "x-bbb-secret": Deno.env.get("BBB_ADMIN_SECRET") || "bbb-test-2026-05-27", "Content-Type": "application/json" },
+              body: JSON.stringify({ name: t.name, phone: t.phone, email: t.email, studio_slug: studioSlug, kind: "trial" }),
             });
-          } catch {}
+            const rj = await rr.json().catch(() => ({}));
+            out.owner_sms = [{ ok: rr.ok, routed: "quo-lead-router", task_id: (rj as any)?.task_id ?? null }];
+          } catch (e) {
+            out.owner_sms = [{ ok: false, routed: "quo-lead-router", error: (e as Error).message }];
+          }
         }
+      } else {
+        // Non-Quo studios (Astoria / Williamsburg): keep the Twilio owner-cell alert.
+        const txt = ownerSmsBody(studioShort, t.name || "", t.phone || "", t.email || "");
+        const sent: any[] = [];
+        for (const o of owners) {
+          const to = normalizeE164(o.phone);
+          if (!to) { sent.push({ owner: o.owner_name, ok: false, error: "bad phone" }); continue; }
+          if (dryRun) { sent.push({ owner: o.owner_name, ok: true, dry_run: true, to, body: txt }); continue; }
+          const r = await twilioSend({ sid: twSid, token: twToken, from: twFrom, to, body: txt });
+          sent.push({ owner: o.owner_name, to, ok: r.ok, status: r.status, sid: r.sid, error: r.error });
+          if (r.ok) {
+            try {
+              await sb.from("sms_messages").insert({
+                trial_signup_id: t.id, studio_slug: studioSlug, direction: "outbound",
+                from_phone: twFrom, to_phone: to, body: txt,
+                twilio_sid: r.sid ?? null, status: "queued", sent_by: "manual_owner_alert",
+              });
+            } catch {}
+          }
+        }
+        out.owner_sms = sent.length ? sent : [{ ok: false, error: "no owners found" }];
       }
-      out.owner_sms = sent.length ? sent : [{ ok: false, error: "no owners found" }];
     }
 
-    // 4. Studio inbox email
-    if (sendStudioEmail) {
+    // 4. Studio inbox email (tied to the same email claim so it can't double-fire)
+    if (sendStudioEmail && (dryRun || emailClaimed)) {
       const subject = studioEmailSubject(t.name || "", studioShort);
       const text    = studioEmailText(t.name || "", studioShort, t.phone || "", t.email || "", paidEt, t.mariana_tek_id || null);
       const html    = studioEmailHtml(t.name || "", studioShort, t.phone || "", t.email || "", paidEt, t.mariana_tek_id || null);
+      const studioTo = [studioMail, ...(EXTRA_STUDIO_NOTIFY[studioSlug] ?? [])];
       if (dryRun) {
-        out.studio_email = { ok: true, dry_run: true, preview: { to: studioMail, subject } };
+        out.studio_email = { ok: true, dry_run: true, preview: { to: studioTo, subject } };
       } else {
         const r = await resendSend({
           apiKey: resendKey,
           from: `BBB Trials <trials@betterbodybootcamp.com>`,
-          to: studioMail, replyTo: studioMail,
+          to: studioTo, replyTo: studioMail,
           subject, html, text,
           tags: [
             { name: "send_path",       value: "manual_studio_alert" },

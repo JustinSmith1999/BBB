@@ -206,7 +206,7 @@ export default function Brooklyn() {
                     to="/locations/williamsburg"
                     className="text-center border-2 border-gray-300 hover:border-gray-900 text-gray-900 font-semibold py-2.5 rounded-lg transition-colors"
                   >
-                    View the Williamsburg Gym
+                    See the Best Gym in Williamsburg
                   </Link>
                 </div>
               </div>

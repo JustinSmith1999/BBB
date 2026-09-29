@@ -387,7 +387,7 @@ serve(async (req) => {
   // 2026-08-21 (Justin): owners get texted for big purchases too, not just
   // trials. New PAID membership/contract/PIF sales collect here for the
   // owner-SMS kickoff at the bottom (send path 'owner_membership_sms').
-  const membershipSalesToNotify: { name: string; items: string; totalCents: number; studio_slug: string; location_id: string | null }[] = [];
+  const membershipSalesToNotify: { name: string; items: string; totalCents: number; studio_slug: string; location_id: string | null; email?: string | null; phone?: string | null }[] = [];
   // 2026-09-02: brand-new membership buyers (no prior lead row) get a one-time
   // membership welcome email — correct copy, NOT the "2-week trial" template.
   const membershipWelcomesToSend: { trial_id: string; email: string; first: string; studio_slug: string; items: string; name?: string; phone?: string | null; total_cents?: number }[] = [];
@@ -414,6 +414,23 @@ serve(async (req) => {
     const phone      = userAttr.phone_number || null;
     const pay        = (a.payment_sources || [])[0]?.label || null;
 
+    // SALES CHANNEL — MT records it on every order and we were throwing it away.
+    // Verified 2026-09-28 against live Bayside orders:
+    //   originating_partner 1  = MT "E-commerce" (online): the branded app /
+    //                            hosted store, customer self-serve (broker=self).
+    //   originating_partner <location partner> = via the studio:
+    //       broker = 66753 "BBB Order Tracking Custom Service" → OUR website checkout
+    //       broker = a staff user (≠ customer)                 → rung up at the DESK
+    // This is what lets the dashboard show Website vs App vs Desk per sale.
+    const opId     = rels.originating_partner?.data?.id != null ? String(rels.originating_partner.data.id) : null;
+    const brokerId = rels.broker?.data?.id != null ? String(rels.broker.data.id) : null;
+    const WEB_SERVICE_USER = '66753';
+    let salesChannel = 'unknown';
+    if (opId === '1')                                     salesChannel = 'app';   // MT e-commerce / app / hosted store
+    else if (brokerId === WEB_SERVICE_USER)               salesChannel = 'web';   // our website checkout
+    else if (brokerId && userId && brokerId !== userId)   salesChannel = 'desk';  // staff placed it
+    else if (brokerId && userId && brokerId === userId)   salesChannel = 'self';  // customer self-serve via location partner
+
     switch (kind) {
       case 'trial':       summary.new_trials++; break;
       case 'membership':  summary.new_memberships++; break;
@@ -438,6 +455,9 @@ serve(async (req) => {
       item_names:          itemNames,
       item_count:          summaryArr.length,
       total_cents:         totalCents,
+      sales_channel:       salesChannel,
+      originating_partner_id: opId,
+      broker_mt_id:        brokerId,
       raw:                 a,
     }, { onConflict: 'mt_sale_id' });
     if (salesErr) {
@@ -474,6 +494,8 @@ serve(async (req) => {
         totalCents,
         studio_slug: studioSlug || 'unknown',
         location_id: loc?.id ?? null,
+        email: email || null,
+        phone: phone || null,
       });
 
       // 2026-08-21 (Justin): membership buyers whose old lead/trial card was
@@ -802,9 +824,43 @@ serve(async (req) => {
       membership_sms_kickoff = { sent: 0, failed: 0, skipped: 'twilio env missing' };
     } else {
       membership_sms_kickoff = { sent: 0, failed: 0 };
+      // 2026-09-16 (Justin): Devonte + Salim should only be pinged for the BTS
+      // ($299 Back to School) promo, not every membership sale. Their phones are
+      // skipped on non-BTS memberships; Carlos + the studio still get all.
+      const BTS_ONLY_PHONES = new Set(['+12147138456', '+19175861010']); // Devonte, Salim
       const { data: ownerRows } = await sb.from('location_owners').select('location_id, owner_name, phone');
       for (const sale of membershipSalesToNotify) {
-        const owners = (ownerRows ?? []).filter((o) => o.location_id === sale.location_id && o.phone);
+        // Quo studios (Bayside / Fresh Meadows): route the new member into their
+        // OWN Quo thread — named contact + a "NEW MEMBER" welcome-call task — via
+        // quo-lead-router, instead of the shared 877 relay alert that bounced
+        // with "Could not tell who this reply is for." Same guards as below (this
+        // only runs when the owner_membership_sms path is enabled + not a backfill).
+        if ((sale.studio_slug === 'bayside' || sale.studio_slug === 'fresh-meadows') && sale.phone) {
+          try {
+            const rr = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/quo-lead-router`, {
+              method: 'POST',
+              headers: {
+                'x-bbb-secret': Deno.env.get('BBB_ADMIN_SECRET') || 'bbb-test-2026-05-27',
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                name: sale.name, phone: sale.phone, email: sale.email,
+                studio_slug: sale.studio_slug, kind: 'membership',
+                note: `${sale.items} · $${(sale.totalCents / 100).toFixed(0)}`,
+              }),
+            });
+            if (rr.ok) membership_sms_kickoff.sent++; else membership_sms_kickoff.failed++;
+          } catch (e) {
+            membership_sms_kickoff.failed++;
+            summary.errors.push(`owner membership quo-route ${sale.studio_slug}: ${(e as Error).message}`);
+          }
+          continue; // handled in Quo — skip the Twilio owner text for this sale
+        }
+
+        const saleIsBts = /back to school|\b2 months?\b|\btwo months?\b/i.test(sale.items || '');
+        const owners = (ownerRows ?? []).filter((o) =>
+          o.location_id === sale.location_id && o.phone &&
+          (saleIsBts || !BTS_ONLY_PHONES.has(o.phone)));
         const studioTitle = sale.studio_slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
         const smsBody = `BBB ${studioTitle}: NEW MEMBERSHIP - ${sale.name}, ${sale.items}, $${(sale.totalCents / 100).toFixed(0)} charged today.`;
         for (const o of owners) {
@@ -868,14 +924,8 @@ serve(async (req) => {
       // URL to the next line in some mail clients ("bayside...Or") — real
       // anchor tags fix that.
       const HERO_HEX = '#D83B3B';
-      // Studio inbox + owner emails per studio — mirrors stripe-webhook's
-      // TRIAL_NOTIFY roster so $299 buyers alert the same people as trials.
-      const MEMBER_NOTIFY: Record<string, string[]> = {
-        'bayside':       ['carlos@betterbodybootcamp.com', 'bayside@betterbodybootcamp.com'],
-        'fresh-meadows': ['carlos@betterbodybootcamp.com', 'freshmeadows@betterbodybootcamp.com'],
-        'williamsburg':  ['steve@betterbodybootcamp.com', 'chris@betterbodybootcamp.com', 'williamsburg@betterbodybootcamp.com'],
-        'astoria':       ['steve@betterbodybootcamp.com', 'chris@betterbodybootcamp.com', 'astoria@betterbodybootcamp.com'],
-      };
+      // (Owner/studio alert roster moved to section 6b, which now fires the
+      // internal alert for every new membership sale, not just walk-ins.)
       const LOGO_URL = 'https://uracuwugpxqjfgtuobal.supabase.co/storage/v1/object/public/logos/0180_bbb_bbb-newtext_logo_new_black_1%20(1).png';
       const APP_IOS = 'https://apps.apple.com/us/app/better-body-studios/id6778182425';
       const APP_PLAY = 'https://play.google.com/store/apps/details?id=com.marianatek.betterbodybootcamp';
@@ -952,51 +1002,109 @@ serve(async (req) => {
           membership_welcome_kickoff.failed++;
           summary.errors.push(`membership welcome ${w.email}: ${(e as Error).message}`);
         }
+        // (Owner/studio alert email is fired separately below for EVERY new
+        // membership sale — see section 6b — so it no longer lives here where
+        // it only reached brand-new walk-in inserts.)
+      }
+    }
+  }
 
-        // ── Studio + owner notification (branded internal email) ──────
-        const notifyTo = MEMBER_NOTIFY[w.studio_slug] || [];
-        if (notifyTo.length) {
-          // 2026-09-02 FIX (Justin): a 12-month contract went out labeled
-          // "$299 Back to School". Label + price now come from the actual sale.
-          const isBts = /back to school|2 month|two month/i.test(w.items || '');
-          const priceStr = Number.isFinite(w.total_cents) && (w.total_cents as number) > 0
-            ? `$${Math.round((w.total_cents as number) / 100)}` : '';
-          const dealLabel = isBts ? `$299 Back to School` : `Membership${priceStr ? ' ' + priceStr : ''}`;
-          const nSubject = `💰 New ${dealLabel} — ${w.name || w.email} · ${studioTitle}`;
-          const nHtml = `
+  // ─── 6b. Studio + owner ALERT email for every new membership (2026-09-15) ─
+  // BUG (Chris, WB): owners stopped getting any email when a member bought
+  // online. The alert used to live inside the walk-in-insert loop above, so it
+  // only fired for brand-new buyers with NO prior row. Anyone who converted
+  // from an existing trial/lead flipped to member SILENTLY, and the only
+  // fallback was the owner TEXT — which has been dead since the Twilio account
+  // was suspended (Sept 10). Fix: fire the branded owner alert for EVERY
+  // non-renewal membership sale (the same list that drives the owner SMS),
+  // over email, independent of Twilio. Renewals are already excluded upstream.
+  let membership_owner_email_kickoff: { sent: number; failed: number; skipped?: string } | null = null;
+  // 2026-09-21: owner PURCHASE alerts now live in the dedicated mt-purchase-alerts
+  // function (emails every studio's owners + Carlos SMS, deduped via its own
+  // ledger, runs every 5 min). Disabled here so a sale can't double-alert. Flip
+  // OWNER_EMAIL_MOVED back to false only if that function is ever retired.
+  const OWNER_EMAIL_MOVED = true;
+  if (OWNER_EMAIL_MOVED && membershipSalesToNotify.length > 0) {
+    membership_owner_email_kickoff = { sent: 0, failed: 0, skipped: 'moved to mt-purchase-alerts' };
+  } else if (membershipSalesToNotify.length > 0) {
+    const resendKey = Deno.env.get('RESEND_API_KEY') ?? '';
+    const HERO_HEX = '#D83B3B';
+    const MEMBER_NOTIFY: Record<string, string[]> = {
+      'bayside':       ['carlos@betterbodybootcamp.com', 'bayside@betterbodybootcamp.com'],
+      'fresh-meadows': ['carlos@betterbodybootcamp.com', 'freshmeadows@betterbodybootcamp.com'],
+      'williamsburg':  ['steve@betterbodybootcamp.com', 'chris@betterbodybootcamp.com', 'williamsburg@betterbodybootcamp.com'],
+      'astoria':       ['steve@betterbodybootcamp.com', 'chris@betterbodybootcamp.com', 'astoria@betterbodybootcamp.com'],
+    };
+    // 2026-09-16 (Justin): Devonte + Salim get purchase alerts for the BTS
+    // ($299 Back to School) promo ONLY, not regular memberships. Added to the
+    // roster below only when the sale is BTS. (They still get all trial alerts.)
+    const BTS_EXTRA_NOTIFY: Record<string, string[]> = {
+      'bayside':       ['devonte@betterbodybootcamp.com', 'salim@betterbodybootcamp.com'],
+      'fresh-meadows': ['devonte@betterbodybootcamp.com', 'salim@betterbodybootcamp.com'],
+    };
+    if (dryRun) {
+      membership_owner_email_kickoff = { sent: 0, failed: 0, skipped: 'dry_run' };
+    } else if (skipWelcome) {
+      membership_owner_email_kickoff = { sent: 0, failed: 0, skipped: 'skip_welcome backfill' };
+    } else if (!resendKey) {
+      membership_owner_email_kickoff = { sent: 0, failed: 0, skipped: 'RESEND_API_KEY missing' };
+    } else if (membershipSalesToNotify.length > 12) {
+      // catch-up / full_refresh landed a pile of sales in one run — don't blast
+      // owners with dozens of alerts (mirrors the owner-SMS anti-machine-gun rule).
+      membership_owner_email_kickoff = { sent: 0, failed: 0, skipped: `${membershipSalesToNotify.length} sales in one run - batch, no alerts` };
+    } else {
+      membership_owner_email_kickoff = { sent: 0, failed: 0 };
+      for (const sale of membershipSalesToNotify) {
+        // "12 Month PIF" contains "2 month" — word boundaries so only a
+        // standalone "2 months" (or the promo name) counts as BTS.
+        const isBts = /back to school|\b2 months?\b|\btwo months?\b/i.test(sale.items || '');
+        // Devonte + Salim only get looped in on BTS promo sales (see above).
+        const notifyTo = [
+          ...(MEMBER_NOTIFY[sale.studio_slug] || []),
+          ...(isBts ? (BTS_EXTRA_NOTIFY[sale.studio_slug] || []) : []),
+        ];
+        if (!notifyTo.length) continue;
+        const studioTitle = sale.studio_slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+        const mailbox = `${sale.studio_slug.replace(/-/g, '')}@betterbodybootcamp.com`;
+        const priceStr = Number.isFinite(sale.totalCents) && sale.totalCents > 0
+          ? `$${Math.round(sale.totalCents / 100)}` : '';
+        const dealLabel = isBts ? `$299 Back to School` : `Membership${priceStr ? ' ' + priceStr : ''}`;
+        const nSubject = `💰 New ${dealLabel} — ${sale.name} · ${studioTitle}`;
+        const nHtml = `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#111">
       <div style="background:${HERO_HEX};color:#fff;padding:20px 24px;border-radius:10px 10px 0 0;margin:-24px -24px 0">
         <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;opacity:0.9">New Membership · ${studioTitle}</div>
-        <h2 style="margin:6px 0 0;font-size:24px;font-weight:800;letter-spacing:-0.02em">${w.name || w.email}</h2>
-        <div style="font-size:13px;opacity:0.95;margin-top:4px">${w.items}${priceStr ? ` · ${priceStr}` : ''}</div>
+        <h2 style="margin:6px 0 0;font-size:24px;font-weight:800;letter-spacing:-0.02em">${sale.name}</h2>
+        <div style="font-size:13px;opacity:0.95;margin-top:4px">${sale.items}${priceStr ? ` · ${priceStr}` : ''}</div>
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:20px">
-        <tr><td style="padding:8px 0;color:#666;width:140px;border-bottom:1px solid #f0f0f0">Name</td><td style="padding:8px 0;font-weight:600;border-bottom:1px solid #f0f0f0">${w.name || '—'}</td></tr>
-        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Email</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0"><a href="mailto:${w.email}" style="color:#dc2626;text-decoration:none;font-weight:600">${w.email}</a></td></tr>
-        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Phone</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0">${w.phone ? `<a href="tel:${w.phone}" style="color:#dc2626;text-decoration:none;font-weight:600">${w.phone}</a>` : '—'}</td></tr>
-        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Purchase</td><td style="padding:8px 0;font-weight:600;border-bottom:1px solid #f0f0f0">${w.items}</td></tr>
+        <tr><td style="padding:8px 0;color:#666;width:140px;border-bottom:1px solid #f0f0f0">Name</td><td style="padding:8px 0;font-weight:600;border-bottom:1px solid #f0f0f0">${sale.name}</td></tr>
+        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Email</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0">${sale.email ? `<a href="mailto:${sale.email}" style="color:#dc2626;text-decoration:none;font-weight:600">${sale.email}</a>` : '—'}</td></tr>
+        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Phone</td><td style="padding:8px 0;border-bottom:1px solid #f0f0f0">${sale.phone ? `<a href="tel:${sale.phone}" style="color:#dc2626;text-decoration:none;font-weight:600">${sale.phone}</a>` : '—'}</td></tr>
+        <tr><td style="padding:8px 0;color:#666;border-bottom:1px solid #f0f0f0">Purchase</td><td style="padding:8px 0;font-weight:600;border-bottom:1px solid #f0f0f0">${sale.items}</td></tr>
         <tr><td style="padding:8px 0;color:#666">Studio</td><td style="padding:8px 0;font-weight:600">${studioTitle}</td></tr>
       </table>
       <div style="margin-top:16px;font-size:12px;color:#888;text-align:center">
-        <a href="https://bbbmarketing.netlify.app/?studio=${w.studio_slug}" style="color:#888">Open dashboard</a>
+        <a href="https://bbbmarketing.netlify.app/?studio=${sale.studio_slug}" style="color:#888">Open dashboard</a>
       </div>
     </div>`;
+        try {
+          const nr = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              from: `BBB Alerts <${mailbox}>`,
+              to: notifyTo, subject: nSubject, html: nHtml,
+              text: `New ${dealLabel}: ${sale.name}${sale.email ? ` (${sale.email}${sale.phone ? ', ' + sale.phone : ''})` : ''} at ${studioTitle}. ${sale.items}.`,
+            }),
+          });
           try {
-            const nr = await fetch('https://api.resend.com/emails', {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                from: `BBB Alerts <${mailbox}>`,
-                to: notifyTo, subject: nSubject, html: nHtml,
-                text: `New ${dealLabel}: ${w.name || w.email} (${w.email}${w.phone ? ', ' + w.phone : ''}) at ${studioTitle}. ${w.items}.`,
-              }),
-            });
-            try {
-              await sb.from('email_log').insert({ send_path: 'membership_owner_email', to_addrs: notifyTo, subject: nSubject, status: nr.ok ? 'sent' : 'failed' });
-            } catch { /* non-fatal */ }
-          } catch (e) {
-            summary.errors.push(`membership owner email ${w.email}: ${(e as Error).message}`);
-          }
+            await sb.from('email_log').insert({ send_path: 'membership_owner_email', to_addrs: notifyTo, subject: nSubject, status: nr.ok ? 'sent' : 'failed' });
+          } catch { /* log table variance — never block the send loop */ }
+          if (nr.ok) membership_owner_email_kickoff.sent++; else membership_owner_email_kickoff.failed++;
+        } catch (e) {
+          membership_owner_email_kickoff.failed++;
+          summary.errors.push(`membership owner email ${sale.email || sale.name}: ${(e as Error).message}`);
         }
       }
     }
@@ -1012,6 +1120,7 @@ serve(async (req) => {
     welcome_kickoff,
     membership_sms_kickoff,
     membership_welcome_kickoff,
+    membership_owner_email_kickoff,
     new_trials_needing_welcome: trialEmailsToWelcome,
   });
 });

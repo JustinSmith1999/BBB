@@ -7,6 +7,76 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+// 2026-09-23 (Justin): route Contact-form leads into the studio's Quo shared
+// inbox instead of only emailing. Texting the studio's Quo number lands the
+// lead in the shared inbox, so every staffer on that line gets pinged (and
+// respects their own on/off availability). Only the studios live on Quo are
+// mapped; Astoria/Williamsburg are unmapped and fall back to email only.
+const QUO_STUDIO_NUMBER: Record<string, string> = {
+  bayside: "+19178770759",
+  freshmeadows: "+16468876483",
+};
+async function sendSms(to: string, body: string): Promise<{ ok: boolean; sid?: string; error?: string }> {
+  const sid = Deno.env.get("TWILIO_ACCOUNT_SID");
+  const token = Deno.env.get("TWILIO_AUTH_TOKEN");
+  const from = Deno.env.get("TWILIO_FROM_NUMBER") || Deno.env.get("TWILIO_FROM");
+  if (!sid || !token || !from) return { ok: false, error: "twilio env missing" };
+  const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+    method: "POST",
+    headers: { Authorization: "Basic " + btoa(`${sid}:${token}`), "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ To: to, From: from, Body: body }),
+  });
+  const j = await r.json().catch(() => ({}));
+  return r.ok ? { ok: true, sid: (j as any).sid } : { ok: false, error: (j as any).message || `HTTP ${r.status}` };
+}
+
+function toE164(p: string): string | null {
+  const d = (p || "").replace(/\D/g, "");
+  if (d.length === 10) return "+1" + d;
+  if (d.length === 11 && d.startsWith("1")) return "+" + d;
+  return null;
+}
+// Create the lead as a NAMED contact in Quo so the number resolves to the person
+// (one-tap call/text) instead of showing a raw number. No outbound message is
+// sent — staff reach out themselves.
+async function quoCreateContact(firstName: string, lastName: string, phone: string | null, email: string | null, location?: string, inquiry?: string): Promise<{ ok: boolean; id?: string; error?: string }> {
+  const key = Deno.env.get("QUO_API_KEY");
+  if (!key) return { ok: false, error: "QUO_API_KEY missing" };
+  const defaultFields: any = { firstName: firstName || "Website", lastName: lastName || "Lead" };
+  const e164 = phone ? toE164(phone) : null;
+  if (e164) defaultFields.phoneNumbers = [{ name: "mobile", value: e164 }];
+  if (email) defaultFields.emails = [{ name: "email", value: email }];
+  // Tag + surface what they asked, so staff see it in the conversation's
+  // contact panel (the API can't post a real inbound message from the lead).
+  if (location) defaultFields.company = `Website lead · ${location}`;
+  const q = (inquiry || "").trim().replace(/\s+/g, " ");
+  if (q) defaultFields.role = `Asked: "${q.slice(0, 180)}${q.length > 180 ? "…" : ""}"`;
+  const r = await fetch("https://api.quo.com/v1/contacts", {
+    method: "POST",
+    headers: { "Authorization": key, "Content-Type": "application/json" },
+    body: JSON.stringify({ defaultFields, source: "website-contact-form" }),
+  });
+  const j = await r.json().catch(() => ({}));
+  return r.ok ? { ok: true, id: (j as any)?.data?.id } : { ok: false, error: (j as any)?.message || `HTTP ${r.status}` };
+}
+// Send a text FROM the studio's Quo number TO the lead. This is what spins up
+// each lead's own named conversation in the shared inbox (self-threading), so
+// staff text/call the person straight from it. Blocked until 10DLC is approved
+// (returns a2pBlocked) — caller falls back to the inbox alert until then.
+async function quoSendMessage(fromE164: string, toE164: string, content: string): Promise<{ ok: boolean; a2pBlocked?: boolean; error?: string }> {
+  const key = Deno.env.get("QUO_API_KEY");
+  if (!key) return { ok: false, error: "QUO_API_KEY missing" };
+  const r = await fetch("https://api.quo.com/v1/messages", {
+    method: "POST",
+    headers: { "Authorization": key, "Content-Type": "application/json" },
+    body: JSON.stringify({ from: fromE164, to: [toE164], content }),
+  });
+  if (r.ok) return { ok: true };
+  const j = await r.json().catch(() => ({}));
+  const code = String((j as any)?.code || "");
+  return { ok: false, a2pBlocked: code === "0206400" || r.status === 400, error: (j as any)?.message || `HTTP ${r.status}` };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -278,6 +348,29 @@ Deno.serve(async (req: Request) => {
       }
     } catch (leadErr) {
       console.error("contact-form lead capture exception:", leadErr);
+    }
+
+    // ─── Route the lead into the studio's OWN Quo thread (contact + task) ───
+    // via quo-lead-router — NOT the shared 877 relay inbox, which produced the
+    // "Could not tell who this reply is for" bounces when staff replied there.
+    // The router creates a named Quo contact + a Quo Task on the studio line;
+    // staff tap the contact to call/text the person directly in their own
+    // thread. NO auto-text to the customer. Astoria / Williamsburg aren't on
+    // Quo → the router returns {skipped} and the studio email above still went
+    // out. Best-effort: never blocks or fails the response.
+    try {
+      const slug = (location || "").toLowerCase().replace(/[^a-z]/g, "");
+      const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/quo-lead-router`, {
+        method: "POST",
+        headers: {
+          "x-bbb-secret": Deno.env.get("BBB_ADMIN_SECRET") || "bbb-test-2026-05-27",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name, phone, email, studio_slug: slug, kind: "inquiry", note: message }),
+      });
+      if (!r.ok) console.error("quo-lead-router (lead) failed:", r.status);
+    } catch (e) {
+      console.error("quo lead routing exception:", (e as Error).message);
     }
 
     return new Response(
