@@ -79,7 +79,22 @@ export default function FreeClass() {
         noindex
       />
 
-      <section className="bg-gradient-to-br from-black to-gray-900 px-4 pt-28 pb-14 text-center text-white">
+      <section className="relative overflow-hidden bg-black px-4 pt-28 pb-14 text-center text-white">
+        {/* Video background — same clip/poster/grade as the location-page heroes. */}
+        <video
+          src="/services/hero.mp4"
+          poster="/services/hero-poster.webp"
+          aria-hidden="true"
+          className="absolute inset-0 h-full w-full object-cover opacity-60"
+          style={{ objectPosition: 'center 30%', filter: 'grayscale(35%)' }}
+          autoPlay
+          muted
+          loop
+          playsInline
+        />
+        <div className="absolute inset-0 bg-black/60" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/30" />
+        <div className="relative z-10">
         <p className="mb-4 inline-block rounded-full bg-red-600/15 border border-red-600/50 px-4 py-1.5 text-xs sm:text-sm font-bold uppercase tracking-[0.25em] text-red-500">
           {ref ? `${ref} × Better Body` : 'You were invited'}
         </p>
@@ -93,6 +108,7 @@ export default function FreeClass() {
           <span className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-red-600" />Coach-led small group training</span>
           <span className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-red-600" />All levels welcome</span>
           <span className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-red-600" />Astoria &amp; Williamsburg</span>
+        </div>
         </div>
       </section>
 
