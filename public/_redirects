@@ -51,6 +51,17 @@
 /bts/fresh-meadows       /backtoschool?studio=fresh-meadows&utm_source=instagram&utm_medium=social&utm_campaign=back-to-school-299&utm_content=bio   302!
 /bts/williamsburg        /backtoschool?studio=williamsburg&utm_source=instagram&utm_medium=social&utm_campaign=back-to-school-299&utm_content=bio   302!
 
+# 1 Free Class (collab) short links (2026-10-01) — QR codes point here. Unguessable
+# on purpose. ?ref=<partner> tags the collab. _redirects is processed BEFORE
+# netlify.toml, so these MUST live here, ahead of the /* catch-all (the toml
+# copies never fired — that was the "Still 404").
+/c/ast-8x2m  ref=:ref  /collab/free-class-8x2m?studio=astoria&ref=:ref        302!
+/c/ast-8x2m            /collab/free-class-8x2m?studio=astoria                 302!
+/c/wb-4q9t   ref=:ref  /collab/free-class-8x2m?studio=williamsburg&ref=:ref   302!
+/c/wb-4q9t             /collab/free-class-8x2m?studio=williamsburg            302!
+/c/8x2m      ref=:ref  /collab/free-class-8x2m?ref=:ref                       302!
+/c/8x2m                /collab/free-class-8x2m                                302!
+
 # 3 Free Classes claim short links (2026-08-21) — keep in sync with netlify.toml.
 /free3/astoria           /freeclasses?studio=astoria&utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes   302!
 /free3/bayside           /freeclasses?studio=bayside&utm_source=winback&utm_medium=offer&utm_campaign=free-3-classes   302!
