@@ -129,6 +129,61 @@ function normalizePhone(p: string): string | null {
   return null;
 }
 
+// 2026-10-01: claimant email body lives here so the real send and the
+// {action:"preview"} test send can never drift apart.
+function buildClaimantEmail(
+  first: string, email: string, slug: string, locName: string, locEmail: string, human: string,
+): { subject: string; text: string; html: string } {
+  const HERO_HEX = "#D83B3B";
+  const LOGO_URL = "https://uracuwugpxqjfgtuobal.supabase.co/storage/v1/object/public/logos/0180_bbb_bbb-newtext_logo_new_black_1%20(1).png";
+  const APP_IOS = "https://apps.apple.com/us/app/better-body-studios/id6778182425";
+  const APP_PLAY = "https://play.google.com/store/apps/details?id=com.marianatek.betterbodybootcamp";
+  const bookUrl = `https://betterbodybootcamp.com/book/${slug}`;
+  const infoUrl = `https://betterbodybootcamp.com/locations/${slug}`;
+  const subject = `Your ${human} at Better Body ${locName}`;
+  const text = `Hi ${first},\n\nYour ${human} is on your account at Better Body Bootcamp ${locName} — nothing to pay, nothing to print.\n\nPick your class: ${bookUrl}\n\nUsing the app? We already set up your account under ${email}. Tap SIGN IN (not sign up), enter ${email}, then tap "Forgot password" to set your password. Creating a new account makes a duplicate that won't have your free class on it.\niPhone: ${APP_IOS}\nAndroid: ${APP_PLAY}\n\nShow up 10 minutes early, wear sneakers, bring water. Every class is coach-led — just show up.\n\nThe Better Body ${locName} Team`;
+  const html = `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:0;color:#111;background:#fff">
+      <div style="background:${HERO_HEX};color:#fff;padding:26px 28px 24px;text-align:center">
+  <img src="${LOGO_URL}" alt="Better Body Bootcamp" width="160" style="max-width:160px;height:auto;margin:0 auto 14px;display:block" />
+  <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;opacity:0.85;margin-bottom:8px">${locName}</div>
+  <h1 style="margin:0;font-size:28px;font-weight:800;letter-spacing:-0.02em;line-height:1.1;color:#fff">You're in, ${first}.</h1>
+      </div>
+      <div style="padding:28px">
+  <p style="margin:0 0 18px;font-size:16px;line-height:1.55;color:#222">Your <strong>${human}</strong> is on your account at Better Body Bootcamp ${locName}. Nothing to pay, nothing to print.</p>
+  <p style="margin:0 0 22px;font-size:15px;line-height:1.6;color:#444">All that's left is picking a time. Every class is coach-led, so just show up and we take care of the rest.</p>
+  <div style="text-align:center;margin:26px 0 20px">
+    <a href="${bookUrl}" style="background:${HERO_HEX};color:#fff;text-decoration:none;font-weight:700;padding:14px 28px;border-radius:999px;display:inline-block;font-size:15px;letter-spacing:0.01em">Pick My Class &rarr;</a>
+  </div>
+  <div style="background:#FFF8E6;border:1px solid #F0DFAE;border-radius:12px;padding:18px 20px;margin:0 0 22px">
+    <div style="font-size:12px;font-weight:700;color:#8A6D1F;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px">Using the app? Read this first</div>
+    <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#4A3B10">We already created your account under <strong>${email}</strong>. In the app, tap <strong>Sign In</strong> &mdash; not Sign Up &mdash; enter that email, then tap <strong>Forgot password</strong> to set your password. Making a new account creates a duplicate that won't have your free class on it.</p>
+    <div style="text-align:center">
+      <a href="${APP_IOS}" style="background:#000;color:#fff;text-decoration:none;font-weight:700;padding:11px 20px;border-radius:999px;display:inline-block;font-size:13px;margin:0 4px 8px">App Store</a>
+      <a href="${APP_PLAY}" style="background:#000;color:#fff;text-decoration:none;font-weight:700;padding:11px 20px;border-radius:999px;display:inline-block;font-size:13px;margin:0 4px 8px">&#9654; Google Play</a>
+    </div>
+  </div>
+  <div style="background:#fafafa;border:1px solid #eee;border-radius:12px;padding:18px 20px;margin-bottom:22px">
+    <div style="font-size:12px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px">What you've got</div>
+    <table style="width:100%;border-collapse:collapse;font-size:14px">
+      <tr><td style="padding:4px 0;color:#666;width:140px">On your account</td><td style="padding:4px 0;font-weight:600">${human}</td></tr>
+      <tr><td style="padding:4px 0;color:#666">Studio</td><td style="padding:4px 0;font-weight:600">${locName}</td></tr>
+      <tr><td style="padding:4px 0;color:#666">Cost</td><td style="padding:4px 0">$0 &mdash; no card needed</td></tr>
+    </table>
+  </div>
+  <div style="font-size:14px;color:#444;line-height:1.55">
+    <p style="margin:0 0 10px"><strong>First class tips:</strong> show up 10 minutes early, wear sneakers, bring water. Coach will get you set up.</p>
+    <p style="margin:0 0 10px">Questions? Just reply to this email &mdash; it goes straight to your studio.</p>
+  </div>
+  <div style="border-top:1px solid #eee;margin-top:24px;padding-top:18px;font-size:12px;color:#888;text-align:center">
+    <a href="${infoUrl}" style="color:#888;text-decoration:underline">Studio info &amp; directions</a>
+    &nbsp;&middot;&nbsp; <a href="${bookUrl}" style="color:#888;text-decoration:underline">Class schedule</a>
+  </div>
+      </div>
+    </div>`;
+  return { subject, text, html };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ ok: false, error: "POST required" }, 405);
@@ -138,6 +193,36 @@ Deno.serve(async (req: Request) => {
 
   const slug = String(body.studioSlug || "");
   const loc = LOCATION_BY_SLUG[slug];
+
+  // {action:"preview", to, studioSlug?, firstName?, offer?} — renders the exact
+  // claimant confirmation and sends it to ONE address. No MT call, no lead, no
+  // studio email, no owner text, no email_log row. Secret-gated. Added
+  // 2026-10-01 so the email can be eyeballed without faking a real claim.
+  if (body.action === "preview") {
+    if (req.headers.get("x-bbb-secret") !== (Deno.env.get("BBB_ADMIN_SECRET") || "bbb-test-2026-05-27")) {
+      return json({ ok: false, error: "unauthorized" }, 401);
+    }
+    const to = String(body.to || "").trim();
+    if (!to) return json({ ok: false, error: "to required" }, 400);
+    const pLoc = loc ?? LOCATION_BY_SLUG["astoria"];
+    const pSlug = loc ? slug : "astoria";
+    const pFirst = String(body.firstName || "Justin").trim();
+    const pHuman = body.offer === "free3" ? "3 free classes" : "1 free class";
+    const resendKey = Deno.env.get("RESEND_API_KEY") ?? "";
+    if (!resendKey) return json({ ok: false, error: "RESEND_API_KEY missing" }, 500);
+    const built = buildClaimantEmail(pFirst, to, pSlug, pLoc.name, pLoc.email, pHuman);
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${resendKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: Deno.env.get("FROM_EMAIL") || "Better Body Bootcamp <hello@betterbodybootcamp.com>",
+        to: [to], reply_to: pLoc.email,
+        subject: `[TEST] ${built.subject}`, text: built.text, html: built.html,
+      }),
+    });
+    const rb = await r.json().catch(() => ({}));
+    return json({ ok: r.ok, preview: true, to, studio: pLoc.name, resend: rb });
+  }
   const first = String(body.firstName || "").trim();
   const last = String(body.lastName || "").trim();
   const email = String(body.email || "").trim().toLowerCase();
@@ -241,53 +326,7 @@ Deno.serve(async (req: Request) => {
     try {
       const resendKey = Deno.env.get("RESEND_API_KEY") ?? "";
       if (resendKey && email) {
-        const HERO_HEX = "#D83B3B";
-        const LOGO_URL = "https://uracuwugpxqjfgtuobal.supabase.co/storage/v1/object/public/logos/0180_bbb_bbb-newtext_logo_new_black_1%20(1).png";
-        const APP_IOS = "https://apps.apple.com/us/app/better-body-studios/id6778182425";
-        const APP_PLAY = "https://play.google.com/store/apps/details?id=com.marianatek.betterbodybootcamp";
-        const bookUrl = `https://betterbodybootcamp.com/book/${slug}`;
-        const infoUrl = `https://betterbodybootcamp.com/locations/${slug}`;
-        const subject = `Your ${O.human} at Better Body ${loc.name}`;
-        const text = `Hi ${first},\n\nYour ${O.human} is on your account at Better Body Bootcamp ${loc.name} — nothing to pay, nothing to print.\n\nPick your class: ${bookUrl}\n\nUsing the app? We already set up your account under ${email}. Tap SIGN IN (not sign up), enter ${email}, then tap "Forgot password" to set your password. Creating a new account makes a duplicate that won't have your free class on it.\niPhone: ${APP_IOS}\nAndroid: ${APP_PLAY}\n\nShow up 10 minutes early, wear sneakers, bring water. Every class is coach-led — just show up.\n\nThe Better Body ${loc.name} Team`;
-        const html = `
-    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:0;color:#111;background:#fff">
-      <div style="background:${HERO_HEX};color:#fff;padding:26px 28px 24px;text-align:center">
-        <img src="${LOGO_URL}" alt="Better Body Bootcamp" width="160" style="max-width:160px;height:auto;margin:0 auto 14px;display:block" />
-        <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;opacity:0.85;margin-bottom:8px">${loc.name}</div>
-        <h1 style="margin:0;font-size:28px;font-weight:800;letter-spacing:-0.02em;line-height:1.1;color:#fff">You're in, ${first}.</h1>
-      </div>
-      <div style="padding:28px">
-        <p style="margin:0 0 18px;font-size:16px;line-height:1.55;color:#222">Your <strong>${O.human}</strong> is on your account at Better Body Bootcamp ${loc.name}. Nothing to pay, nothing to print.</p>
-        <p style="margin:0 0 22px;font-size:15px;line-height:1.6;color:#444">All that's left is picking a time. Every class is coach-led, so just show up and we take care of the rest.</p>
-        <div style="text-align:center;margin:26px 0 20px">
-          <a href="${bookUrl}" style="background:${HERO_HEX};color:#fff;text-decoration:none;font-weight:700;padding:14px 28px;border-radius:999px;display:inline-block;font-size:15px;letter-spacing:0.01em">Pick My Class &rarr;</a>
-        </div>
-        <div style="background:#FFF8E6;border:1px solid #F0DFAE;border-radius:12px;padding:18px 20px;margin:0 0 22px">
-          <div style="font-size:12px;font-weight:700;color:#8A6D1F;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px">Using the app? Read this first</div>
-          <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#4A3B10">We already created your account under <strong>${email}</strong>. In the app, tap <strong>Sign In</strong> &mdash; not Sign Up &mdash; enter that email, then tap <strong>Forgot password</strong> to set your password. Making a new account creates a duplicate that won't have your free class on it.</p>
-          <div style="text-align:center">
-            <a href="${APP_IOS}" style="background:#000;color:#fff;text-decoration:none;font-weight:700;padding:11px 20px;border-radius:999px;display:inline-block;font-size:13px;margin:0 4px 8px">App Store</a>
-            <a href="${APP_PLAY}" style="background:#000;color:#fff;text-decoration:none;font-weight:700;padding:11px 20px;border-radius:999px;display:inline-block;font-size:13px;margin:0 4px 8px">&#9654; Google Play</a>
-          </div>
-        </div>
-        <div style="background:#fafafa;border:1px solid #eee;border-radius:12px;padding:18px 20px;margin-bottom:22px">
-          <div style="font-size:12px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px">What you've got</div>
-          <table style="width:100%;border-collapse:collapse;font-size:14px">
-            <tr><td style="padding:4px 0;color:#666;width:140px">On your account</td><td style="padding:4px 0;font-weight:600">${O.human}</td></tr>
-            <tr><td style="padding:4px 0;color:#666">Studio</td><td style="padding:4px 0;font-weight:600">${loc.name}</td></tr>
-            <tr><td style="padding:4px 0;color:#666">Cost</td><td style="padding:4px 0">$0 &mdash; no card needed</td></tr>
-          </table>
-        </div>
-        <div style="font-size:14px;color:#444;line-height:1.55">
-          <p style="margin:0 0 10px"><strong>First class tips:</strong> show up 10 minutes early, wear sneakers, bring water. Coach will get you set up.</p>
-          <p style="margin:0 0 10px">Questions? Just reply to this email &mdash; it goes straight to your studio.</p>
-        </div>
-        <div style="border-top:1px solid #eee;margin-top:24px;padding-top:18px;font-size:12px;color:#888;text-align:center">
-          <a href="${infoUrl}" style="color:#888;text-decoration:underline">Studio info &amp; directions</a>
-          &nbsp;&middot;&nbsp; <a href="${bookUrl}" style="color:#888;text-decoration:underline">Class schedule</a>
-        </div>
-      </div>
-    </div>`;
+        const { subject, text, html } = buildClaimantEmail(first, email, slug, loc.name, loc.email, O.human);
         const r = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { "Authorization": `Bearer ${resendKey}`, "Content-Type": "application/json" },
