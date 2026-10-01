@@ -36,6 +36,7 @@ const MyBookings = lazy(() => import('./pages/MyBookings'));
 const TrialSignup = lazy(() => import('./pages/TrialSignup'));
 const LocationSpecialSignup = lazy(() => import('./pages/LocationSpecialSignup'));
 const FreeClasses = lazy(() => import('./pages/FreeClasses'));
+const FreeClass = lazy(() => import('./pages/FreeClass'));
 const LocationComebackSignup = lazy(() => import('./pages/LocationComebackSignup'));
 const ComebackIndex = lazy(() => import('./pages/ComebackIndex'));
 const LocationResignSignup = lazy(() => import('./pages/LocationResignSignup'));
@@ -243,6 +244,7 @@ function App() {
           {/* 2026-09-21: BTS $299 promo ended — redirect old ad/QR links home */}
           <Route path="/backtoschool" element={<Navigate to="/" replace />} />
           <Route path="/freeclasses" element={<FreeClasses />} />
+          <Route path="/collab/free-class-8x2m" element={<FreeClass />} />
           <Route path="/comeback" element={<ComebackIndex />} />
           <Route path="/comeback/:location" element={<LocationComebackSignup />} />
           <Route path="/resign/:location" element={<LocationResignSignup />} />

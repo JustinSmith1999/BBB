@@ -63,10 +63,21 @@ serve(async (req) => {
 
   const sb = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
 
-  // De-dupe: outbound sent through twilio-outbound-sms is already logged with
-  // twilio_sid = the Quo message id. Skip anything we've already recorded.
-  const { data: existing } = await sb.from('sms_messages').select('id').eq('twilio_sid', id).limit(1);
-  if (existing && existing.length) return ok({ ok: true, deduped: true });
+  // De-dupe: outbound sent through _shared/sms.ts (and twilio-outbound-sms) is
+  // already logged with twilio_sid = the Quo message id. If the row exists,
+  // don't insert again — but DO flip it to "delivered" when this is the
+  // message.delivered event. That's the whole point of routing through Quo:
+  // real delivery status, instead of Twilio's permanent "queued".
+  const evtType = String(evt?.type ?? evt?.event ?? '').toLowerCase();
+  const isDelivered = evtType.includes('delivered') || String(msg.status ?? '').toLowerCase() === 'delivered';
+  const { data: existing } = await sb.from('sms_messages').select('id, status').eq('twilio_sid', id).limit(1);
+  if (existing && existing.length) {
+    if (isDelivered && existing[0].status !== 'delivered') {
+      await sb.from('sms_messages').update({ status: 'delivered' }).eq('id', existing[0].id);
+      return ok({ ok: true, updated: 'delivered' });
+    }
+    return ok({ ok: true, deduped: true });
+  }
 
   // Tie to a trial card by the customer's phone (best-effort).
   let trialId: string | null = null;
@@ -83,7 +94,7 @@ serve(async (req) => {
     to_phone: to,
     body: text,
     twilio_sid: id,
-    status: inbound ? 'received' : 'sent',
+    status: inbound ? 'received' : (isDelivered ? 'delivered' : 'sent'),
     send_path: inbound ? null : 'quo_app',
   });
   if (insErr) console.error('quo-inbound sms_messages insert failed:', insErr.message);

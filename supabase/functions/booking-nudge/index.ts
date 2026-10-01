@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { sendCustomerSms } from "../_shared/sms.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // booking-nudge (2026-08-28) — the promo-leak fix.
@@ -109,8 +110,8 @@ Deno.serve(async (req: Request) => {
       .select("id, name, email, phone, location_id, opted_out_at, payment_status")
       .in("id", Array.from(claimAt.keys()));
     for (const t of (data ?? [])) {
-      if (t.opted_out_at || t.payment_status !== "free3_claimed") continue;
-      candidates.push({ ...t, kind: "free3" });
+      if (t.opted_out_at || (t.payment_status !== "free3_claimed" && t.payment_status !== "free1_claimed")) continue;
+      candidates.push({ ...t, kind: t.payment_status === "free1_claimed" ? "free1" : "free3" });
     }
   }
 
@@ -148,23 +149,19 @@ Deno.serve(async (req: Request) => {
 
     const fn = first(c.name);
     const studio = TITLE[slug];
-    const msg = c.kind === "free3"
+    const msg = c.kind === "free1"
+      ? `Hi ${fn}, your free class at Better Body ${studio} is waiting. Pick a time that works: https://betterbodybootcamp.com/schedule/${slug} Reply STOP to opt out.`
+      : c.kind === "free3"
       ? `Hi ${fn}, your 3 free classes at Better Body ${studio} are waiting. Pick a time that works: https://betterbodybootcamp.com/schedule/${slug} Reply STOP to opt out.`
       : `Hi ${fn}, your 2-week trial at Better Body ${studio} is ticking - don't let it slip. Grab a class: https://betterbodybootcamp.com/schedule/${slug} Reply STOP to opt out.`;
 
     if (!live) { results.push({ email: c.email, kind: c.kind, would_text: phone, studio }); sends++; continue; }
 
-    const resp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twSid}/Messages.json`, {
-      method: "POST",
-      headers: { Authorization: "Basic " + btoa(`${twSid}:${twTok}`), "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ From: twFrom, To: phone, Body: msg }),
-    });
-    const j = await resp.json().catch(() => ({} as Record<string, unknown>));
-    await client.from("sms_messages").insert({
-      studio_slug: slug, direction: "outbound", from_phone: twFrom, to_phone: phone,
-      body: msg, twilio_sid: (j as { sid?: string }).sid ?? null,
-      status: resp.ok ? "queued" : "failed",
-      sent_by: "booking-nudge", sent_at: new Date().toISOString(), send_path: "booking_nudge",
+    // 2026-09-28: Quo-first from the studio line (reply threads into that
+    // inbox, delivery tracked), Twilio only where there's no Quo line. The
+    // shared sender writes the sms_messages row (send_path=booking_nudge).
+    const resp = await sendCustomerSms(client, {
+      studioSlug: slug, to: phone, body: msg, sendPath: "booking_nudge",
     });
     results.push({ email: c.email, kind: c.kind, sent: resp.ok, studio });
     if (resp.ok) { sends++; nudged.add(phone); }

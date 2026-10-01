@@ -199,6 +199,22 @@ serve(async (req) => {
   // The owner gets a TwiML confirmation or error back instantly.
   try {
     const ownDigits = from.replace(/\D+/g, '').slice(-10);
+
+    // ── 2026-09-29 LOOP KILLER ───────────────────────────────────────────
+    // Our own Quo studio lines are registered in location_owners (so alerts
+    // could be forwarded to them), which made this relay treat ANYTHING those
+    // lines sent toward 877 — a staff reply typed in the old alert thread, or
+    // Quo's after-hours auto-reply — as an "owner reply to a customer". It
+    // couldn't map a target, bounced "Could not tell who this reply is for"
+    // back INTO the Quo line, Quo answered, and it ping-ponged (5 bounces in
+    // 45s on 2026-09-29 09:18 UTC). Messages from our own lines are never
+    // relay commands: acknowledge silently and stop.
+    const OUR_QUO_LINES = new Set(['9178770759', '6468876483']); // Bayside, Fresh Meadows
+    if (OUR_QUO_LINES.has(ownDigits)) {
+      return new Response('<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+        { status: 200, headers: { ...cors, 'Content-Type': 'text/xml' } });
+    }
+
     const { data: ownerRows } = await sb
       .from('location_owners')
       .select('name, phone')
@@ -207,6 +223,21 @@ serve(async (req) => {
       (o: any) => String(o.phone || '').replace(/\D+/g, '').slice(-10) === ownDigits,
     );
     if (ownerRow) {
+      // 2026-09-30 · VISIBILITY: the relay used to return before the inbound
+      // log write, so owner texts (and the bounces they triggered) were
+      // invisible. Log them first, best effort.
+      try {
+        await sb.from('twilio_inbound_log').insert({ from_phone: from, to_phone: to, body, twilio_sid: sid });
+      } catch { /* best effort */ }
+
+      // 2026-09-30 · REACTION GUARD: iPhone tapbacks on a forwarded alert
+      // ("Liked "…"", "Questioned "…"") arrive as texts. They are not replies;
+      // acknowledge silently instead of bouncing "Could not tell…" for each.
+      if (/^(Liked|Loved|Disliked|Laughed at|Emphasized|Questioned)\s+[“"]/i.test(body.trim())) {
+        return new Response('<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+          { status: 200, headers: { ...cors, 'Content-Type': 'text/xml' } });
+      }
+
       let target = '';
       let relayBody = body;
       const explicit = body.match(/^\+?1?\s*(\d{10})\b[\s:,-]*/);
@@ -252,7 +283,27 @@ serve(async (req) => {
       const T_FROM = Deno.env.get('TWILIO_FROM_NUMBER') ?? '';
       let confirm: string;
       if (!target || !relayBody) {
+        // 2026-09-30 · BOUNCE RATE LIMIT: one "Could not tell…" per owner per
+        // 6 hours, logged to sms_messages so it is visible. Every further
+        // unroutable text in that window is acknowledged silently — five
+        // identical bounces in a row (2026-09-29, 2026-09-30) help nobody.
+        const sixHoursAgo = new Date(Date.now() - 6 * 3600_000).toISOString();
+        const { data: recentBounce } = await sb
+          .from('sms_messages')
+          .select('id')
+          .eq('send_path', 'owner_relay_bounce')
+          .ilike('to_phone', '%' + ownDigits)
+          .gte('created_at', sixHoursAgo)
+          .limit(1);
+        if (recentBounce && recentBounce.length) {
+          return new Response('<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+            { status: 200, headers: { ...cors, 'Content-Type': 'text/xml' } });
+        }
         confirm = 'Could not tell who this reply is for. Reply from the Inbox at betterbodybootcamp.com/homebase, or start your text with their number like: 6467995985 your message';
+        await sb.from('sms_messages').insert({
+          from_phone: to, to_phone: from, body: confirm, direction: 'outbound',
+          status: 'queued', send_path: 'owner_relay_bounce',
+        }).then(({ error }) => { if (error) console.error('bounce log failed:', error.message); });
       } else if (!T_SID || !T_TOK || !T_FROM) {
         confirm = 'Relay unavailable (SMS not configured). Use betterbodybootcamp.com/homebase';
       } else {

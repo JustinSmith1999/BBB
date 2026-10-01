@@ -89,7 +89,7 @@ async function mtFindOrCreateUser(
 // pass already; never stack). Soft-fails: a claim must never break on this.
 const MT_CLASS_CREDIT_ID = "2323";
 async function mtGrantFree3(
-  sb: ReturnType<typeof createClient>, mtUserId: string,
+  sb: ReturnType<typeof createClient>, mtUserId: string, credits = 3, note = "3 Free Classes (Winback) - auto-granted on claim",
 ): Promise<{ granted: boolean; already?: boolean; error?: string }> {
   const token = await mtToken(sb);
   if (!token) return { granted: false, error: "no MT token" };
@@ -107,7 +107,7 @@ async function mtGrantFree3(
       body: JSON.stringify({
         data: {
           type: "credit_transactions",
-          attributes: { transaction_amount: 3, expiration_datetime: exp, note: "3 Free Classes (Winback) - auto-granted on claim" },
+          attributes: { transaction_amount: credits, expiration_datetime: exp, note },
           relationships: {
             credit: { data: { type: "credits", id: MT_CLASS_CREDIT_ID } },
             user: { data: { type: "users", id: mtUserId } },
@@ -147,6 +147,18 @@ Deno.serve(async (req: Request) => {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ ok: false, error: "valid email required" }, 400);
   if (!phone) return json({ ok: false, error: "valid US phone required" }, 400);
 
+  // 2026-10-01 (Chris): "free1" = the $0 "1 Class Free Promo" credit package,
+  // used for collaborations via a QR code / landing page (/freeclass). Same
+  // flow as free3 — lead row, MT profile, auto-granted credit, studio alert —
+  // with 1 credit, its own payment_status, and the partner captured as the
+  // source (?ref=<partner> on the landing page -> utm_source) so every claim
+  // can be traced back to the collab that produced it.
+  const offer: "free1" | "free3" = body.offer === "free1" ? "free1" : "free3";
+  const O = offer === "free1"
+    ? { credits: 1, status: "free1_claimed", label: "1 FREE CLASS", human: "1 free class", pkg: "1 Class Free Promo", note: "1 Class Free Promo - collab claim", path: "free3_claim", source: "Collab free class" }
+    : { credits: 3, status: "free3_claimed", label: "3 FREE CLASSES", human: "3 free classes", pkg: "3 Free Classes (Winback)", note: "3 Free Classes (Winback) - auto-granted on claim", path: "free3_claim", source: "Free 3 classes claim" };
+  const ref = typeof body.ref === "string" ? body.ref.trim().slice(0, 60) : "";
+
   const sb = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
   const name = `${first} ${last}`;
 
@@ -163,18 +175,23 @@ Deno.serve(async (req: Request) => {
   for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_content"]) {
     if (typeof body[k] === "string" && body[k]) utm[k] = body[k];
   }
+  if (offer === "free1") {
+    if (ref && !utm.utm_source) utm.utm_source = ref;
+    if (!utm.utm_medium) utm.utm_medium = "qr";
+    if (!utm.utm_campaign) utm.utm_campaign = "collab-free-class";
+  }
   if (existing && existing.length > 0 && existing[0].payment_status !== "completed") {
     trialId = existing[0].id;
     await sb.from("trial_signups").update({
       name, phone, deleted_at: null,
-      payment_status: "free3_claimed",
+      payment_status: O.status,
       front_desk_stage: "new_lead",
       ...utm,
     }).eq("id", trialId);
   } else if (!existing || existing.length === 0) {
     const { data: ins, error: insErr } = await sb.from("trial_signups").insert({
       name, email, phone, location_id: loc.id,
-      payment_status: "free3_claimed",
+      payment_status: O.status,
       front_desk_stage: "new_lead",
       newsletter_opted_in: false,
       ...utm,
@@ -190,7 +207,7 @@ Deno.serve(async (req: Request) => {
   // then auto-grant the 3 free class credits (no manual package step for staff).
   const mt = await mtFindOrCreateUser(sb, first, last, email, phone, loc.mtId);
   const grant = mt.mtUserId
-    ? await mtGrantFree3(sb, mt.mtUserId)
+    ? await mtGrantFree3(sb, mt.mtUserId, O.credits, O.note)
     : { granted: false as const, error: mt.error };
   const ready = mt.status !== "failed" && (grant.granted || grant.already === true);
 
@@ -208,29 +225,29 @@ Deno.serve(async (req: Request) => {
           body: JSON.stringify({
             from: Deno.env.get("FROM_EMAIL") || "Better Body Bootcamp <hello@betterbodybootcamp.com>",
             to: [loc.email],
-            subject: `New 3 Free Classes claim — ${name} · ${loc.name}`,
+            subject: `New ${O.human} claim${ref ? " (" + ref + ")" : ""} — ${name} · ${loc.name}`,
             html: `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F4F4F5;padding:24px 0"><tr><td align="center">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;font-family:Arial,Helvetica,sans-serif">
 <tr><td style="background-color:#0D0D0D;padding:20px 28px">
   <img src="https://uracuwugpxqjfgtuobal.supabase.co/storage/v1/object/public/logos/0180_bbb_bbb-newtext_logo_new_black_1%20(1).png" alt="Better Body Bootcamp" width="64" style="display:block;border:0">
 </td></tr>
-<tr><td style="background-color:#E11D2A;padding:10px 28px;color:#ffffff;font-size:13px;font-weight:bold;letter-spacing:3px">NEW 3 FREE CLASSES CLAIM &middot; ${loc.name.toUpperCase()}</td></tr>
+<tr><td style="background-color:#E11D2A;padding:10px 28px;color:#ffffff;font-size:13px;font-weight:bold;letter-spacing:3px">NEW ${O.label} CLAIM${ref ? " &middot; VIA " + ref.toUpperCase() : ""} &middot; ${loc.name.toUpperCase()}</td></tr>
 <tr><td style="padding:26px 28px 6px 28px;font-size:15px;line-height:24px;color:#111111">
   <p style="margin:0 0 14px 0"><span style="font-size:20px;font-weight:bold">${name}</span><br>
   Phone: <a href="tel:${phone}" style="color:#E11D2A;font-weight:bold;text-decoration:none">${phone}</a><br>
   Email: <span style="color:#111111">${email}</span></p>
   ${ready
-    ? `<p style="margin:0 0 16px 0;padding:10px 14px;background-color:#F0FDF4;border-left:4px solid #16A34A;font-size:14px"><b>All set in Mariana Tek</b> &mdash; profile ${mt.status === "created" ? "created" : "found"}, 3 free class credits on the account${grant.already ? " (they had active credits)" : ""}. Credits expire in 1 month.</p>`
+    ? `<p style="margin:0 0 16px 0;padding:10px 14px;background-color:#F0FDF4;border-left:4px solid #16A34A;font-size:14px"><b>All set in Mariana Tek</b> &mdash; profile ${mt.status === "created" ? "created" : "found"}, ${O.credits} free class credit${O.credits > 1 ? "s" : ""} on the account${grant.already ? " (they had active credits)" : ""}. Credits expire in 1 month.</p>`
     : mt.status !== "failed"
     ? `<p style="margin:0 0 8px 0;padding:10px 14px;background-color:#FEF9C3;border-left:4px solid #CA8A04;font-size:14px"><b>Their Mariana Tek profile is ready</b> (${mt.status === "created" ? "we just created it" : "they already had one"}) but the credits could not be added automatically. Two steps left:</p>
   <ol style="margin:0 0 16px 20px;padding:0">
-    <li style="margin-bottom:6px">MT Admin &gt; <b>Find Customer</b> &gt; <b>${email}</b> &gt; add the <b>"3 Free Classes (Winback)"</b> package ($0.00 &mdash; under Credits).</li>
+    <li style="margin-bottom:6px">MT Admin &gt; <b>Find Customer</b> &gt; <b>${email}</b> &gt; add the <b>"${O.pkg}"</b> package ($0.00 &mdash; under Credits).</li>
     <li style="margin-bottom:6px">Text them today and book their first class. Credits expire 1 month after they are added.</li>
   </ol>`
     : `<p style="margin:0 0 8px 0;font-weight:bold">Set them up in Mariana Tek so they can book (2 minutes):</p>
   <ol style="margin:0 0 16px 20px;padding:0">
     <li style="margin-bottom:6px">MT Admin &gt; <b>Find Customer</b> &gt; search <b>${email}</b>. No profile? Create one with the info above.</li>
-    <li style="margin-bottom:6px">On their profile, add the <b>"3 Free Classes (Winback)"</b> credit package ($0.00 &mdash; under Credits, not on the buy page).</li>
+    <li style="margin-bottom:6px">On their profile, add the <b>"${O.pkg}"</b> credit package ($0.00 &mdash; under Credits, not on the buy page).</li>
     <li style="margin-bottom:6px">Text them today and book their first class. Credits expire 1 month after they are added.</li>
   </ol>`}
 </td></tr>
@@ -245,39 +262,53 @@ Deno.serve(async (req: Request) => {
         await sb.from("email_log").insert({
           event_type: r.ok ? "email.sent" : "email.failed",
           from_addr: "free3-claim", to_addrs: [loc.email],
-          subject: `3 FREE CLASSES claim — ${name} · ${loc.name}`,
+          subject: `${O.label} claim — ${name} · ${loc.name}`,
           send_path: "free3_claim", trial_signup_id: trialId,
-          raw: { studio: slug },
+          raw: { studio: slug, offer, ref: ref || null },
         });
       }
     } catch (_e) { /* never fail the claim on notify errors */ }
     // owner SMS
     try {
-      const twSid = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "";
-      const twToken = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
-      const twFrom = Deno.env.get("TWILIO_FROM_NUMBER") ?? "";
-      if (twSid && twToken && twFrom) {
-        const { data: owners } = await sb.from("location_owners").select("phone").eq("location_id", loc.id);
-        const smsBody = ready
-          ? `BBB ${loc.name}: ${name} claimed 3 FREE CLASSES. All set in MT. ${phone}`
-          : mt.status !== "failed"
-          ? `BBB ${loc.name}: ${name} claimed 3 FREE CLASSES. MT profile ready - add the $0 "3 Free Classes (Winback)" pass and text them to book: ${phone}`
-          : `BBB ${loc.name}: ${name} claimed 3 FREE CLASSES. Create their MT profile, add the $0 "3 Free Classes (Winback)" pass, then text them to book: ${phone}`;
-        for (const o of (owners ?? [])) {
-          if (!o.phone) continue;
-          const resp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twSid}/Messages.json`, {
-            method: "POST",
-            headers: { "Authorization": "Basic " + btoa(`${twSid}:${twToken}`), "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({ From: twFrom, To: o.phone, Body: smsBody }),
-          });
-          const j = await resp.json().catch(() => ({} as Record<string, unknown>));
-          await sb.from("sms_messages").insert({
-            studio_slug: slug, direction: "outbound", from_phone: twFrom, to_phone: o.phone,
-            body: smsBody, twilio_sid: (j as { sid?: string }).sid ?? null,
-            status: resp.ok ? "queued" : "failed",
-            sent_by: "free3-claim", sent_at: new Date().toISOString(), send_path: "free3_claim",
-          });
-          if (resp.ok) notify.owner_sms++;
+      const mtNote = ready
+        ? `All set in MT — ${O.human} granted.`
+        : mt.status !== "failed"
+        ? `MT profile ready — add the $0 "${O.pkg}" pass, then text them to book.`
+        : `Create their MT profile, add the $0 "${O.pkg}" pass, then text them to book.`;
+      if (slug === "bayside" || slug === "fresh-meadows") {
+        // 2026-09-28: Quo studios — the claim lands as the person's OWN Quo
+        // thread (named contact + task, source "Free 3 classes") instead of a
+        // Twilio blast to owner cells. Staff tap the contact to text them.
+        const rr = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/quo-lead-router`, {
+          method: "POST",
+          headers: { "x-bbb-secret": Deno.env.get("BBB_ADMIN_SECRET") || "bbb-test-2026-05-27", "Content-Type": "application/json" },
+          body: JSON.stringify({ name, phone, email: email || null, studio_slug: slug, kind: "inquiry", source: O.source + (ref ? ` (${ref})` : ""), note: mtNote }),
+        });
+        if (rr.ok) notify.owner_sms++;
+      } else {
+        // Non-Quo studios (Astoria / Williamsburg): keep the Twilio owner text.
+        const twSid = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "";
+        const twToken = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
+        const twFrom = Deno.env.get("TWILIO_FROM_NUMBER") ?? "";
+        if (twSid && twToken && twFrom) {
+          const { data: owners } = await sb.from("location_owners").select("phone").eq("location_id", loc.id);
+          const smsBody = `BBB ${loc.name}: ${name} claimed ${O.label}${ref ? " via " + ref : ""}. ${mtNote} ${phone}`;
+          for (const o of (owners ?? [])) {
+            if (!o.phone) continue;
+            const resp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twSid}/Messages.json`, {
+              method: "POST",
+              headers: { "Authorization": "Basic " + btoa(`${twSid}:${twToken}`), "Content-Type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({ From: twFrom, To: o.phone, Body: smsBody }),
+            });
+            const j = await resp.json().catch(() => ({} as Record<string, unknown>));
+            await sb.from("sms_messages").insert({
+              studio_slug: slug, direction: "outbound", from_phone: twFrom, to_phone: o.phone,
+              body: smsBody, twilio_sid: (j as { sid?: string }).sid ?? null,
+              status: resp.ok ? "queued" : "failed",
+              sent_by: "free3-claim", sent_at: new Date().toISOString(), send_path: "free3_claim",
+            });
+            if (resp.ok) notify.owner_sms++;
+          }
         }
       }
     } catch (_e) { /* ignore */ }

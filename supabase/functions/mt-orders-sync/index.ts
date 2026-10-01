@@ -380,6 +380,7 @@ serve(async (req) => {
     sales_upserts:  0,
     trial_inserts:  0,
     membership_inserts: 0,
+    membership_welcomes_skipped_existing: 0,
     errors:         [] as string[],
   };
 
@@ -549,10 +550,36 @@ serve(async (req) => {
                 summary.errors.push(`member insert ${email}: ${insErr.message}`);
               } else if (ins) {
                 summary.membership_inserts = (summary.membership_inserts || 0) + 1;
+                // 2026-09-30 (Justin): the isRenewal check above only catches the
+                // SAME item re-billing. A longtime PIF member (migrated from
+                // MindBody, so no prior row in our mirror) who buys a different
+                // product — e.g. the $299 Back to School add-on — was getting a
+                // "Welcome to Better Body X!" email. Ask MT directly: if this
+                // user has ANY non-trial membership instance that started before
+                // this order, they are an existing member → no welcome.
+                let wasMemberBefore = false;
+                if (userId) {
+                  try {
+                    const mr = await fetch(
+                      `${MT_BASE}/api/membership_instances?user=${userId}&page_size=100`,
+                      { headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.api+json' } },
+                    );
+                    const mj: any = mr.ok ? await mr.json() : null;
+                    const orderT = Date.parse(dateIso || new Date().toISOString());
+                    for (const mi of (mj?.data ?? [])) {
+                      const ma = mi?.attributes ?? {};
+                      const nm = String(ma.membership_name ?? '').toLowerCase();
+                      if (nm.includes('trial')) continue;
+                      const started = Date.parse(ma.calculated_start_datetime || ma.start_date || ma.purchase_date || '');
+                      if (Number.isFinite(started) && started < orderT - 864e5) { wasMemberBefore = true; break; }
+                    }
+                  } catch { /* lookup failed → treat as new (fail loud, not silent) */ }
+                }
+                if (wasMemberBefore) summary.membership_welcomes_skipped_existing++;
                 // 2026-09-03 (Chris): renewals still get a quiet board row so the
                 // member roster is complete, but NO welcome email and NO owner
                 // alert — those are for first-time purchases only.
-                if (!isRenewal) membershipWelcomesToSend.push({
+                if (!isRenewal && !wasMemberBefore) membershipWelcomesToSend.push({
                   trial_id: ins.id, email, first: np.first || 'there',
                   studio_slug: studioSlug || 'unknown', items: itemNames,
                   name: fullName || email, phone: phone || null,

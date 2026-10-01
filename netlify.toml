@@ -162,6 +162,53 @@
   status = 302
   force  = true
 
+
+# 1 Free Class (collab) short links (2026-10-01) — QR codes point here.
+# Unguessable on purpose. Add ?ref=<partner> to tag the collab, e.g. /c/ast-8x2m?ref=joes-coffee
+# (Netlify drops incoming query params when `to` has its own, so the ?ref
+# variants are matched explicitly and carried through.)
+[[redirects]]
+  from   = "/c/ast-8x2m"
+  to     = "/collab/free-class-8x2m?studio=astoria&ref=:ref"
+  status = 302
+  force  = true
+  [redirects.query]
+    ref = ":ref"
+
+[[redirects]]
+  from   = "/c/ast-8x2m"
+  to     = "/collab/free-class-8x2m?studio=astoria"
+  status = 302
+  force  = true
+
+[[redirects]]
+  from   = "/c/wb-4q9t"
+  to     = "/collab/free-class-8x2m?studio=williamsburg&ref=:ref"
+  status = 302
+  force  = true
+  [redirects.query]
+    ref = ":ref"
+
+[[redirects]]
+  from   = "/c/wb-4q9t"
+  to     = "/collab/free-class-8x2m?studio=williamsburg"
+  status = 302
+  force  = true
+
+[[redirects]]
+  from   = "/c/8x2m"
+  to     = "/collab/free-class-8x2m?ref=:ref"
+  status = 302
+  force  = true
+  [redirects.query]
+    ref = ":ref"
+
+[[redirects]]
+  from   = "/c/8x2m"
+  to     = "/collab/free-class-8x2m"
+  status = 302
+  force  = true
+
 # 3 Free Classes claim short links (2026-08-21) — used in the winback texts/emails.
 [[redirects]]
   from   = "/free3/astoria"

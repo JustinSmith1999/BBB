@@ -33,6 +33,7 @@
 // deno-lint-ignore-file
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { sendCustomerSms } from "../_shared/sms.ts";
 
 const ADMIN_SECRET = Deno.env.get("BBB_ADMIN_SECRET") || "bbb-test-2026-05-27";
 const SITE_URL = Deno.env.get("SITE_URL") || "https://betterbodybootcamp.com";
@@ -226,22 +227,10 @@ async function handler(req: Request): Promise<Response> {
       }
 
       try {
-        const form = new URLSearchParams();
-        form.set("To", e164);
-        form.set("From", TWILIO_FROM);
-        form.set("Body", msgBody);
-        const r = await fetch(
-          `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`,
-          {
-            method: "POST",
-            headers: {
-              "Authorization": "Basic " + btoa(`${TWILIO_SID}:${TWILIO_TOK}`),
-              "Content-Type": "application/x-www-form-urlencoded",
-            },
-            body: form.toString(),
-          },
-        );
-        const respJson: any = await r.json().catch(() => ({}));
+        // 2026-09-28: Quo-first from the studio line, Twilio only where no Quo
+        // line. Shared sender logs the sms_messages row (send_path=comeback_sms).
+        const r = await sendCustomerSms(sb, { studioSlug: loc.slug, to: e164, body: msgBody, sendPath: "comeback_sms", trialSignupId: c.id });
+        const respJson: any = { sid: r.id, error: r.error };
         if (r.ok && respJson.sid) {
           await sb.from("trial_signups").update({
             comeback_sms_sent_at: new Date().toISOString(),

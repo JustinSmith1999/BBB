@@ -21,6 +21,7 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { sendCustomerSms } from "../_shared/sms.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -75,6 +76,34 @@ async function sendSms(to: string, body: string): Promise<{ ok: boolean; sid?: s
   const j = await res.json().catch(() => ({}));
   if (res.ok && j.sid) return { ok: true, sid: j.sid };
   return { ok: false, error: j.message || `http_${res.status}` };
+}
+
+// Human label for WHERE a lead came from, built only from what the page
+// actually captured (utm first, then the referring site, then the in-app
+// browser signature). This is what staff see on the Quo task. Verified on
+// Gabby Prado 2026-09-28: utm_source=instagram&utm_content=bio + referrer
+// l.instagram.com + Instagram in-app UA → "Instagram bio".
+function sourceLabel(utmSource: string, utmMedium: string, utmContent: string, referrer: string, userAgent: string): string {
+  const u = (utmSource || "").toLowerCase();
+  if (u === "instagram" || u === "ig") return (utmContent || "").toLowerCase() === "bio" ? "Instagram bio" : "Instagram";
+  if (u === "facebook" || u === "fb")  return (utmMedium || "").toLowerCase() === "cpc" ? "Facebook ad" : "Facebook";
+  if (u.startsWith("gbp") || u === "google_business" || u === "gmb") return "Google Business Profile";
+  if (u === "google") return "Google";
+  if (u === "sms")    return "Text link";
+  if (u === "flyer")  return "Flyer / QR";
+  if (u)              return utmSource.slice(0, 30);
+  try {
+    const h = new URL(referrer).hostname.replace(/^www\./, "");
+    if (h.includes("instagram")) return "Instagram";
+    if (h.includes("facebook") || h.startsWith("l.facebook") || h.startsWith("lm.facebook")) return "Facebook";
+    if (h.includes("google"))  return "Google";
+    if (h.includes("yelp"))    return "Yelp";
+    if (h.includes("tiktok"))  return "TikTok";
+    if (h && !h.includes("betterbodybootcamp")) return h.slice(0, 30);
+  } catch { /* no / invalid referrer */ }
+  if (/Instagram/i.test(userAgent)) return "Instagram";   // in-app browser, referrer stripped
+  if (/FBAN|FBAV/i.test(userAgent)) return "Facebook";
+  return "No referrer (typed / texted link / QR)";
 }
 
 Deno.serve(async (req) => {
@@ -182,6 +211,26 @@ Deno.serve(async (req) => {
     // continue — don't block the SMS
   }
 
+  // ── Route into the studio's OWN Quo thread (named contact + task) WITH the
+  // source. 2026-09-28: schedule requests never created a Quo task, so an
+  // Instagram-driven lead (Gabby Prado) sat only in the leads table with no
+  // one pinged. Best-effort: never blocks the SMS.
+  try {
+    const source = sourceLabel(utmSource, utmMedium, utmContent, referrer, userAgent);
+    const secs = timeOnPageMs != null ? Math.round(timeOnPageMs / 1000) : null;
+    await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/quo-lead-router`, {
+      method: "POST",
+      headers: { "x-bbb-secret": Deno.env.get("BBB_ADMIN_SECRET") || "bbb-test-2026-05-27", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: `${firstName} ${lastName}`.trim(), phone: phoneE164, email: emailRaw || null,
+        studio_slug: studioSlug, kind: "inquiry", source,
+        note: "Asked for the class schedule" + (secs != null ? ` · ${secs}s on the trial page` : ""),
+      }),
+    });
+  } catch (e) {
+    console.error("quo-lead-router (schedule) failed (non-fatal):", (e as Error).message);
+  }
+
   // Compose the SMS. 2026-09-02: /mb/{slug} pointed at the retired MindBody
   // schedule; our /schedule/{slug} is now the native MT class list (no more
   // Healcode iframe). Send customers straight to our own page.
@@ -191,37 +240,18 @@ Deno.serve(async (req) => {
     `https://betterbodybootcamp.com/schedule/${studioSlug}\n\n` +
     `Drop in any time! Reply HELP for help or STOP to opt out.`;
 
-  const sms = await sendSms(phoneE164, msg);
-
-  // 2026-06-12 — log the send into sms_messages so /homebase + /ops can see
-  // it. Previously we sent SMS into the void; the comms history modal showed
-  // nothing because we never wrote a row. Loud-fail on logging error so the
-  // function logs surface the real Postgres error code instead of silence.
-  const logPayload = {
-    direction:  "outbound",
-    to_phone:   phoneE164,
-    from_phone: Deno.env.get("TWILIO_FROM_NUMBER") ?? null,
-    body:       msg,
-    status:     sms.ok ? "queued" : "failed",
-    twilio_sid: sms.ok ? sms.sid : null,
-    send_path:  "schedule_request_sms",
-    error_message: sms.ok ? null : (sms.error ?? "unknown"),
-  };
-  const { error: logErr } = await sb.from("sms_messages").insert(logPayload);
-  if (logErr) {
-    console.error("sms_messages insert FAILED", {
-      pg_code:    (logErr as { code?: string }).code,
-      pg_message: logErr.message,
-      pg_details: (logErr as { details?: string }).details,
-      pg_hint:    (logErr as { hint?: string }).hint,
-      payload:    logPayload,
-    });
-  }
+  // 2026-09-28: Quo-first per studio (Bayside / Fresh Meadows send FROM the
+  // studio's own Quo line so the reply threads into that inbox and delivery is
+  // tracked by quo-inbound-webhook); Twilio only where there's no Quo line.
+  // The shared sender writes the sms_messages row itself.
+  const sms = await sendCustomerSms(sb, {
+    studioSlug, to: phoneE164, body: msg, sendPath: "schedule_request_sms",
+  });
 
   if (!sms.ok) {
     console.error("schedule-SMS send failed:", sms.error);
     return json({ ok: true, saved: true, sms_failed: true, error: sms.error });
   }
 
-  return json({ ok: true, sid: sms.sid });
+  return json({ ok: true, sid: sms.id, rail: sms.rail });
 });

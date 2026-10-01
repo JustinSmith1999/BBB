@@ -187,14 +187,13 @@ serve(async (req) => {
 
     // ── SEND (live) ──
     const e164 = toE164(t.phone);
-    if (e164 && sid && twToken && from) {
-      try {
-        const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
-          method: 'POST', headers: { Authorization: twAuth, 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ To: e164, From: from, Body: smsBody }),
-        });
-        row.sms_ok = r.ok; if (!r.ok) row.sms_error = (await r.text()).slice(0, 160);
-      } catch (e) { row.sms_ok = false; row.sms_error = String(e).slice(0, 160); }
+    if (e164) {
+      // 2026-09-28: Quo-first from the studio line (reply threads into that
+      // inbox, delivery tracked), Twilio only where there's no Quo line. Also
+      // logs to sms_messages — this send was never logged before.
+      const studioSlug = studio.toLowerCase().replace(/\s+/g, '-');
+      const r = await sendCustomerSms(sb, { studioSlug, to: e164, body: smsBody, sendPath: 'trial_review_request', trialSignupId: t.id });
+      row.sms_ok = r.ok; if (!r.ok) row.sms_error = String(r.error ?? 'send failed').slice(0, 160);
     }
     if (t.email && resendKey) {
       try {

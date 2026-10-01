@@ -360,13 +360,26 @@ Deno.serve(async (req: Request) => {
     // out. Best-effort: never blocks or fails the response.
     try {
       const slug = (location || "").toLowerCase().replace(/[^a-z]/g, "");
+      // Source label from what the form captured (utm first, else in-app UA, else Direct)
+      // — same vocabulary as request-schedule-sms so tasks read consistently.
+      const us = String(utm_source || "").toLowerCase();
+      const ua = req.headers.get("user-agent") || "";
+      const source =
+        us === "instagram" || us === "ig" ? (String(utm_content || "").toLowerCase() === "bio" ? "Instagram bio" : "Instagram")
+        : us === "facebook" || us === "fb" ? (String(utm_medium || "").toLowerCase() === "cpc" ? "Facebook ad" : "Facebook")
+        : us.startsWith("gbp") || us === "gmb" ? "Google Business Profile"
+        : us === "google" ? "Google"
+        : us ? String(utm_source).slice(0, 30)
+        : /Instagram/i.test(ua) ? "Instagram"
+        : /FBAN|FBAV/i.test(ua) ? "Facebook"
+        : "No referrer (typed / texted link / QR)";
       const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/quo-lead-router`, {
         method: "POST",
         headers: {
           "x-bbb-secret": Deno.env.get("BBB_ADMIN_SECRET") || "bbb-test-2026-05-27",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name, phone, email, studio_slug: slug, kind: "inquiry", note: message }),
+        body: JSON.stringify({ name, phone, email, studio_slug: slug, kind: "inquiry", source, note: message }),
       });
       if (!r.ok) console.error("quo-lead-router (lead) failed:", r.status);
     } catch (e) {

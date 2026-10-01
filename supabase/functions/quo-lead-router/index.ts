@@ -85,12 +85,18 @@ Deno.serve(async (req) => {
   const last = nm.slice(1).join(" ") || (kind === "membership" ? "Member" : "Lead");
   const email = String(body.email ?? "").trim() || null;
   const note = String(body.note ?? "").trim().replace(/\s+/g, " ");
+  // WHERE they came from (Instagram / Facebook ad / Google / direct …), so staff
+  // see the source on the task itself — the thing we couldn't answer on the
+  // 7-trial day. Callers derive it from utm_source / referrer (see sourceLabel
+  // in request-schedule-sms + send-contact-email).
+  const source = String(body.source ?? "").trim().slice(0, 40);
 
-  const title = `${first} ${last}`.trim() + ` · ${TAG[kind]}`;
+  const title = `${first} ${last}`.trim() + ` · ${TAG[kind]}` + (source ? ` · ${source}` : "");
   const desc = [
     `📞 ${e164}`,
     email ? `✉️ ${email}` : "",
     `📍 ${studio.label}`,
+    source ? `📣 Source: ${source}` : "",
     "",
     note ? `Note: ${note.slice(0, 200)}` : "",
     CUE[kind],

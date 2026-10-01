@@ -37,6 +37,7 @@
 // deno-lint-ignore-file
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { sendCustomerSms as sendViaRail } from "../_shared/sms.ts";
 
 const ADMIN_SECRET = Deno.env.get("BBB_ADMIN_SECRET") || "bbb-test-2026-05-27";
 
@@ -446,26 +447,14 @@ Deno.serve(async (req) => {
       } else if (dryRun) {
         out.customer_sms = { ok: true, dry_run: true, preview: { to: customerTo, body: txt } };
       } else {
-        // Prefer the studio's Quo number so the welcome self-threads the trial
-        // in the shared inbox. Falls back to Twilio while 10DLC is pending.
-        let r: any = null;
-        let fromUsed = twFrom;
-        const quoFrom = QUO_STUDIO_NUMBER[studioSlug];
-        if (quoFrom) {
-          const q = await quoSendMessage(quoFrom, customerTo, txt);
-          if (q.ok) { r = { ok: true, status: 202, sid: null }; fromUsed = quoFrom; }
-        }
-        if (!r) r = await twilioSend({ sid: twSid, token: twToken, from: twFrom, to: customerTo, body: txt });
-        out.customer_sms = { ok: r.ok, status: r.status, sid: r.sid, error: r.error, channel: fromUsed === quoFrom ? "quo" : "twilio" };
-        if (r.ok) {
-          try {
-            await sb.from("sms_messages").insert({
-              trial_signup_id: t.id, studio_slug: studioSlug, direction: "outbound",
-              from_phone: fromUsed, to_phone: customerTo, body: txt,
-              twilio_sid: r.sid ?? null, status: "queued", sent_by: "manual_welcome_batch",
-            });
-          } catch {}
-        } else {
+        // 2026-09-28: one shared sender — Quo FROM the studio line (reply
+        // threads into that inbox, delivery tracked by quo-inbound-webhook),
+        // Twilio only where the studio has no Quo line. It logs the row itself.
+        const r = await sendViaRail(sb, {
+          studioSlug, to: customerTo, body: txt, sendPath: "manual_welcome_batch", trialSignupId: t.id,
+        });
+        out.customer_sms = { ok: r.ok, sid: r.id, error: r.error, channel: r.rail, fallback: r.fallback_reason };
+        if (!r.ok) {
           // send failed — release the claim so a later run retries
           try { await sb.from("trial_signups").update({ welcome_sms_sent_at: null }).eq("id", t.id); } catch {}
         }

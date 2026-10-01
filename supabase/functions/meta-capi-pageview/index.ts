@@ -176,6 +176,18 @@ Deno.serve(async (req) => {
   if (body.color_scheme)        visitorMeta.color_scheme   = String(body.color_scheme).slice(0, 8);
   if (Number.isFinite(body.visit_number))   visitorMeta.visit_number   = Math.floor(body.visit_number);
   if (Number.isFinite(body.days_since_first)) visitorMeta.days_since_first = Math.floor(body.days_since_first);
+  // 2026-09-28: the REFERRING SITE. The trial page has always sent
+  // document.referrer, and this function silently dropped it — so on the best
+  // trial day ever we could prove buyers did NOT come from the ad link but had
+  // no record of what they DID come from (Google / Instagram / a shared link).
+  // Stored as the referrer host + full value so source is answerable per visit.
+  if (body.referrer) {
+    const ref = String(body.referrer).slice(0, 512);
+    visitorMeta.referrer = ref;
+    try { visitorMeta.referrer_host = new URL(ref).hostname; } catch { /* not a URL — keep raw */ }
+  } else {
+    visitorMeta.referrer_host = "none"; // browser sent no referrer: typed, bookmark, texted link, QR, or stripped by Safari privacy
+  }
   visitorMeta.captured_at = new Date().toISOString();
 
   const logAttempt = async (fields: { ok: boolean; pixel_id?: string | null; http_status?: number | null; meta_event_id?: string | null; error?: string | null; raw?: unknown; }) => {
