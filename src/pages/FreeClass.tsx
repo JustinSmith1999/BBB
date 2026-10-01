@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle, MapPin } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
 import { captureUtmsFromUrl, getUtmParams } from '../lib/utm';
@@ -26,6 +26,7 @@ const STUDIOS: Studio[] = [
 
 export default function FreeClass() {
   const [params] = useSearchParams();
+  const navigate = useNavigate();
   const paramStudio = params.get('studio') ?? '';
   const ref = (params.get('ref') ?? '').trim().slice(0, 60);
   const [slug, setSlug] = useState<string>(STUDIOS.some((s) => s.slug === paramStudio) ? paramStudio : '');
@@ -61,7 +62,15 @@ export default function FreeClass() {
       });
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || 'Something went wrong. Please try again.');
+      // 2026-10-01: they book themselves. The claim minted a booking device
+      // token (same one book-class mints after a code verify), so /book/<studio>
+      // books their free class in one tap with no code step.
+      try {
+        localStorage.setItem('bbb_book_email', mail.toLowerCase());
+        if (data.booking_token) localStorage.setItem('bbb_book_token', String(data.booking_token));
+      } catch { /* private mode: they'll just get the code step on /book */ }
       setDone(true);
+      setTimeout(() => navigate(`/book/${studio.slug}?free=1`), 1800);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.');
     } finally {
@@ -102,7 +111,7 @@ export default function FreeClass() {
           <span className="text-red-600">One Free Class.</span> On Us.
         </h1>
         <p className="mx-auto mt-4 max-w-xl text-lg text-gray-300">
-          No card, no commitment. Claim your class and the studio texts you to get you booked.
+          No card, no commitment. Claim it, pick a class, you're booked.
         </p>
         <div className="mx-auto mt-6 flex max-w-2xl flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-gray-300">
           <span className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-red-600" />Coach-led small group training</span>
@@ -119,13 +128,13 @@ export default function FreeClass() {
               <CheckCircle className="mx-auto h-14 w-14 text-green-600" />
               <h2 className="mt-4 text-2xl font-bold text-gray-900">You're in.</h2>
               <p className="mx-auto mt-3 max-w-md text-gray-600">
-                Your free class is on your account. The <span className="font-semibold">{studio?.name}</span> team will text you shortly to book it. Come ready to work.
+                Your free class is on your account. Taking you to the <span className="font-semibold">{studio?.name}</span> schedule to pick your class…
               </p>
             </div>
           ) : (
             <>
               <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Claim Your Free Class</h2>
-              <p className="mt-1 text-sm text-gray-600">Pick your studio and tell us where to text you.</p>
+              <p className="mt-1 text-sm text-gray-600">Pick your studio, then pick your class on the next screen.</p>
 
               <div className="mt-5 grid grid-cols-2 gap-3">
                 {STUDIOS.map((s) => (
@@ -162,7 +171,7 @@ export default function FreeClass() {
                   {busy ? 'Claiming…' : 'Claim My Free Class'}
                 </button>
                 <p className="text-center text-xs text-gray-500">
-                  The studio will reach out to schedule. No purchase required.
+                  Next: choose a class time. No purchase required.
                 </p>
               </div>
             </>

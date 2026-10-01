@@ -211,9 +211,104 @@ Deno.serve(async (req: Request) => {
     : { granted: false as const, error: mt.error };
   const ready = mt.status !== "failed" && (grant.granted || grant.already === true);
 
+  // 2026-10-01 (Justin: "I want them to be able to book, not for front desk to
+  // reach out"). Mint a booking_devices token for this person so the native
+  // /book/<studio> page books their class instantly — no 6-digit code step.
+  // Same table/shape book-class mints after a successful code verify.
+  let bookingToken: string | null = null;
+  if (ready && mt.mtUserId) {
+    try {
+      bookingToken = crypto.randomUUID();
+      const { error: tokErr } = await sb.from("booking_devices").insert({ token: bookingToken, email, mt_user_id: mt.mtUserId });
+      if (tokErr) bookingToken = null;
+    } catch { bookingToken = null; }
+  }
+
   // Notify studio + owners (gated).
   const paths = (Deno.env.get("BBB_SEND_PATHS_ENABLED") ?? "").split(",").map((s) => s.trim());
-  const notify = { studio_email: false, owner_sms: 0 };
+  const notify = { studio_email: false, owner_sms: 0, claimant_email: false };
+
+  // ── Claimant confirmation (2026-10-01) ──────────────────────────────────
+  // Justin: claimants never heard from us at all — the App Store links only
+  // lived in the paid-membership welcome in mt-orders-sync, which a $0 claim
+  // never triggers. So people had no idea the app existed, and the ones who
+  // found it hit "Sign up" and made a SECOND MT profile with no credit and no
+  // booking on it. This email is the fix: confirm the credit, send them to the
+  // schedule, and say plainly that their account already exists — sign in with
+  // this email and use Forgot Password. Never "create an account".
+  // Same red-hero template as the membership welcome. Gated on free3_claim.
+  if (paths.includes("free3_claim")) {
+    try {
+      const resendKey = Deno.env.get("RESEND_API_KEY") ?? "";
+      if (resendKey && email) {
+        const HERO_HEX = "#D83B3B";
+        const LOGO_URL = "https://uracuwugpxqjfgtuobal.supabase.co/storage/v1/object/public/logos/0180_bbb_bbb-newtext_logo_new_black_1%20(1).png";
+        const APP_IOS = "https://apps.apple.com/us/app/better-body-studios/id6778182425";
+        const APP_PLAY = "https://play.google.com/store/apps/details?id=com.marianatek.betterbodybootcamp";
+        const bookUrl = `https://betterbodybootcamp.com/book/${slug}`;
+        const infoUrl = `https://betterbodybootcamp.com/locations/${slug}`;
+        const subject = `Your ${O.human} at Better Body ${loc.name}`;
+        const text = `Hi ${first},\n\nYour ${O.human} is on your account at Better Body Bootcamp ${loc.name} — nothing to pay, nothing to print.\n\nPick your class: ${bookUrl}\n\nUsing the app? We already set up your account under ${email}. Tap SIGN IN (not sign up), enter ${email}, then tap "Forgot password" to set your password. Creating a new account makes a duplicate that won't have your free class on it.\niPhone: ${APP_IOS}\nAndroid: ${APP_PLAY}\n\nShow up 10 minutes early, wear sneakers, bring water. Every class is coach-led — just show up.\n\nThe Better Body ${loc.name} Team`;
+        const html = `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:0;color:#111;background:#fff">
+      <div style="background:${HERO_HEX};color:#fff;padding:26px 28px 24px;text-align:center">
+        <img src="${LOGO_URL}" alt="Better Body Bootcamp" width="160" style="max-width:160px;height:auto;margin:0 auto 14px;display:block" />
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;opacity:0.85;margin-bottom:8px">${loc.name}</div>
+        <h1 style="margin:0;font-size:28px;font-weight:800;letter-spacing:-0.02em;line-height:1.1;color:#fff">You're in, ${first}.</h1>
+      </div>
+      <div style="padding:28px">
+        <p style="margin:0 0 18px;font-size:16px;line-height:1.55;color:#222">Your <strong>${O.human}</strong> is on your account at Better Body Bootcamp ${loc.name}. Nothing to pay, nothing to print.</p>
+        <p style="margin:0 0 22px;font-size:15px;line-height:1.6;color:#444">All that's left is picking a time. Every class is coach-led, so just show up and we take care of the rest.</p>
+        <div style="text-align:center;margin:26px 0 20px">
+          <a href="${bookUrl}" style="background:${HERO_HEX};color:#fff;text-decoration:none;font-weight:700;padding:14px 28px;border-radius:999px;display:inline-block;font-size:15px;letter-spacing:0.01em">Pick My Class &rarr;</a>
+        </div>
+        <div style="background:#FFF8E6;border:1px solid #F0DFAE;border-radius:12px;padding:18px 20px;margin:0 0 22px">
+          <div style="font-size:12px;font-weight:700;color:#8A6D1F;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px">Using the app? Read this first</div>
+          <p style="margin:0 0 12px;font-size:14px;line-height:1.6;color:#4A3B10">We already created your account under <strong>${email}</strong>. In the app, tap <strong>Sign In</strong> &mdash; not Sign Up &mdash; enter that email, then tap <strong>Forgot password</strong> to set your password. Making a new account creates a duplicate that won't have your free class on it.</p>
+          <div style="text-align:center">
+            <a href="${APP_IOS}" style="background:#000;color:#fff;text-decoration:none;font-weight:700;padding:11px 20px;border-radius:999px;display:inline-block;font-size:13px;margin:0 4px 8px">App Store</a>
+            <a href="${APP_PLAY}" style="background:#000;color:#fff;text-decoration:none;font-weight:700;padding:11px 20px;border-radius:999px;display:inline-block;font-size:13px;margin:0 4px 8px">&#9654; Google Play</a>
+          </div>
+        </div>
+        <div style="background:#fafafa;border:1px solid #eee;border-radius:12px;padding:18px 20px;margin-bottom:22px">
+          <div style="font-size:12px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px">What you've got</div>
+          <table style="width:100%;border-collapse:collapse;font-size:14px">
+            <tr><td style="padding:4px 0;color:#666;width:140px">On your account</td><td style="padding:4px 0;font-weight:600">${O.human}</td></tr>
+            <tr><td style="padding:4px 0;color:#666">Studio</td><td style="padding:4px 0;font-weight:600">${loc.name}</td></tr>
+            <tr><td style="padding:4px 0;color:#666">Cost</td><td style="padding:4px 0">$0 &mdash; no card needed</td></tr>
+          </table>
+        </div>
+        <div style="font-size:14px;color:#444;line-height:1.55">
+          <p style="margin:0 0 10px"><strong>First class tips:</strong> show up 10 minutes early, wear sneakers, bring water. Coach will get you set up.</p>
+          <p style="margin:0 0 10px">Questions? Just reply to this email &mdash; it goes straight to your studio.</p>
+        </div>
+        <div style="border-top:1px solid #eee;margin-top:24px;padding-top:18px;font-size:12px;color:#888;text-align:center">
+          <a href="${infoUrl}" style="color:#888;text-decoration:underline">Studio info &amp; directions</a>
+          &nbsp;&middot;&nbsp; <a href="${bookUrl}" style="color:#888;text-decoration:underline">Class schedule</a>
+        </div>
+      </div>
+    </div>`;
+        const r = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${resendKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: Deno.env.get("FROM_EMAIL") || "Better Body Bootcamp <hello@betterbodybootcamp.com>",
+            to: [email],
+            reply_to: loc.email,
+            subject, text, html,
+          }),
+        });
+        notify.claimant_email = r.ok;
+        await sb.from("email_log").insert({
+          event_type: r.ok ? "email.sent" : "email.failed",
+          from_addr: "free3-claim", to_addrs: [email],
+          subject, send_path: "free3_claim", trial_signup_id: trialId,
+          raw: { studio: slug, offer, ref: ref || null, kind: "claimant_confirmation" },
+        });
+      }
+    } catch (_e) { /* never fail the claim on notify errors */ }
+  }
+
   if (paths.includes("free3_claim")) {
     // studio email via Resend
     try {
@@ -314,5 +409,5 @@ Deno.serve(async (req: Request) => {
     } catch (_e) { /* ignore */ }
   }
 
-  return json({ ok: true, trial_id: trialId, notified: notify, mt: { status: mt.status, user_id: mt.mtUserId ?? null, credits: grant.granted ? "granted" : grant.already ? "already_had" : "failed" } });
+  return json({ ok: true, trial_id: trialId, booking_token: bookingToken, book_slug: slug, notified: notify, mt: { status: mt.status, user_id: mt.mtUserId ?? null, credits: grant.granted ? "granted" : grant.already ? "already_had" : "failed" } });
 });

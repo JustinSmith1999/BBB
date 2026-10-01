@@ -4,7 +4,7 @@
 // (needs OAuth client from MT dev portal).
 
 import { useEffect } from 'react';
-import { useParams, Navigate, Link } from 'react-router-dom';
+import { useParams, useSearchParams, Navigate, Link } from 'react-router-dom';
 import { MapPin, Phone, ArrowRight, Clock } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
 import NativeClassList from '../components/NativeClassList';
@@ -32,6 +32,10 @@ export default function Book() {
   const { location: slugParam } = useParams<{ location: string }>();
   const slug = (slugParam ?? '').toLowerCase();
   const cfg  = LOCATIONS[slug];
+  // 2026-10-01: ?free=1 = arrived from the collab free-class claim; their 1
+  // free credit is already on their MT account and a booking token is set.
+  const [sp] = useSearchParams();
+  const freeClaim = sp.get('free') === '1';
 
   useEffect(() => { window.scrollTo(0, 0); }, [slug]);
 
@@ -58,9 +62,16 @@ export default function Book() {
               <h1 className="text-[clamp(2rem,4vw,3rem)] font-bold leading-[0.95] mb-3 tracking-tight">
                 Book a Class at <span className="text-red-500">{cfg.name}</span>
               </h1>
+              {freeClaim ? (
+                <p className="text-sm sm:text-base text-gray-200 max-w-xl mx-auto mb-5">
+                  <span className="inline-block rounded-full bg-green-500/15 border border-green-500/40 px-3 py-1 text-xs font-bold uppercase tracking-widest text-green-400 mr-2">Free class loaded</span>
+                  Pick a time below and tap Book. That's it.
+                </p>
+              ) : (
               <p className="text-sm sm:text-base text-gray-300 max-w-xl mx-auto mb-5">
                 Reserve your spot in this week's classes. New here? Start with our 2-week trial — $49.
               </p>
+              )}
               <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm text-gray-300">
                 <span className="inline-flex items-center gap-1.5">
                   <MapPin className="w-4 h-4 text-red-500" />
@@ -74,6 +85,7 @@ export default function Book() {
                   {cfg.phone}
                 </a>
               </div>
+              {!freeClaim && (
               <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
                 <Link
                   to={trialHref}
@@ -89,6 +101,7 @@ export default function Book() {
                   Studio Info
                 </Link>
               </div>
+              )}
             </div>
           </div>
         </div>

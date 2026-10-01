@@ -206,6 +206,18 @@ export default function BookClassModal({ session: s, studioName, studioSlug, onC
               <p className="text-sm text-gray-600 mt-2">
                 {s.class_name} · {when} at {studioName}. See you there — arrive 10 minutes early.
               </p>
+              {/* 2026-10-01: the app's Sign Up button makes a SECOND MT profile
+                  with none of their credits or bookings on it. Their account
+                  already exists (we created it), so always point at Sign In +
+                  Forgot password. Same wording as the claim confirmation email. */}
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left">
+                <div className="text-[11px] font-bold uppercase tracking-widest text-amber-800 mb-1">Want the app?</div>
+                <p className="text-xs leading-relaxed text-amber-900">
+                  Your account is already set up under <b>{email}</b>. In the Better Body Studios app tap
+                  {' '}<b>Sign In</b> (not Sign Up), enter that email, then tap <b>Forgot password</b> to set one.
+                  A new account won&rsquo;t have your classes on it.
+                </p>
+              </div>
               <button
                 onClick={onClose}
                 className="mt-5 w-full bg-black text-white font-black uppercase tracking-wider py-3.5 rounded-xl"
