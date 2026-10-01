@@ -6,12 +6,12 @@ import { captureUtmsFromUrl, getUtmParams } from '../lib/utm';
 
 // ─── /collab/free-class-8x2m — 1 Free Class (collab) landing page (2026-10-01) ─
 // QR-code landing page for collaborations: partner shares the QR / link, the
-// person picks Astoria or Williamsburg, leaves name/email/phone, and the
+// person picks their studio, leaves name/email/phone, and the
 // free3-claim edge fn (offer: "free1") grants the $0 "1 Class Free Promo"
 // credit in Mariana Tek, drops the lead in Homebase and alerts the studio.
 // ?ref=<partner> tags the claim with who sent them (utm_source), so each
 // collaboration's results can be read on the board. Short links in
-// netlify.toml: /c/ast-8x2m, /c/wb-4q9t, /c/8x2m (+ ?ref=). Unguessable on
+// _redirects: /c/ast-8x2m, /c/bay-5n8v, /c/fm-3q7w, /c/wb-4q9t, /c/8x2m (+ ?ref=). Unguessable on
 // purpose (Chris): only people with the QR / link get the free class. Not in sitemap.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -19,9 +19,12 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 type Studio = { slug: string; name: string; address: string };
+// 2026-10-01: opened to all four studios (was Astoria + Williamsburg only).
 const STUDIOS: Studio[] = [
-  { slug: 'astoria',      name: 'Astoria',      address: '31-18 Steinway Street' },
-  { slug: 'williamsburg', name: 'Williamsburg', address: '487 Driggs Ave' },
+  { slug: 'astoria',       name: 'Astoria',       address: '31-18 Steinway Street' },
+  { slug: 'bayside',       name: 'Bayside',       address: '34-47 Bell Blvd' },
+  { slug: 'fresh-meadows', name: 'Fresh Meadows', address: '76-46 164th Street' },
+  { slug: 'williamsburg',  name: 'Williamsburg',  address: '487 Driggs Ave' },
 ];
 
 export default function FreeClass() {
@@ -84,7 +87,7 @@ export default function FreeClass() {
     <div className="min-h-screen bg-white">
       <SEOHead
         title="Your Free Class | Better Body Bootcamp"
-        description="One free class at Better Body Bootcamp Astoria or Williamsburg. No card, no commitment."
+        description="One free class at Better Body Bootcamp. No card, no commitment."
         noindex
       />
 
@@ -116,7 +119,7 @@ export default function FreeClass() {
         <div className="mx-auto mt-6 flex max-w-2xl flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-gray-300">
           <span className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-red-600" />Coach-led small group training</span>
           <span className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-red-600" />All levels welcome</span>
-          <span className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-red-600" />Astoria &amp; Williamsburg</span>
+          <span className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-red-600" />All four NYC studios</span>
         </div>
         </div>
       </section>
@@ -136,7 +139,7 @@ export default function FreeClass() {
               <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Claim Your Free Class</h2>
               <p className="mt-1 text-sm text-gray-600">Pick your studio, then pick your class on the next screen.</p>
 
-              <div className="mt-5 grid grid-cols-2 gap-3">
+              <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {STUDIOS.map((s) => (
                   <button
                     key={s.slug}
