@@ -19,8 +19,19 @@
  * their two weeks is reported separately and excluded from the rate — they
  * haven't had the chance to convert yet.
  *
- * GET/POST → { ok, as_of, studios: { <slug>: { months: {...}, totals: {...} } } }
- * Public read (the dashboard calls it with the anon key). No writes.
+ * Also returns the two numbers the owners actually ask for first:
+ *   members_now  — people holding a paid membership today (trials excluded)
+ *   trials_total — every trial Mariana Tek has a record of
+ * and the same pair measured SINCE THE CUTOVER, which is the period that
+ * matters to them and the only one where trial and membership live on the
+ * same record in one system.
+ *
+ * Result is cached in ops_cache for 30 minutes — walking 12 pages of the
+ * Mariana Tek API takes ~24s, far too slow for a card at the top of the page.
+ * ?fresh=1 forces a recompute.
+ *
+ * GET/POST → { ok, as_of, cached, studios: {...}, overall: {...} }
+ * Public read (the dashboard calls it with the anon key).
  *
  * Deploy: bbb deploy-fn trial-conversion-stats
  */
@@ -49,20 +60,41 @@ async function mtToken(sb: ReturnType<typeof createClient>): Promise<string | nu
 
 type Inst = { slug: string; uid: string; name: string; pd: string; end: string | null; cancel: string | null };
 
+const CUTOVER = "2026-06-26";
+const CACHE_KEY = "trial_conversion_stats";
+const CACHE_MIN = 30;
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: cors });
   const sb = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
+  const fresh = new URL(req.url).searchParams.get("fresh") === "1";
+
+  if (!fresh) {
+    try {
+      const { data } = await sb.from("ops_cache").select("payload, updated_at").eq("key", CACHE_KEY).maybeSingle();
+      const row = data as { payload: any; updated_at: string } | null;
+      if (row && Date.now() - Date.parse(row.updated_at) < CACHE_MIN * 60_000) {
+        return json({ ...row.payload, cached: true, cached_at: row.updated_at });
+      }
+    } catch { /* no cache table yet — just compute */ }
+  }
+
   const token = await mtToken(sb);
   if (!token) return json({ ok: false, error: "no Mariana Tek token" }, 500);
 
   // ── pull every membership instance ────────────────────────────────────────
+  // Mariana Tek returns links: null — pagination lives in meta.pagination with a
+  // ?page= parameter. Following links.next silently read page 1 only, which made
+  // Bayside look like 10 trials instead of 35. Walk the page count instead.
   const inst: Inst[] = [];
-  let url: string | null = `${MT_BASE}/api/membership_instances?page_size=200`;
-  let guard = 0;
-  while (url && guard++ < 60) {
-    const r: Response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: MT_ACCEPT } });
+  let page = 1, pages = 1;
+  while (page <= pages && page <= 60) {
+    const r: Response = await fetch(`${MT_BASE}/api/membership_instances?page_size=200&page=${page}`,
+      { headers: { Authorization: `Bearer ${token}`, Accept: MT_ACCEPT } });
     if (!r.ok) return json({ ok: false, error: `Mariana Tek ${r.status}` }, 502);
     const j: any = await r.json();
+    pages = Number(j?.meta?.pagination?.pages ?? 1);
+    page++;
     for (const m of j?.data ?? []) {
       const a = m.attributes ?? {}, rel = m.relationships ?? {};
       const slug = SLUG[(rel.purchase_location?.data ?? {}).id];
@@ -76,7 +108,6 @@ Deno.serve(async (req: Request) => {
         cancel: a.cancellation_datetime ?? null,
       });
     }
-    url = j?.links?.next ?? null;
   }
 
   const isTrial = (n: string) => n.toLowerCase().includes("trial");
@@ -96,6 +127,16 @@ Deno.serve(async (req: Request) => {
     if (!firstTrial[k] || i.pd < firstTrial[k].pd) firstTrial[k] = i;
   }
 
+  // members today — a paid membership in force right now, trials excluded
+  const liveMembers: Record<string, Set<string>> = {};
+  for (const i of inst) {
+    if (isTrial(i.name)) continue;
+    if (i.cancel && i.cancel <= now) continue;
+    if (i.end && i.end <= now) continue;
+    if (!i.pd || i.pd > now.slice(0, 10)) continue;
+    (liveMembers[i.slug] = liveMembers[i.slug] || new Set()).add(i.uid);
+  }
+
   const out: Record<string, any> = {};
   for (const k of Object.keys(firstTrial)) {
     const t = firstTrial[k];
@@ -111,14 +152,42 @@ Deno.serve(async (req: Request) => {
       b.ended++; s.totals.ended++;
       if (converted) { b.converted++; s.totals.converted++; }
     }
+    if (t.pd >= CUTOVER) {
+      const c = (s.since_cutover = s.since_cutover || { trials: 0, still: 0, ended: 0, converted: 0 });
+      c.trials++;
+      if (stillIn) c.still++;
+      else { c.ended++; if (converted) c.converted++; }
+    }
   }
-  for (const s of Object.values(out) as any[]) {
+  const overall = { members_now: 0, trials_total: 0, trials_since_cutover: 0, ended_since_cutover: 0, converted_since_cutover: 0 };
+  for (const [slug, s] of Object.entries(out) as any[]) {
     for (const m of Object.values(s.months) as any[]) m.rate = m.ended ? Math.round((m.converted / m.ended) * 100) : null;
     s.totals.rate = s.totals.ended ? Math.round((s.totals.converted / s.totals.ended) * 100) : null;
+    s.members_now = (liveMembers[slug] || new Set()).size;
+    s.since_cutover = s.since_cutover || { trials: 0, still: 0, ended: 0, converted: 0 };
+    s.since_cutover.rate = s.since_cutover.ended
+      ? Math.round((s.since_cutover.converted / s.since_cutover.ended) * 100) : null;
+    overall.members_now += s.members_now;
+    overall.trials_total += s.totals.trials;
+    overall.trials_since_cutover += s.since_cutover.trials;
+    overall.ended_since_cutover += s.since_cutover.ended;
+    overall.converted_since_cutover += s.since_cutover.converted;
   }
-  return json({
-    ok: true, as_of: now, read_only: true,
-    definition: "trial = membership whose name contains 'trial'; converted = any later non-trial membership at any studio; people still inside their trial are excluded from the rate",
-    studios: out,
-  });
+  for (const slug of Object.keys(liveMembers)) {
+    if (!out[slug]) { out[slug] = { months: {}, totals: { trials: 0, still: 0, ended: 0, converted: 0, rate: null },
+      since_cutover: { trials: 0, still: 0, ended: 0, converted: 0, rate: null }, members_now: liveMembers[slug].size };
+      overall.members_now += liveMembers[slug].size; }
+  }
+  (overall as any).rate_since_cutover = overall.ended_since_cutover
+    ? Math.round((overall.converted_since_cutover / overall.ended_since_cutover) * 100) : null;
+
+  const payload = {
+    ok: true, as_of: now, read_only: true, cutover: CUTOVER,
+    definition: "trial = membership whose name contains 'trial'; converted = any later non-trial membership at any studio; people still inside their trial are excluded from the rate; members_now = a paid membership in force today, trials excluded",
+    overall, studios: out,
+  };
+  try {
+    await sb.from("ops_cache").upsert({ key: CACHE_KEY, payload, updated_at: now }, { onConflict: "key" });
+  } catch { /* cache table optional */ }
+  return json({ ...payload, cached: false });
 });
