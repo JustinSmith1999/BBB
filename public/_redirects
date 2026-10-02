@@ -4,6 +4,9 @@
 /dashboard/*             https://bbbmarketing.netlify.app/:splat       200!
 
 # /homebase reverse-proxies to the front-desk Kanban portal.
+/frontdesk               https://bbbmarketing.netlify.app/frontdesk.html  200!
+/frontdesk/*             https://bbbmarketing.netlify.app/:splat        200!
+# /homebase kept so existing bookmarks and older texts still land (2026-10-02).
 /homebase                https://bbbmarketing.netlify.app/frontdesk.html  200!
 /homebase/*              https://bbbmarketing.netlify.app/:splat        200!
 

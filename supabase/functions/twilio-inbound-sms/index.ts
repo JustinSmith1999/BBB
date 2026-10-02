@@ -269,7 +269,7 @@ serve(async (req) => {
             .map(p => `${p.name}: ${p.phone.replace('+1', '')}`)
             .join('\n');
           const twimlPick = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${
-            'Multiple customers texted recently. Easiest: reply from the Inbox at betterbodybootcamp.com/homebase. Or start your text with their number:\n' + menu
+            'Multiple customers texted recently. Easiest: reply from the Inbox at betterbodybootcamp.com/frontdesk. Or start your text with their number:\n' + menu
           }</Message></Response>`;
           return new Response(twimlPick, { status: 200, headers: { ...cors, 'Content-Type': 'text/xml' } });
         } else {
@@ -299,13 +299,13 @@ serve(async (req) => {
           return new Response('<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
             { status: 200, headers: { ...cors, 'Content-Type': 'text/xml' } });
         }
-        confirm = 'Could not tell who this reply is for. Reply from the Inbox at betterbodybootcamp.com/homebase, or start your text with their number like: 6467995985 your message';
+        confirm = 'Could not tell who this reply is for. Reply from the Inbox at betterbodybootcamp.com/frontdesk, or start your text with their number like: 6467995985 your message';
         await sb.from('sms_messages').insert({
           from_phone: to, to_phone: from, body: confirm, direction: 'outbound',
           status: 'queued', send_path: 'owner_relay_bounce',
         }).then(({ error }) => { if (error) console.error('bounce log failed:', error.message); });
       } else if (!T_SID || !T_TOK || !T_FROM) {
-        confirm = 'Relay unavailable (SMS not configured). Use betterbodybootcamp.com/homebase';
+        confirm = 'Relay unavailable (SMS not configured). Use betterbodybootcamp.com/frontdesk';
       } else {
         const rf = new URLSearchParams({ To: target, From: T_FROM, Body: relayBody.slice(0, 1200) });
         const rres = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${T_SID}/Messages.json`, {
@@ -323,7 +323,7 @@ serve(async (req) => {
         }).then(({ error }) => { if (error) console.error('owner_relay log failed:', error.message); });
         confirm = okRelay
           ? `Sent to ${target} from the gym number.`
-          : `Send FAILED (${rj.message ?? rres.status}). Try betterbodybootcamp.com/homebase`;
+          : `Send FAILED (${rj.message ?? rres.status}). Try betterbodybootcamp.com/frontdesk`;
       }
       const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${confirm}</Message></Response>`;
       return new Response(twiml, { status: 200, headers: { ...cors, 'Content-Type': 'text/xml' } });
@@ -490,13 +490,13 @@ serve(async (req) => {
           const senderLabel = matchedTrialName || from;
           const trimmedBody = body.length > 280 ? body.slice(0, 277) + '...' : body;
           const homebaseLink = matchedTrialIdForGateway
-            ? `https://betterbodybootcamp.com/homebase#trial=${matchedTrialIdForGateway}`
-            : 'https://betterbodybootcamp.com/homebase';
+            ? `https://betterbodybootcamp.com/frontdesk#trial=${matchedTrialIdForGateway}`
+            : 'https://betterbodybootcamp.com/frontdesk';
           const fwdMsg =
             `${studioName} — text from ${senderLabel} (${from}):\n\n` +
             `"${trimmedBody}"\n\n` +
             (memberStats ? `${memberStats}\n\n` : '') +
-            `Reply in Homebase (Inbox tab): betterbodybootcamp.com/homebase`;
+            `Reply in Homebase (Inbox tab): betterbodybootcamp.com/frontdesk`;
 
           // Fire one Twilio call per recipient, in parallel. Each independently
           // logged to sms_messages so the dashboard shows what we sent + to whom.
@@ -583,8 +583,8 @@ serve(async (req) => {
         const studioName = (emailStudioName ?? emailStudioSlug).trim();
         const senderLabel = matchedTrialName || from;
         const homebaseLink = matchedTrialIdForGateway
-          ? `https://betterbodybootcamp.com/homebase#trial=${matchedTrialIdForGateway}`
-          : 'https://betterbodybootcamp.com/homebase';
+          ? `https://betterbodybootcamp.com/frontdesk#trial=${matchedTrialIdForGateway}`
+          : 'https://betterbodybootcamp.com/frontdesk';
         const subj = `📩 Reply from ${senderLabel} — ${studioName}`;
         const safeBody = body
           .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -600,12 +600,12 @@ serve(async (req) => {
             </table>
             <div style="background:#f4f4f5;border-left:3px solid #0066cc;padding:14px 18px;margin:18px 0;border-radius:4px;font-size:15px;line-height:1.5;white-space:pre-wrap">${safeBody}</div>
             <p style="font-size:14px;margin:18px 0 0">
-              <a href="${homebaseLink}" style="background:#0066cc;color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;display:inline-block;font-weight:600">Reply in /homebase</a>
+              <a href="${homebaseLink}" style="background:#0066cc;color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;display:inline-block;font-weight:600">Reply in /frontdesk</a>
             </p>
-            <p style="font-size:12px;color:#888;margin:24px 0 0">This message was auto-forwarded from your BBB Twilio inbound webhook. Replies you type in /homebase will text back to the customer through the same number.</p>
+            <p style="font-size:12px;color:#888;margin:24px 0 0">This message was auto-forwarded from your BBB Twilio inbound webhook. Replies you type in /frontdesk will text back to the customer through the same number.</p>
           </div>
         `;
-        const text = `Customer reply — ${studioName}\n\nFrom: ${senderLabel}\nPhone: ${from}\n\n"${body}"\n\nReply in /homebase: ${homebaseLink}`;
+        const text = `Customer reply — ${studioName}\n\nFrom: ${senderLabel}\nPhone: ${from}\n\n"${body}"\n\nReply in /frontdesk: ${homebaseLink}`;
         const r = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
