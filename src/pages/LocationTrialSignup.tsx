@@ -3,6 +3,7 @@ import { useParams, Navigate } from 'react-router-dom';
 import { CheckCircle, Lock } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
 import { getUtmParams, captureUtmsFromUrl } from '../lib/utm';
+import { getVariant } from '../lib/abTest';
 
 // ─── PER-GYM CONFIG ─────────────────────────────────────────────────────────
 // `locationId` is the Supabase row UUID for the gym. The edge function
@@ -231,6 +232,87 @@ export default function LocationTrialSignup() {
   const [baysideError,      setBaysideError]      = useState('');
   const baysideSubmittingRef = useRef(false);
 
+  // ── 2026-10-07: CAPTURE THE LEAD BEFORE THE CARD ───────────────────────
+  // Measured week of Sep 27 - Oct 4: 763 people reached a trial page, 34
+  // submitted (4.5%), and 29 of those 34 paid (85%). The checkout is fine.
+  // The problem was that the form demanded nine fields ending in a credit
+  // card before anyone counted as anything, so the 729 who left did so
+  // without leaving a name or a number.
+  //
+  // captureLead() fires once, as soon as name + email + phone are valid and
+  // BEFORE the card is touched. Anyone who bails at the card is now a row in
+  // Homebase's New Lead column for the desk to ring.
+  //
+  // Silent: capture-lead stamps abandoned_email_sent_at and withholds the
+  // email address, which is what every automated sender keys on. Nothing
+  // messages these people. Flip `drip: true` below to put them in the normal
+  // abandoned-cart sequence instead.
+  // ── A/B: both variants are now two-step, contact first and card second,
+  // because capturing the lead before the card is the baseline rather than
+  // the experiment. What is being tested is how much typing step 1 demands.
+  //
+  //   A = step 1 asks first name, last name, email, phone   (4 fields)
+  //   B = step 1 asks first name and phone only             (2 fields)
+  //       Last name and email move to step 2, beside the card.
+  //
+  // Why this is the right challenger: 95% of this traffic is on a phone, and
+  // an email address is the slowest thing anyone types on a mobile keyboard.
+  // We do not need it to ring somebody. One variable changes, so whatever the
+  // result is, it is attributable.
+  //
+  // Assigned once per browser and pinned, so a returning visitor never flips.
+  const [variant] = useState(() => getVariant('trial_form_v2'));
+  const [step, setStep] = useState<1 | 2>(1);
+  // Fields that live in step 1 for this visitor.
+  const shortIntake = variant === 'B';
+
+  const leadCapturedRef = useRef(false);
+  const captureLead = async () => {
+    if (leadCapturedRef.current || !location) return;
+    const first = baysideForm.firstName.trim();
+    const last  = baysideForm.lastName.trim();
+    const mail  = baysideForm.email.trim();
+    const tel   = baysideForm.phone.trim();
+    // Same bar as the real submit, minus the card. Don't capture half a name.
+    if (!first || !last) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return;
+    const digits = tel.replace(/\D/g, '');
+    if (digits.length < 10 || digits.length > 11) return;
+
+    leadCapturedRef.current = true;   // set first: never double-post
+    try {
+      const { fbp, fbc } = getMetaClickIds();
+      await fetch(`${SUPABASE_URL}/functions/v1/capture-lead`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          apikey: SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          studio_slug: location.slug,
+          location_id: location.locationId,
+          first_name: first,
+          last_name: last,
+          email: mail.toLowerCase(),
+          phone: tel,
+          fbp, fbc,
+          ...getUtmParams(),
+          referrer: document.referrer || '',
+          page_url: window.location.href,
+          time_on_page_ms: Math.max(0, Date.now() - pageLoadAtRef.current),
+          ab_variant: variant,
+          drip: false,
+        }),
+        keepalive: true,   // survives the tab closing mid-request
+      });
+    } catch {
+      // Never block or surface anything. If this fails the customer still
+      // completes checkout normally; we just lose the early capture.
+      leadCapturedRef.current = false;
+    }
+  };
+
   // ── Soft-conversion: "text me the schedule" mini-form ───────────────────
   // For visitors who won't commit to $49 today. Captures phone, sends the
   // schedule link via Twilio, writes a soft_conversion lead row. 2026-06-11.
@@ -257,6 +339,28 @@ export default function LocationTrialSignup() {
     e.preventDefault();
     if (baysideSubmittingRef.current) return;
     setBaysideError('');
+
+    // Variant B, step 1: validate the contact fields only, write the lead,
+    // then reveal the card. The card inputs are not mounted yet, so the
+    // card validation below must not run.
+    if (step === 1) {
+      const f = baysideForm.firstName.trim(), t = baysideForm.phone.trim();
+      if (!f) { setBaysideError('Please enter your first name.'); return; }
+      if (!shortIntake) {
+        const l = baysideForm.lastName.trim(), m = baysideForm.email.trim();
+        if (!l) { setBaysideError('Please enter your last name.'); return; }
+        if (!m || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(m)) {
+          setBaysideError('Please enter a valid email address.'); return;
+        }
+      }
+      if (!t || t.replace(/\D/g, '').length < 10) {
+        setBaysideError('Please enter a valid phone number.'); return;
+      }
+      await captureLead();
+      setStep(2);
+      return;
+    }
+
     const first = baysideForm.firstName.trim();
     const last  = baysideForm.lastName.trim();
     const mail  = baysideForm.email.trim();
@@ -707,8 +811,9 @@ export default function LocationTrialSignup() {
                         value={baysideForm.firstName}
                         onChange={e => setBaysideForm(f => ({ ...f, firstName: e.target.value }))}
                         disabled={baysideSubmitting}
-                        className="px-3 py-3 rounded-lg border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"
+                        className={(shortIntake && step === 1 ? "col-span-2 " : "") + "px-3 py-3 rounded-lg border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"}
                       />
+                      {!(shortIntake && step === 1) && (
                       <input
                         type="text" required autoComplete="family-name"
                         placeholder="Last name"
@@ -716,8 +821,9 @@ export default function LocationTrialSignup() {
                         onChange={e => setBaysideForm(f => ({ ...f, lastName: e.target.value }))}
                         disabled={baysideSubmitting}
                         className="px-3 py-3 rounded-lg border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"
-                      />
+                      />)}
                     </div>
+                    {!(shortIntake && step === 1) && (
                     <input
                       type="email" required autoComplete="email"
                       placeholder="Email address"
@@ -725,23 +831,32 @@ export default function LocationTrialSignup() {
                       onChange={e => setBaysideForm(f => ({ ...f, email: e.target.value }))}
                       disabled={baysideSubmitting}
                       className="w-full px-3 py-3 rounded-lg border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"
-                    />
+                    />)}
                     <input
                       type="tel" required autoComplete="tel"
                       placeholder="Phone number"
                       value={baysideForm.phone}
                       onChange={e => setBaysideForm(f => ({ ...f, phone: e.target.value }))}
+                      // Primary capture point: they finished the contact
+                      // fields. Everything below this line is the card.
+                      onBlur={captureLead}
                       disabled={baysideSubmitting}
                       className="w-full px-3 py-3 rounded-lg border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"
                     />
                     {/* 2026-09-03: card fields — charged + stored via Mariana
                         Tek's own Stripe (mt-card-checkout). Never touches our
-                        servers' storage; posted once over TLS. */}
+                        servers' storage; posted once over TLS.
+                        2026-10-07: both variants hold these back until the
+                        contact details are in and the lead row is written. */}
+                    {step === 1 ? null : (<>
                     <input
                       type="text" required inputMode="numeric" autoComplete="cc-number"
                       placeholder="Card number"
                       value={cardForm.number}
                       onChange={e => setCardForm(f => ({ ...f, number: e.target.value.replace(/[^\d\s]/g, '') }))}
+                      // Backstop: on mobile people tab or tap straight into
+                      // the card without ever blurring the phone field.
+                      onFocus={captureLead}
                       disabled={baysideSubmitting}
                       className="w-full px-3 py-3 rounded-lg border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"
                     />
@@ -776,6 +891,7 @@ export default function LocationTrialSignup() {
                         className="px-3 py-3 rounded-lg border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-60"
                       />
                     </div>
+                    </>)}
                     <label className="flex items-start gap-2 text-xs text-gray-600 min-h-[24px] pt-1">
                       <input
                         type="checkbox"
@@ -793,8 +909,15 @@ export default function LocationTrialSignup() {
                       disabled={baysideSubmitting}
                       className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-xl text-base transition-colors disabled:opacity-60 disabled:cursor-wait"
                     >
-                      {baysideSubmitting ? 'Processing…' : 'Claim my $49 trial →'}
+                      {baysideSubmitting
+                        ? 'Processing…'
+                        : (step === 1 ? 'Continue →' : 'Claim my $49 trial →')}
                     </button>
+                    {step === 1 && (
+                      <p className="text-xs text-gray-500 leading-relaxed">
+                        Next: payment details. You will not be charged until you confirm.
+                      </p>
+                    )}
                     <p className="text-xs text-gray-600 leading-relaxed">
                       By starting your trial you agree to our{' '}
                       <a href="/privacy" className="underline">Privacy Policy</a> and{' '}

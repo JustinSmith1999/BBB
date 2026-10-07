@@ -22,6 +22,7 @@
  * POST body:
  *   { "dry_run": true|false,          // DEFAULT TRUE
  *     "limit": 100,                   // max sends this run (default 100)
+ *     "email_only": true,             // skip the SMS leg entirely (2026-10-07)
  *     "test_email": "you@x.com" }     // sends ONE sample email there, nothing else
  *
  * Auth: x-bbb-secret. Deploy: bbb deploy-fn winback-49
@@ -110,6 +111,8 @@ async function handler(req: Request): Promise<Response> {
   const dryRun = body?.dry_run !== false; // DEFAULT TRUE — must pass dry_run:false to send
   const limit = Math.max(1, Math.min(500, Number(body?.limit) || 100));
   const testEmail = typeof body?.test_email === "string" ? body.test_email.trim() : "";
+  // email_only: run the win-back as an email-only campaign, no SMS leg.
+  const emailOnly = body?.email_only === true;
 
   const supaUrl = Deno.env.get("SUPABASE_URL") ?? "";
   if (!supaUrl || !SR) return json({ ok: false, error: "supabase env missing" }, 500);
@@ -147,10 +150,29 @@ async function handler(req: Request): Promise<Response> {
 
   const { data: candidates, error: candErr } = await sb
     .from("trial_signups")
-    .select("id, name, email, phone, location_id, created_at, payment_status, winback49_email_sent_at, winback49_sms_sent_at, winback49_converted_at")
+    .select("id, name, email, phone, location_id, created_at, payment_status, front_desk_stage, converted_to_member, opted_out_at, winback49_email_sent_at, winback49_sms_sent_at, winback49_converted_at")
     .not("payment_status", "in", "(completed,attribution_only)")
     .is("deleted_at", null)
     .is("winback49_converted_at", null)
+    // 2026-10-05 — three guards this never had. The four-source payment check
+    // below catches anyone with a PAYMENT RECORD, but that is not the same as
+    // "not a customer", and it says nothing about consent:
+    //
+    //   opted_out_at        someone who replied STOP. twilio-inbound-sms writes
+    //                       this column and this function was ignoring it
+    //                       entirely — we were mailing people who asked us not
+    //                       to. That is a compliance problem, not a courtesy.
+    //   front_desk_stage    the desk marks people 'member' on the Homebase
+    //                       board. A comped member, a legacy member, or anyone
+    //                       paying outside Stripe/MT has no payment row and
+    //                       sailed straight through into a "come back for $49"
+    //                       email.
+    //   converted_to_member a dedicated boolean for exactly this question,
+    //                       sitting unused.
+    //
+    // Being wrong here costs more than a missed send: a current member getting
+    // a win-back offer reads as "they have no idea who I am".
+    .is("opted_out_at", null)
     .lte("created_at", fourteenDaysAgo)
     .not("email", "is", null)
     .order("created_at", { ascending: true })
@@ -192,14 +214,24 @@ async function handler(req: Request): Promise<Response> {
       .forEach((c: any) => paid.add((c.email || "").toLowerCase().trim()));
   }
 
-  const locIds = Array.from(new Set(candidates.map((c) => c.location_id)));
-  const { data: locs } = await sb.from("locations").select("id, name").in("id", locIds);
+  // 2026-10-05 BUGFIX — this function was sending ZERO. Verified against the
+  // live API: candidates include leads with a NULL location_id, so locIds was
+  // [null, uuid, uuid, ...]. PostgREST rejects the whole filter with
+  //   22P02  invalid input syntax for type uuid: "null"
+  // which made `locs` undefined, locById empty, and EVERY candidate skip with
+  // "no_location". A dry run returned 237 candidates and 0 sends.
+  // Fix: load all four locations unconditionally — there are only four, so the
+  // .in() filter was never worth anything — and let the per-candidate
+  // locById.get() miss handle the genuinely location-less leads.
+  const { data: locs, error: locErr } = await sb.from("locations").select("id, name");
+  if (locErr) return json({ ok: false, error: `locations lookup failed: ${locErr.message}` }, 500);
   const locById = new Map<string, { name: string; slug: string }>();
   for (const l of (locs || []) as any[]) {
     locById.set(l.id, { name: l.name, slug: (l.name || "").toLowerCase().replace(/\s+/g, "-") });
   }
 
   let sentEmail = 0, sentSms = 0, failed = 0, skippedPaid = 0, skippedWait = 0, skippedDone = 0;
+  let skippedIsMember = 0;
   const results: any[] = [];
 
   for (const c of candidates) {
@@ -208,6 +240,14 @@ async function handler(req: Request): Promise<Response> {
     if (sentEmail + sentSms > 0) await new Promise((res) => setTimeout(res, 150));
     const emailLc = (c.email || "").toLowerCase().trim();
     if (paid.has(emailLc)) { skippedPaid++; continue; }
+
+    // Counted separately from skippedPaid so a dry run shows exactly how many
+    // CURRENT MEMBERS this function would have emailed before today.
+    if (String(c.front_desk_stage ?? "").toLowerCase() === "member" || c.converted_to_member === true) {
+      skippedIsMember++;
+      results.push({ id: c.id, skip: "already_a_member", stage: c.front_desk_stage ?? null, converted: c.converted_to_member ?? null });
+      continue;
+    }
     const loc = locById.get(c.location_id);
     if (!loc) { results.push({ id: c.id, skip: "no_location" }); continue; }
     const firstName = ((c.name || "").trim().split(/\s+/)[0]) || "there";
@@ -251,6 +291,14 @@ async function handler(req: Request): Promise<Response> {
     }
 
     // ── SMS follow-up: ≥3 days after email, phone required ─────────────────
+    // 2026-10-07: email_only skips this branch entirely. Reason to use it —
+    // this function still sends SMS on raw Twilio rather than the Quo-first
+    // _shared/sms.ts rail, which is why ~84% of outbound texts sit at
+    // "queued" with no delivery confirmation and replies land in the shared
+    // relay thread instead of the customer's own conversation. Until this is
+    // moved onto the rail, email_only:true is the honest way to run a
+    // win-back: every send is confirmable.
+    if (emailOnly) { skippedDone++; continue; }
     if (c.winback49_sms_sent_at) { skippedDone++; continue; }
     if (c.winback49_email_sent_at > threeDaysAgo) { skippedWait++; continue; }
     const phoneRaw = (c.phone || "").trim();
@@ -301,6 +349,7 @@ async function handler(req: Request): Promise<Response> {
     sent_email: sentEmail,
     sent_sms: sentSms,
     skipped_already_paid: skippedPaid,
+    skipped_is_member: skippedIsMember,
     skipped_waiting_3d: skippedWait,
     skipped_complete: skippedDone,
     failed,

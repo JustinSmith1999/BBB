@@ -34,6 +34,19 @@ sibling `bbb-marketing/` repo.
 7. **DMARC:** the domain already has a `_dmarc` TXT in GoDaddy, so SendGrid's was skipped (fine). Decide keep vs replace. SendGrid CNAMEs (`em9137`, `s1._domainkey`, `s2._domainkey`) are set.
 8. **Paid-but-not-provisioned customer:** at least one Bayside Stripe buyer paid but was never made an active MT member (root cause = the old Stripe fork that collected money without provisioning MT). Comp them the intro pass in MT admin.
 
+## Alert routing (settled 2026-10-07 — don't "fix" this)
+- `location_owners.notify_signups` decides who gets the trial text. It is filtered
+  per `location_id`, so a studio's alert can only reach that studio's owners.
+- **Bayside + Fresh Meadows are on Quo.** The alert goes to the studio's Quo
+  inbox line (`+1 917-877-0759` / `+1 646-887-6483`), which is the row with
+  `notify_signups = true`. Devonte and Salim are in the table with
+  `notify_signups = false` **on purpose** — they work it from the shared Quo
+  inbox, where a reply threads back to the customer. A reply to a personal
+  phone threads nowhere. Do not enable their rows.
+- **Astoria + Williamsburg are not on Quo**, so Chris and Steve take personal
+  texts. Move them to the inbox pattern if those studios go onto Quo.
+- Carlos is in the table on Bayside + FM at `notify_signups = false`. Correct, leave it.
+
 ## Gotchas
 - `create-trial-checkout` (Stripe path) captures `fbp/fbc/client_ip/client_user_agent` onto `trial_signups`; MT-widget purchases may not — the CAPI fix matches on whatever's captured.
 - Heavy pages (trial pages, MT admin reports, the dashboards) never reach `document_idle` — only relevant to browser automation, not Claude Code.

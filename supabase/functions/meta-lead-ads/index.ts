@@ -17,6 +17,10 @@
 //     → pulls new leads from every known form, upserts trial_signups.
 //       Registered in sync-orchestrator so it runs on every cycle.
 //   { action: "pause_adset", studio, adset_id }   // switch off the old click adsets
+//   { action: "audit", studios?: [..] }
+//     → read-only. Lists every lead form on every studio page straight from
+//       Meta, with its leads_count, and flags the ones `poll` has never heard
+//       of. Those are the forms whose submissions nobody is collecting.
 //
 // Env: META_TOKEN_<STUDIO> (same per-studio tokens the other ad fns use).
 // Deploy: supabase functions deploy meta-lead-ads --no-verify-jwt
@@ -211,6 +215,114 @@ Deno.serve(async (req: Request) => {
       const token = tokenFor(studio);
       await fbPost(String(body.adset_id), token, { status: 'PAUSED' });
       return json({ ok: true, paused: body.adset_id });
+    }
+
+    // ── audit — every lead form on every studio page, and whether we have
+    // its leads. Added 2026-10-07 after `poll` reported forms:[] while Meta
+    // was reporting 23 leads for the week. `poll` only ever sees forms THIS
+    // function created, because it reads them out of project_log. A form
+    // built by hand in Ads Manager is invisible to it, and its submissions
+    // sit on Facebook forever. This action asks Meta directly instead.
+    // Read-only: it inserts nothing.
+    if (action === 'audit') {
+      const slugs: string[] = Array.isArray(body.studios) && body.studios.length
+        ? body.studios : Object.keys(TOKENS);
+      const { data: known } = await sb.from('project_log')
+        .select('detail').eq('category', 'meta_lead_form');
+      const registered = new Set<string>();
+      for (const row of known ?? []) {
+        try { registered.add(String(JSON.parse(row.detail).form_id)); } catch { /* skip */ }
+      }
+      const out: any[] = [];
+      for (const slug of slugs) {
+        const token = tokenFor(slug);
+        if (!token) { out.push({ studio: slug, error: 'no token' }); continue; }
+        try {
+          const me = await fbGet('me/accounts', token, { fields: 'id,name,access_token', limit: '50' });
+          const pages: any[] = [];
+          for (const p of me.data ?? []) {
+            const pt = p.access_token || token;
+            let forms: any[] = [];
+            try {
+              const f = await fbGet(`${p.id}/leadgen_forms`, pt,
+                { fields: 'id,name,status,leads_count,created_time', limit: '100' });
+              forms = f.data ?? [];
+            } catch (e) { forms = [{ error: String((e as Error).message).slice(0, 200) }]; }
+            pages.push({
+              page_id: p.id,
+              page_name: p.name,
+              forms: forms.map((fm: any) => ({
+                form_id: fm.id,
+                name: fm.name,
+                status: fm.status,
+                leads_on_meta: fm.leads_count ?? null,
+                created: fm.created_time,
+                // the whole point: is the poller even aware this form exists?
+                known_to_poller: registered.has(String(fm.id)),
+              })),
+            });
+          }
+          // with_leads: read the submissions themselves, still WITHOUT writing
+          // anything. We want to know how old they are and whether the person
+          // already reached us some other way before deciding to import.
+          if (body.with_leads) {
+            for (const p of pages) {
+              const pt = (me.data ?? []).find((x: any) => x.id === p.page_id)?.access_token || token;
+              for (const fm of p.forms) {
+                if (!fm.form_id || !(Number(fm.leads_on_meta) > 0)) continue;
+                try {
+                  const got = await fbGet(`${fm.form_id}/leads`, pt,
+                    { fields: 'created_time,field_data', limit: '200' });
+                  const rows = got.data ?? [];
+                  const phones: string[] = [];
+                  const byDay: Record<string, number> = {};
+                  for (const lead of rows) {
+                    const d = String(lead.created_time || '').slice(0, 10);
+                    byDay[d] = (byDay[d] || 0) + 1;
+                    const f2: Record<string, string> = {};
+                    for (const fd of lead.field_data ?? []) f2[fd.name] = (fd.values ?? [])[0] ?? '';
+                    const ph = normPhone(f2.phone_number || f2.PHONE || '');
+                    if (ph) phones.push(ph);
+                  }
+                  // already in trial_signups by phone?
+                  let already = 0;
+                  if (phones.length) {
+                    const { data: hit } = await sb.from('trial_signups')
+                      .select('phone').in('phone', phones);
+                    already = new Set((hit ?? []).map((r: any) => r.phone)).size;
+                  }
+                  fm.leads_fetched = rows.length;
+                  fm.by_day = byDay;
+                  fm.oldest = Object.keys(byDay).sort()[0] ?? null;
+                  fm.newest = Object.keys(byDay).sort().slice(-1)[0] ?? null;
+                  fm.already_in_trial_signups = already;
+                  fm.genuinely_new = phones.length - already;
+                } catch (e) {
+                  fm.leads_error = String((e as Error).message).slice(0, 200);
+                }
+              }
+            }
+          }
+          const all = pages.flatMap((p) => p.forms).filter((f: any) => f.form_id);
+          out.push({
+            studio: slug,
+            pages,
+            forms_total: all.length,
+            forms_unknown_to_poller: all.filter((f: any) => !f.known_to_poller).length,
+            leads_sitting_on_meta_unpolled: all
+              .filter((f: any) => !f.known_to_poller)
+              .reduce((t: number, f: any) => t + (Number(f.leads_on_meta) || 0), 0),
+          });
+        } catch (e) {
+          out.push({ studio: slug, error: String((e as Error).message).slice(0, 300) });
+        }
+      }
+      return json({
+        ok: true,
+        note: 'leads_sitting_on_meta_unpolled = submissions on forms the poller has never seen. Nothing was inserted.',
+        studios: out,
+        total_unpolled: out.reduce((t, s) => t + (s.leads_sitting_on_meta_unpolled || 0), 0),
+      });
     }
 
     // ── poll — pull new leads into trial_signups ─────────────────────────
