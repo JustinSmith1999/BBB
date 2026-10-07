@@ -325,9 +325,228 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // ── import_leads — the manual way in, when the API door is shut ───────
+    // 2026-10-07. The Astoria form held 62 submissions the poller could never
+    // reach: leads_retrieval is refused because the page is owned by a
+    // business portfolio nobody on hand can administer. Meta's own Leads
+    // Center CSV export needs no API permission at all, so the leads come in
+    // that way until the ownership mess is sorted.
+    //
+    // Same insert shape as `poll`, deliberately — same source_category, same
+    // dedupe, same silence — so a row imported by hand is indistinguishable
+    // from one the poller would have written, and nothing double-counts when
+    // the API path eventually opens.
+    //
+    // SILENT. abandoned_email_sent_at is stamped on insert and email is left
+    // null. Every automated sender keys on one or the other, so none of them
+    // can reach these people. Some of them filled the form five weeks ago; an
+    // automated "you left something behind" text today would be worse than
+    // silence. The desk calls them.
+    //
+    // { action:"import_leads", studio, leads:[{name,phone,created_time}], dry_run? }
+    if (action === 'import_leads') {
+      if (!LOC_IDS[studio]) return json({ ok: false, error: `unconfigured studio '${studio}'` }, 400);
+      const incoming: any[] = Array.isArray(body.leads) ? body.leads : [];
+      if (!incoming.length) return json({ ok: false, error: 'leads[] required' }, 400);
+      const dryRun = body.dry_run === true;
+
+      let inserted = 0, skippedExisting = 0, skippedBadPhone = 0, failed = 0;
+      const seen = new Set<string>();
+      const problems: any[] = [];
+
+      for (const raw of incoming) {
+        const phone = normPhone(String(raw.phone || ''));
+        if (!phone) { skippedBadPhone++; continue; }
+        if (seen.has(phone)) { skippedExisting++; continue; }   // dupe inside the file
+        seen.add(phone);
+
+        const { data: existing } = await sb.from('trial_signups')
+          .select('id, payment_status').eq('phone', phone).limit(1);
+        if (existing && existing.length) { skippedExisting++; continue; }
+
+        if (dryRun) { inserted++; continue; }
+
+        // email is NOT NULL on trial_signups, and a Meta lead form that asks
+        // only for name + phone never gives us one. @no-email.bbb.local is the
+        // convention already in use (stripe-payment-audit writes it,
+        // funnel-recovery filters it out) and the domain does not resolve.
+        const { error } = await sb.from('trial_signups').insert({
+          name: String(raw.name || '').trim() || 'Meta lead',
+          phone,
+          email: `meta-${phone.replace(/\D/g, '')}@no-email.bbb.local`,
+          location_id: LOC_IDS[studio],
+          payment_status: 'pending',
+          front_desk_stage: 'new_lead',
+          source_category: 'meta_lead',
+          lead_source: `meta-lead-${studio}`,
+          // Keep the real submission date. These are weeks old and the desk
+          // needs to see that when it calls, not a fake "today".
+          created_at: raw.created_time || new Date().toISOString(),
+          abandoned_email_sent_at: new Date().toISOString(),
+        });
+        if (error) { failed++; problems.push(String(error.message).slice(0, 120)); }
+        else inserted++;
+      }
+
+      return json({
+        ok: true, action: 'import_leads', studio, dry_run: dryRun,
+        received: incoming.length,
+        [dryRun ? 'would_insert' : 'inserted']: inserted,
+        skipped_already_in_funnel: skippedExisting,
+        skipped_unusable_phone: skippedBadPhone,
+        failed, problems: problems.slice(0, 5),
+        note: 'Silent import: email withheld and abandoned_email_sent_at stamped, so no automated email or SMS can reach these rows. They appear in Homebase under New Lead.',
+      });
+    }
+
+    // ── destinations — where is every live ad actually sending people? ────
+    // 2026-10-07. The $49 trial lead forms created on Sep 1 for Williamsburg,
+    // Bayside and Fresh Meadows have zero submissions five weeks on, while
+    // Astoria's holds 62. A form with no submissions is not a collection
+    // problem, so the question is what the ads point at instead.
+    //
+    // Read-only. For every non-archived campaign: its objective, each adset's
+    // destination_type and promoted_object (which carries the lead form id for
+    // a real lead ad), and each ad's actual call-to-action link. The lead_form
+    // column is the answer: null on a campaign that calls itself Lead Gen
+    // means the traffic is going somewhere else.
+    // { action:"destinations", studios?: [...] }
+    if (action === 'destinations') {
+      const slugs: string[] = Array.isArray(body.studios) && body.studios.length
+        ? body.studios.filter((s: string) => TOKENS[s])
+        : Object.keys(TOKENS);
+      const out: any[] = [];
+      for (const slug of slugs) {
+        const token = tokenFor(slug);
+        if (!token) { out.push({ studio: slug, error: 'no token' }); continue; }
+        try {
+          const res = await fbGet(`${ACCOUNTS[slug]}/campaigns`, token, {
+            fields: 'id,name,objective,effective_status,' +
+              'adsets.limit(25){id,name,effective_status,destination_type,promoted_object,' +
+              'ads.limit(10){id,name,effective_status,creative{object_story_spec,asset_feed_spec,effective_object_story_id}}}',
+            limit: '50',
+            filtering: JSON.stringify([{ field: 'campaign.effective_status', operator: 'IN',
+              value: ['ACTIVE', 'PAUSED', 'WITH_ISSUES', 'PENDING_REVIEW', 'IN_PROCESS'] }]),
+          });
+          const camps = (res.data ?? []).map((c: any) => ({
+            campaign: c.name, id: c.id, objective: c.objective, status: c.effective_status,
+            adsets: (c.adsets?.data ?? []).map((a: any) => {
+              // promoted_object.lead_gen_form_id is the only authoritative
+              // "this adset feeds that form" link Meta exposes.
+              const formId = a.promoted_object?.lead_gen_form_id ?? null;
+              const links: string[] = [];
+              for (const ad of a.ads?.data ?? []) {
+                const spec = ad.creative?.object_story_spec ?? {};
+                const cta = spec.link_data?.call_to_action ?? spec.video_data?.call_to_action ?? {};
+                const l = cta.value?.link || cta.value?.lead_gen_form_id ||
+                          spec.link_data?.link || spec.video_data?.link || null;
+                if (l && !links.includes(String(l))) links.push(String(l));
+                const afs = ad.creative?.asset_feed_spec?.link_urls ?? [];
+                for (const u of afs) if (u.website_url && !links.includes(u.website_url)) links.push(u.website_url);
+              }
+              return {
+                adset: a.name, id: a.id, status: a.effective_status,
+                destination_type: a.destination_type ?? null,
+                lead_form: formId,
+                promoted_page: a.promoted_object?.page_id ?? null,
+                ad_destinations: links,
+                ads: (a.ads?.data ?? []).length,
+              };
+            }),
+          }));
+          out.push({ studio: slug, account: ACCOUNTS[slug], campaigns: camps });
+        } catch (e) {
+          out.push({ studio: slug, error: String((e as Error).message).slice(0, 300) });
+        }
+      }
+      return json({
+        ok: true, action: 'destinations', wrote: false, studios: out,
+        note: 'lead_form null on a lead-gen campaign = the adset is not feeding any instant form. ad_destinations shows where the ad actually sends people instead.',
+      });
+    }
+
+    // ── peek — can we actually READ the lead data? ────────────────────────
+    // 2026-10-07. audit reports leads_on_meta from the form's leads_count
+    // field, which a plain ads token can see. Reading the SUBMISSIONS is a
+    // different permission (leads_retrieval) and has been failing. So before
+    // writing 62 strangers into trial_signups, establish that the data is
+    // reachable at all and that it parses into a name and a usable phone.
+    //
+    // Writes nothing. Redacts by default: you get the shape, the parse result
+    // and whether each lead is already in the funnel, not a contact list.
+    // { action:"peek", studio, form_id, limit?, reveal? }
+    if (action === 'peek') {
+      const token = tokenFor(studio);
+      if (!token) return json({ ok: false, error: `no token for studio '${studio}'` }, 400);
+      const formId = String(body.form_id || '').trim();
+      if (!formId) return json({ ok: false, error: 'form_id required' }, 400);
+      const limit = Math.min(Math.max(Number(body.limit) || 5, 1), 50);
+      const reveal = body.reveal === true;
+
+      let leads: any;
+      try {
+        leads = await fbGet(`${formId}/leads`, token, { fields: 'created_time,field_data', limit: String(limit) });
+      } catch (e) {
+        // This is the answer we are looking for when the permission is missing.
+        return json({
+          ok: false, stage: 'read_leads', form_id: formId, studio,
+          error: String((e as Error).message).slice(0, 400),
+          hint: 'If this mentions leads_retrieval or permissions, the fix is in Meta Business Settings → Integrations → Leads Access (grant the system user / app Lead Access on the page). No code change will get past it.',
+        }, 200);
+      }
+
+      const rows = leads.data ?? [];
+      const sample: any[] = [];
+      let parsable = 0, already = 0;
+      for (const lead of rows) {
+        const fields: Record<string, string> = {};
+        for (const f of lead.field_data ?? []) fields[f.name] = (f.values ?? [])[0] ?? '';
+        const name = fields.full_name || fields.FULL_NAME || '';
+        const phone = normPhone(fields.phone_number || fields.PHONE || '');
+        if (phone) parsable++;
+        let inFunnel = false;
+        if (phone) {
+          const { data: ex } = await sb.from('trial_signups').select('id').eq('phone', phone).limit(1);
+          inFunnel = !!(ex && ex.length);
+          if (inFunnel) already++;
+        }
+        sample.push({
+          created_time: lead.created_time,
+          field_names: Object.keys(fields),
+          parsed_name: reveal ? name : (name ? name.slice(0, 1) + '***' : null),
+          parsed_phone: reveal ? phone : (phone ? '***' + phone.slice(-4) : null),
+          phone_usable: !!phone,
+          already_in_funnel: inFunnel,
+        });
+      }
+      return json({
+        ok: true, action: 'peek', wrote: false, studio, form_id: formId,
+        fetched: rows.length, phone_usable: parsable,
+        already_in_funnel: already, would_insert: parsable - already,
+        sample,
+        note: 'Nothing was written. would_insert is what a real poll would add after phone dedupe.',
+      });
+    }
+
     // ── poll — pull new leads into trial_signups ─────────────────────────
+    // 2026-10-07: added form_ids + dry_run. The poller only ever looked at
+    // forms recorded in project_log by create_form, so the 33 forms that
+    // already existed on the four pages were invisible to it — including the
+    // Astoria form holding 62 submissions. form_ids lets us collect a known
+    // form without having to back-fill project_log first.
     if (action === 'poll') {
-      const { data: forms } = await sb.from('project_log')
+      const dryRun = body.dry_run === true;
+      const explicit: Array<{ studio: string; form_id: string }> =
+        Array.isArray(body.form_ids)
+          ? body.form_ids.map((f: any) => typeof f === 'string'
+              ? { studio, form_id: f }
+              : { studio: String(f.studio || studio), form_id: String(f.form_id || '') })
+            .filter((f: any) => f.form_id && TOKENS[f.studio])
+          : [];
+
+      const { data: forms } = explicit.length
+        ? { data: explicit.map(f => ({ detail: JSON.stringify(f) })) }
+        : await sb.from('project_log')
         .select('detail').eq('category', 'meta_lead_form');
       const results: any[] = [];
       let inserted = 0;
@@ -349,6 +568,7 @@ Deno.serve(async (req: Request) => {
             const { data: existing } = await sb.from('trial_signups')
               .select('id').eq('phone', phone).limit(1);
             if (existing && existing.length) continue;
+            if (dryRun) { inserted++; continue; }   // count only, write nothing
             const { error } = await sb.from('trial_signups').insert({
               name, phone, email: null,
               location_id: LOC_IDS[meta.studio],
@@ -366,7 +586,13 @@ Deno.serve(async (req: Request) => {
           results.push({ studio: meta.studio, form: meta.form_id, error: String(e).slice(0, 200) });
         }
       }
-      return json({ ok: true, inserted, forms: results });
+      return json({
+        ok: true,
+        dry_run: dryRun,
+        [dryRun ? 'would_insert' : 'inserted']: inserted,
+        source: explicit.length ? 'form_ids (explicit)' : 'project_log',
+        forms: results,
+      });
     }
 
     return json({ ok: false, error: `unknown action '${action}'` }, 400);

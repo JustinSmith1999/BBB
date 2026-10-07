@@ -104,6 +104,16 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, status: 'already_paid', id: existing.id, wrote: false });
     }
 
+    // 2026-10-07 OUTAGE. This object used to carry `referrer` and `page_url`.
+    // NEITHER COLUMN EXISTS on trial_signups. PostgREST rejects the whole
+    // insert with "Could not find the 'page_url' column", so from deploy until
+    // now this function wrote NOTHING. Every person who typed their name and
+    // number into a trial page got a 500 and disappeared; the page sends them
+    // on to the card regardless, so it looked fine from outside. Confirmed by
+    // querying the live table: zero trial_partial rows, ever.
+    //
+    // Verified against information_schema before rewriting this. Do not add a
+    // field here without checking it exists — one wrong name kills the row.
     const attribution = {
       fbp: b.fbp || null,
       fbc: b.fbc || null,
@@ -111,8 +121,6 @@ Deno.serve(async (req: Request) => {
       utm_medium: b.utm_medium || null,
       utm_campaign: b.utm_campaign || null,
       utm_content: b.utm_content || null,
-      referrer: String(b.referrer || '').slice(0, 500) || null,
-      page_url: String(b.page_url || '').slice(0, 500) || null,
       ab_variant: (b.ab_variant === 'A' || b.ab_variant === 'B') ? b.ab_variant : null,
       // The moment this lands, every click this browser ever made becomes
       // attributable to this person, retroactively.
@@ -127,19 +135,36 @@ Deno.serve(async (req: Request) => {
       const patch: Record<string, unknown> = { ...attribution };
       if (name) patch.name = name;
       if (phone) patch.phone = phone;
-      if (drip && email) patch.email = email;
+      // Upgrade a placeholder to a real address if we now have one; never
+      // overwrite a real one with a placeholder.
+      if (email) patch.email = email;
       for (const k of Object.keys(patch)) if (patch[k] == null) delete patch[k];
       if (!existing.front_desk_stage) patch.front_desk_stage = 'new_lead';
       await sb.from('trial_signups').update(patch).eq('id', existing.id);
       return json({ ok: true, status: 'updated', id: existing.id, wrote: true, drip });
     }
 
+    // ── EMAIL IS NOT NULL on trial_signups ──────────────────────────────
+    // The old plan was to withhold the email entirely as a hard kill-switch
+    // against automated senders. The column does not allow it, so that plan
+    // was never going to work.
+    //
+    // What replaces it: the real email when we have one (variant A asks for
+    // it; the desk can then actually reach the person), and the existing
+    // @no-email.bbb.local convention when we don't (variant B is phone-only).
+    // That domain is already used by stripe-payment-audit and already filtered
+    // out by funnel-recovery, and it does not resolve, so nothing can be
+    // delivered to it.
+    //
+    // Silence now rests on abandoned_email_sent_at being pre-stamped below,
+    // which every drip sender checks. That is one lock instead of two, so if
+    // a NEW sender is ever written it MUST check that field.
+    const placeholderEmail = `lead-${(phone || '').replace(/\D/g, '') || Date.now()}@no-email.bbb.local`;
+
     const { data: ins, error } = await sb.from('trial_signups').insert({
-      name,
+      name: name || 'Website lead',          // name is NOT NULL too
       phone,
-      // Held back unless drip is on: an email address is what the automated
-      // senders need, so withholding it is the kill-switch.
-      email: drip ? email : null,
+      email: email || placeholderEmail,
       location_id: locationId,
       payment_status: 'pending',
       front_desk_stage: 'new_lead',
