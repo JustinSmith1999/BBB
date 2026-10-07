@@ -60,7 +60,23 @@ const PRODUCT: Record<string, { child: string; amount: string; label: string }> 
   // Desk keeps selling 14721 as before.
   "trial":  { child: "14944", amount: "49.00",  label: "$49 Two Weeks Trial (Web)" },
   "bts299": { child: "14913", amount: "299.00", label: "2 Months Back to School Promo" },
+  // 2026-10-05 · $99 one-month, Bayside + Fresh Meadows only. Contract id read
+  // from the MT_CONTRACT_MONTH_99 secret so it can be created in MT admin and
+  // switched on without a redeploy. Blank until then, and callers must treat a
+  // blank child as "not sellable" (mt-card-checkout rejects it with 409).
+  //
+  // WHEN YOU BUILD IT IN MT, MIRROR 14944 NOT 14721:
+  //   Intro Offer = OFF.  14721 has it ON, which triggers MT's bankcard rule —
+  //   the API checkout then fails and everyone silently lands in the credit-
+  //   pass fallback with credits instead of unlimited days. That cost you the
+  //   14-credits bug once already; the $99 month must not repeat it.
+  //   Start = First usage · Bill On Purchase · non-recurring · 1 month
+  //   unlimited · active at Bayside + Fresh Meadows only.
+  "month":  { child: Deno.env.get("MT_CONTRACT_MONTH_99") ?? "", amount: "99.00", label: "$99 One Month Unlimited (Web)" },
 };
+// Credit-pass fallback length per product, used when MT refuses a contract
+// checkout without a stored bankcard. A month is 31 days.
+const FALLBACK_DAYS: Record<string, number> = { trial: 14, bts299: 62, month: 31 };
 
 function sb() {
   return createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
@@ -252,7 +268,10 @@ async function provision(
     // credit pass (trial: 14 credits/14 days; bts299: 62 credits/62 days).
     // The desk can convert it to the real contract at first visit.
     if (/bankcard/i.test(coErr)) {
-      const days = kind === "bts299" ? 62 : 14;
+      // 2026-10-05: table-driven so a new product can't silently inherit the
+      // 14-day trial length. A $99 month falling back to 14 credits would be
+      // the 14-credits bug all over again, just more expensive.
+      const days = FALLBACK_DAYS[kind] ?? 14;
       const exp = new Date(Date.now() + days * 864e5).toISOString().replace(/\.\d+Z$/, "Z");
       // 2026-09-03 IDEMPOTENCY GUARD (the Hannah incident): a retry after a
       // previous fallback used to grant ANOTHER credit pass every time. If this

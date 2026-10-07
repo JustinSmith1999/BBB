@@ -505,17 +505,54 @@ Deno.serve(async (req) => {
     }
 
     // 3. Owner alert
+    //
+    // ── 2026-10-05 REGRESSION FIX ──────────────────────────────────────────
+    // Justin: "Devonte and Salim are not getting the notifications like normal,
+    // last time was Friday." They were right, and this block is why.
+    //
+    // When Bayside + Fresh Meadows moved onto Quo, this branch started routing
+    // the trial to quo-lead-router INSTEAD OF texting the owners — note the old
+    // comment's "No auto-text." That was read as "don't auto-text the CUSTOMER"
+    // (which is still the rule), but what it actually did was silently delete
+    // the STAFF text alert for the two busiest studios. A Quo task is created
+    // with no assignee, so it pushes a notification to nobody: 493 tasks had
+    // accumulated and not one had ever been checked off. The staff alert
+    // effectively stopped existing, and only the studio EMAIL survived.
+    //
+    // The two are not alternatives. Text the owners the way we always did AND
+    // create the Quo task so the customer still has their own named thread.
+    // The customer is still never auto-texted by this path.
     if (sendOwnerSms) {
       const owners = studioOwners[t.location_id] || [];
 
+      // (a) Owner text alert — EVERY studio, Quo or not. This is the thing
+      //     staff actually feel on their phone.
+      const txt = ownerSmsBody(studioShort, t.name || "", t.phone || "", t.email || "");
+      const sent: any[] = [];
+      for (const o of owners) {
+        const to = normalizeE164(o.phone);
+        if (!to) { sent.push({ owner: o.owner_name, ok: false, error: "bad phone" }); continue; }
+        if (dryRun) { sent.push({ owner: o.owner_name, ok: true, dry_run: true, to, body: txt }); continue; }
+        const r = await twilioSend({ sid: twSid, token: twToken, from: twFrom, to, body: txt });
+        sent.push({ owner: o.owner_name, to, ok: r.ok, status: r.status, sid: r.sid, error: r.error });
+        if (r.ok) {
+          try {
+            await sb.from("sms_messages").insert({
+              trial_signup_id: t.id, studio_slug: studioSlug, direction: "outbound",
+              from_phone: twFrom, to_phone: to, body: txt,
+              twilio_sid: r.sid ?? null, status: "queued", sent_by: "manual_owner_alert",
+            });
+          } catch {}
+        }
+      }
+      out.owner_sms = sent.length ? sent : [{ ok: false, error: "no owners found" }];
+
+      // (b) Quo studios additionally get the named contact + task, so staff can
+      //     one-tap call/text the customer in their own thread. Additive only —
+      //     a failure here must never swallow the text alert above.
       if (QUO_STUDIO_SLUGS.has(studioSlug)) {
-        // Quo studios (Bayside / Fresh Meadows): route the trial into the
-        // customer's OWN Quo thread — named contact + a Quo Task on the studio
-        // line — via quo-lead-router, instead of the shared 877 relay alert
-        // that bounced with "Could not tell who this reply is for." Staff work
-        // it from the Tasks tab and reply straight to the customer. No auto-text.
         if (dryRun) {
-          out.owner_sms = [{ ok: true, dry_run: true, routed: "quo-lead-router", kind: "trial" }];
+          out.quo_route = { ok: true, dry_run: true, routed: "quo-lead-router", kind: "trial" };
         } else {
           try {
             const rr = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/quo-lead-router`, {
@@ -524,32 +561,11 @@ Deno.serve(async (req) => {
               body: JSON.stringify({ name: t.name, phone: t.phone, email: t.email, studio_slug: studioSlug, kind: "trial" }),
             });
             const rj = await rr.json().catch(() => ({}));
-            out.owner_sms = [{ ok: rr.ok, routed: "quo-lead-router", task_id: (rj as any)?.task_id ?? null }];
+            out.quo_route = { ok: rr.ok, routed: "quo-lead-router", task_id: (rj as any)?.task_id ?? null };
           } catch (e) {
-            out.owner_sms = [{ ok: false, routed: "quo-lead-router", error: (e as Error).message }];
+            out.quo_route = { ok: false, routed: "quo-lead-router", error: (e as Error).message };
           }
         }
-      } else {
-        // Non-Quo studios (Astoria / Williamsburg): keep the Twilio owner-cell alert.
-        const txt = ownerSmsBody(studioShort, t.name || "", t.phone || "", t.email || "");
-        const sent: any[] = [];
-        for (const o of owners) {
-          const to = normalizeE164(o.phone);
-          if (!to) { sent.push({ owner: o.owner_name, ok: false, error: "bad phone" }); continue; }
-          if (dryRun) { sent.push({ owner: o.owner_name, ok: true, dry_run: true, to, body: txt }); continue; }
-          const r = await twilioSend({ sid: twSid, token: twToken, from: twFrom, to, body: txt });
-          sent.push({ owner: o.owner_name, to, ok: r.ok, status: r.status, sid: r.sid, error: r.error });
-          if (r.ok) {
-            try {
-              await sb.from("sms_messages").insert({
-                trial_signup_id: t.id, studio_slug: studioSlug, direction: "outbound",
-                from_phone: twFrom, to_phone: to, body: txt,
-                twilio_sid: r.sid ?? null, status: "queued", sent_by: "manual_owner_alert",
-              });
-            } catch {}
-          }
-        }
-        out.owner_sms = sent.length ? sent : [{ ok: false, error: "no owners found" }];
       }
     }
 

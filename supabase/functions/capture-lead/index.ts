@@ -114,6 +114,9 @@ Deno.serve(async (req: Request) => {
       referrer: String(b.referrer || '').slice(0, 500) || null,
       page_url: String(b.page_url || '').slice(0, 500) || null,
       ab_variant: (b.ab_variant === 'A' || b.ab_variant === 'B') ? b.ab_variant : null,
+      // The moment this lands, every click this browser ever made becomes
+      // attributable to this person, retroactively.
+      visitor_id: typeof b.visitor_id === 'string' ? b.visitor_id.slice(0, 64) : null,
       client_user_agent: req.headers.get('user-agent') || null,
       client_ip: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || null,
     };

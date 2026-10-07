@@ -2,6 +2,7 @@ import { Component, lazy, Suspense, useEffect, useState, type ErrorInfo, type Re
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { captureUtmsFromUrl } from './lib/utm';
 import { trackPageView, trackError } from './lib/track';
+import { startLinkTracking } from './lib/linkTracker';
 import { HelmetProvider } from 'react-helmet-async';
 import Header from './components/Header';
 import Footer from './components/Footer';
@@ -39,6 +40,17 @@ const FreeClasses = lazy(() => import('./pages/FreeClasses'));
 const FreeClass = lazy(() => import('./pages/FreeClass'));
 const LocationComebackSignup = lazy(() => import('./pages/LocationComebackSignup'));
 const ComebackIndex = lazy(() => import('./pages/ComebackIndex'));
+// 2026-10-05: the two middle rungs of the offer ladder (ladder-send). Both are
+// NOINDEX and absent from the sitemap on purpose — they are email destinations
+// for leads who did not buy, not public pricing. A publicly reachable $99 month
+// would undercut the $239 membership for everyone.
+//   /month/:studio     → $99 one month, Bayside + Fresh Meadows ONLY (MT 15109)
+//   /twomonths/:studio → $299 two months, all four (MT 14913)
+// BackToSchool is the same component that ran the public BTS promo. That promo
+// is still retired: /backtoschool keeps redirecting home (task #105). This
+// mounts it at an unadvertised path so the ladder has somewhere to send people.
+const MonthOffer = lazy(() => import('./pages/MonthOffer'));
+const BackToSchool = lazy(() => import('./pages/BackToSchool'));
 const LocationResignSignup = lazy(() => import('./pages/LocationResignSignup'));
 const LocationSchedule = lazy(() => import('./pages/LocationSchedule'));
 // 2026-06-26: Native MT booking flow at /book/[studio] — replaces the MT
@@ -196,6 +208,9 @@ function UtmCapture() {
 function PageViewTracker() {
   const location = useLocation();
   useEffect(() => { trackPageView(location.pathname); }, [location.pathname]);
+  // One delegated listener for the whole site. Mounted once, catches every
+  // link and every data-track element, including ones added in future.
+  useEffect(() => { startLinkTracking(); }, []);
   return null;
 }
 
@@ -243,6 +258,11 @@ function App() {
           <Route path="/special/:location" element={<LocationSpecialSignup />} />
           {/* 2026-09-21: BTS $299 promo ended — redirect old ad/QR links home */}
           <Route path="/backtoschool" element={<Navigate to="/" replace />} />
+          {/* Offer-ladder rungs. Unadvertised, noindex, not in the sitemap. */}
+          <Route path="/month" element={<MonthOffer />} />
+          <Route path="/month/:studio" element={<MonthOffer />} />
+          <Route path="/twomonths" element={<BackToSchool />} />
+          <Route path="/twomonths/:studio" element={<BackToSchool />} />
           <Route path="/freeclasses" element={<FreeClasses />} />
           <Route path="/collab/free-class-8x2m" element={<FreeClass />} />
           <Route path="/comeback" element={<ComebackIndex />} />

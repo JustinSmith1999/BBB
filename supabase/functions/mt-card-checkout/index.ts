@@ -58,6 +58,22 @@ const PRODUCT: Record<string, { child: string; amount: string; label: string }> 
   // only by the unlisted /checkout-test page. Remove after the test passes
   // and deactivate contract 14946 in MT admin.
   "webtest": { child: "14946", amount: "1.00", label: "Web Checkout Test $1 (do not sell)" },
+  // 2026-10-05 · $99 one-month, Bayside + Fresh Meadows only. The contract id
+  // comes from a SECRET rather than a literal so creating it in MT admin does
+  // not require a code change or a redeploy — set MT_CONTRACT_MONTH_99 and it
+  // goes live. Until that secret exists this entry resolves to an empty child
+  // and the guard below rejects the kind outright, which is the behaviour we
+  // want: refuse the sale rather than take money with nowhere to put it.
+  "month": {
+    child: Deno.env.get("MT_CONTRACT_MONTH_99") ?? "",
+    amount: "99.00",
+    label: "$99 One Month Unlimited (Web)",
+  },
+};
+// Studios allowed to sell each product. Absent = all studios.
+// The $99 month is deliberately Bayside + Fresh Meadows only.
+const PRODUCT_STUDIOS: Record<string, string[]> = {
+  "month": ["bayside", "fresh-meadows"],
 };
 
 const CORS = {
@@ -229,6 +245,30 @@ Deno.serve(async (req: Request) => {
   const studio = STUDIO[studioSlug];
   const product = PRODUCT[kind];
   if (!studio || !product) return json({ ok: false, error: "unknown studio or product" }, 400);
+
+  // 2026-10-05 — a product whose contract id is blank is NOT sellable. This
+  // catches the $99 month before MT_CONTRACT_MONTH_99 is set. Failing here is
+  // the point: the alternative is charging a card and then having no contract
+  // to attach, which is exactly the shape of the guiqiang incident.
+  if (!product.child) {
+    return json({
+      ok: false,
+      error: `"${kind}" is not available yet`,
+      detail: kind === "month"
+        ? "MT_CONTRACT_MONTH_99 is not set — create the $99 one-month contract in MT admin, then set that secret to its child-product id."
+        : "this product has no Mariana Tek contract id configured",
+    }, 409);
+  }
+
+  // Per-product studio restriction.
+  const allowedStudios = PRODUCT_STUDIOS[kind];
+  if (allowedStudios && !allowedStudios.includes(studioSlug)) {
+    return json({
+      ok: false,
+      error: `"${kind}" is not sold at ${studio.title}`,
+      available_at: allowedStudios,
+    }, 400);
+  }
   if (!first || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ ok: false, error: "name and valid email required" }, 400);
   if (!/^\d{12,19}$/.test(number) || !luhnOk(number)) return json({ ok: false, error: "That card number doesn't look right." }, 400);
   if (!/^\d{3,4}$/.test(ccv)) return json({ ok: false, error: "Security code should be 3 or 4 digits." }, 400);
@@ -419,6 +459,34 @@ Deno.serve(async (req: Request) => {
     const { data: existing } = await client.from("trial_signups")
       .select("id").ilike("email", email).is("deleted_at", null)
       .order("created_at", { ascending: false }).limit(1);
+    // ── 2026-10-05 FIX: UTMs were landing NULL on EVERY native card sale. ──
+    // This block read body.utm_source (snake_case). But the pages that post
+    // here — LocationTrialSignup (the $49 page) and BackToSchool (the $299
+    // page) — both spread `...getUtmParams()`, and src/lib/utm.ts returns
+    // CAMELCASE: { utmSource, utmMedium, utmCampaign, utmContent }. The keys
+    // never matched, so every one of these four columns has been null since
+    // card capture went live on 2026-09-03.
+    //
+    // It went unnoticed because create-trial-checkout — the OLD path, still
+    // used by /comeback, /special and /resign — reads body.utmSource and so
+    // works correctly. Only the native-checkout pages were affected, which is
+    // to say: the two pages that take the most money.
+    //
+    // Fixed HERE rather than in the two React pages so it takes effect on a
+    // function deploy with no site rebuild, and so any future caller is
+    // covered whichever convention it picks. Snake_case wins when both are
+    // sent. (This does not retroactively fix past sales; those rows stay null.)
+    const pick = (snake: string, camel: string): string | null => {
+      const v = (body as Record<string, unknown>)[snake] ?? (body as Record<string, unknown>)[camel];
+      return typeof v === "string" && v.trim() ? v.trim().slice(0, 120) : null;
+    };
+    const utms = {
+      utm_source:   pick("utm_source", "utmSource"),
+      utm_medium:   pick("utm_medium", "utmMedium"),
+      utm_campaign: pick("utm_campaign", "utmCampaign"),
+      utm_content:  pick("utm_content", "utmContent"),
+    };
+
     // 2026-09-04 FIX (found via Maya Best, first organic sale): `source` and
     // `studio_slug` are NOT columns on trial_signups — the insert was failing
     // silently and the sync adopted buyers as attribution-less mt_app rows.
@@ -429,10 +497,7 @@ Deno.serve(async (req: Request) => {
       payment_status: "completed", payment_date: nowIso,
       lead_source: `mt-card-checkout-${studioSlug}`,
       fbp, fbc, client_ip: ip || null, client_user_agent: ua,
-      utm_source: typeof body.utm_source === "string" ? body.utm_source.slice(0, 120) : null,
-      utm_medium: typeof body.utm_medium === "string" ? body.utm_medium.slice(0, 120) : null,
-      utm_campaign: typeof body.utm_campaign === "string" ? body.utm_campaign.slice(0, 120) : null,
-      utm_content: typeof body.utm_content === "string" ? body.utm_content.slice(0, 120) : null,
+      ...utms,
     };
     let trialRowId: string | null = null;
     if (existing && existing.length) {

@@ -75,7 +75,7 @@ function pickInsights(insightsRow: any) {
   };
 }
 
-async function snapshotStudio(s: typeof STUDIOS[0], days: number) {
+async function snapshotStudio(s: typeof STUDIOS[0], days: number, sinceArg?: string, untilArg?: string) {
   const token = Deno.env.get(s.tokenEnv);
   if (!token) return { studio: s.slug, error: `missing env var ${s.tokenEnv}` };
 
@@ -84,10 +84,24 @@ async function snapshotStudio(s: typeof STUDIOS[0], days: number) {
   // code mapped days<=7 → "last_7d" for everything, so a 1-day and a 7-day pull
   // returned the identical 7-day total — which looked like a terrifying daily
   // spend. time_range fixes that: the number now matches the window asked for.
-  const until = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" }); // YYYY-MM-DD
-  const sinceDate = new Date(`${until}T12:00:00Z`);
-  sinceDate.setUTCDate(sinceDate.getUTCDate() - (days - 1));
-  const since = sinceDate.toISOString().slice(0, 10);
+  //
+  // 2026-10-05: explicit since/until added. `days` can only ever express a
+  // window ending TODAY, so there was no way to ask for a fixed historical
+  // range like Oct 2025 – Mar 2026 (Justin wanted last winter for Astoria and
+  // Williamsburg). When both are supplied they win outright and `days` is
+  // ignored. Meta retains insights for roughly 37 months, so anything inside
+  // that is fair game — the old 90-day ceiling was ours, not theirs.
+  const todayNY = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" }); // YYYY-MM-DD
+  let since: string, until: string;
+  if (sinceArg && untilArg) {
+    since = sinceArg;
+    until = untilArg;
+  } else {
+    until = todayNY;
+    const sinceDate = new Date(`${until}T12:00:00Z`);
+    sinceDate.setUTCDate(sinceDate.getUTCDate() - (days - 1));
+    since = sinceDate.toISOString().slice(0, 10);
+  }
   const timeRange = JSON.stringify({ since, until });
 
   try {
@@ -248,11 +262,32 @@ Deno.serve(async (req: Request) => {
   }
 
   const url = new URL(req.url);
-  const days = Math.max(1, Math.min(90, Number(url.searchParams.get("days") || "14")));
+  // Ceiling raised 90 → 1100 days (~3 years). Meta keeps insights for about 37
+  // months; the old 90 was an arbitrary cap of ours that silently truncated
+  // longer requests — days=400 came back as 90 days of data with no warning,
+  // which reads as "the account has no older history" and is simply false.
+  const days = Math.max(1, Math.min(1100, Number(url.searchParams.get("days") || "14")));
+  // Fixed historical range, e.g. ?since=2025-10-01&until=2026-03-31.
+  const isDate = (v: string | null): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
+  const qSince = url.searchParams.get("since");
+  const qUntil = url.searchParams.get("until");
+  const since = isDate(qSince) ? qSince : undefined;
+  const until = isDate(qUntil) ? qUntil : undefined;
+  if ((qSince || qUntil) && !(since && until)) {
+    return new Response(JSON.stringify({
+      ok: false,
+      error: "since and until must BOTH be supplied as YYYY-MM-DD, or neither (then `days` is used)",
+    }, null, 2), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
 
-  const results = await Promise.all(STUDIOS.map(s => snapshotStudio(s, days)));
+  const results = await Promise.all(STUDIOS.map(s => snapshotStudio(s, days, since, until)));
 
-  return new Response(JSON.stringify({ ok: true, window_days: days, studios: results }, null, 2), {
+  return new Response(JSON.stringify({
+    ok: true,
+    window: since && until ? { since, until } : { days },
+    window_days: days,
+    studios: results,
+  }, null, 2), {
     status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 });

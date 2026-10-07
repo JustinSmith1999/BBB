@@ -4,6 +4,7 @@ import { CheckCircle, Lock } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
 import { getUtmParams, captureUtmsFromUrl } from '../lib/utm';
 import { getVariant } from '../lib/abTest';
+import { visitorId } from '../lib/visitor';
 
 // ─── PER-GYM CONFIG ─────────────────────────────────────────────────────────
 // `locationId` is the Supabase row UUID for the gym. The edge function
@@ -302,6 +303,7 @@ export default function LocationTrialSignup() {
           page_url: window.location.href,
           time_on_page_ms: Math.max(0, Date.now() - pageLoadAtRef.current),
           ab_variant: variant,
+          visitor_id: visitorId(),
           drip: false,
         }),
         keepalive: true,   // survives the tab closing mid-request

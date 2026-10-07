@@ -58,7 +58,7 @@ async function mtToken(sb: ReturnType<typeof createClient>): Promise<string | nu
   return (data as { access_token?: string } | null)?.access_token || null;
 }
 
-type Inst = { slug: string; uid: string; name: string; pd: string; end: string | null; cancel: string | null };
+type Inst = { slug: string; uid: string; name: string; pd: string; start: string | null; end: string | null; cancel: string | null };
 
 const CUTOVER = "2026-06-26";
 const CACHE_KEY = "trial_conversion_stats";
@@ -104,6 +104,7 @@ Deno.serve(async (req: Request) => {
         slug, uid,
         name: a.membership_name ?? "",
         pd: (a.purchase_date ?? "").slice(0, 10),
+        start: (a.calculated_start_datetime ?? a.start_date ?? null),
         end: (a.calculated_end_datetime ?? a.end_date ?? null),
         cancel: a.cancellation_datetime ?? null,
       });
@@ -127,13 +128,17 @@ Deno.serve(async (req: Request) => {
     if (!firstTrial[k] || i.pd < firstTrial[k].pd) firstTrial[k] = i;
   }
 
-  // members today — a paid membership in force right now, trials excluded
+  // Members today — a paid membership IN FORCE right now, trials excluded.
+  // Must use the start date, not the purchase date: a Back-to-School pass bought
+  // on Sep 25 that does not begin until Oct 31 (one of them not until Mar 2027)
+  // is a sale, not a member. Counting purchases inflated Bayside 235 -> 241 and
+  // the network 885 -> 927, almost all of it unstarted BTS passes.
   const liveMembers: Record<string, Set<string>> = {};
   for (const i of inst) {
     if (isTrial(i.name)) continue;
+    if (!i.start || i.start > now) continue;
     if (i.cancel && i.cancel <= now) continue;
     if (i.end && i.end <= now) continue;
-    if (!i.pd || i.pd > now.slice(0, 10)) continue;
     (liveMembers[i.slug] = liveMembers[i.slug] || new Set()).add(i.uid);
   }
 

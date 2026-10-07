@@ -74,9 +74,29 @@ Deno.serve(async (req) => {
   // for the email_id (sent → delivered → opened → bounced → etc.).
   const eventType = String(payload.type || "").replace(/^email\./, "");
   const data = payload.data || {};
-  const tags = Array.isArray(data.tags) ? data.tags : [];
-  const tagVal = (name: string) =>
-    tags.find((t: any) => t && (t.name === name))?.value ?? null;
+  // 2026-10-05 — accept BOTH tag shapes. Senders set tags on the SEND as an
+  // array of { name, value } (Resend's send API format), but Resend echoes
+  // them on WEBHOOK EVENTS as an object map: { send_path: "...", ... }.
+  // This only handled the array, so `Array.isArray` was false on every real
+  // event, tags resolved to [], and every row landed with send_path NULL and
+  // trial_signup_id NULL.
+  //
+  // Measured right after the webhook was first connected: 217 of 221 rows in
+  // 24h were orphaned — including 109 winback-49 sends that tag correctly at
+  // the source. The senders were never the problem; the parser was throwing
+  // the tags away on arrival.
+  const rawTags = data.tags;
+  const tagVal = (name: string): string | null => {
+    if (Array.isArray(rawTags)) {
+      const hit = rawTags.find((t: any) => t && t.name === name);
+      return hit?.value ?? null;
+    }
+    if (rawTags && typeof rawTags === "object") {
+      const v = (rawTags as Record<string, unknown>)[name];
+      return typeof v === "string" ? v : (v == null ? null : String(v));
+    }
+    return null;
+  };
 
   const sendPathTag = tagVal("send_path") || tagVal("path");
   const rawTrialId = tagVal("trial_signup_id");

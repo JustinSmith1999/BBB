@@ -2,6 +2,7 @@ import { useParams, Navigate, Link } from 'react-router-dom';
 import { MapPin, Phone, ArrowRight, Clock } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
 import NativeClassList from '../components/NativeClassList';
+import GetTheApp from '../components/GetTheApp';
 
 // 2026-06-26 v2: Iframe gone. We now hit MT's class_sessions API via the
 // mt-public-classes Supabase proxy and render BBB-branded React cards.
@@ -139,6 +140,9 @@ export default function LocationSchedule() {
         <div className="container mx-auto px-4 py-10 sm:py-12">
           <div className="max-w-6xl mx-auto">
             <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4 sm:p-6 md:p-8">
+              {/* 2026-10-07: push the app for checking the schedule. The list
+                  below is unchanged and still books. */}
+              <GetTheApp context="schedule_top" variant="banner" studioName={config.name} />
               <NativeClassList
                 mtLocationId={config.mtLocationId}
                 studioName={config.name}
@@ -179,6 +183,9 @@ export default function LocationSchedule() {
         {/* Conversion footer */}
         <div className="bg-gray-50 border-t border-gray-100 py-14">
           <div className="container mx-auto px-4 text-center">
+            <div className="max-w-2xl mx-auto mb-10 text-left">
+              <GetTheApp context="schedule_footer" studioName={config.name} />
+            </div>
             <h2 className="text-2xl sm:text-3xl font-bold text-black mb-3">
               First time at {config.name}?
             </h2>

@@ -315,18 +315,50 @@ Deno.serve(async (req: Request) => {
           ? `${first}, 2 months for $299: Back to School at BBB ${STUDIO_TITLE[r.studio]}`
           : `${first}, 3 free classes at Better Body ${STUDIO_TITLE[r.studio]} — come see for yourself`;
         const html = r.offer === "bts299" ? bts299Html(r.studio, first) : free3Html(r.studio);
+
+        // 2026-10-05 — resolve the person BEFORE sending, so the id can ride
+        // along as a Resend tag. This blast used to write email_log with no
+        // trial_signup_id and no tags, which meant every send, open and click
+        // it produced was permanently unattributable: countable in aggregate,
+        // never tied to a name. One indexed lookup per send, and we already
+        // sleep 350ms between sends, so the cost is nil.
+        let tsId: string | null = null;
+        try {
+          const { data: who } = await client
+            .from("trial_signups")
+            .select("id")
+            .ilike("email", r.email)
+            .is("deleted_at", null)
+            .order("created_at", { ascending: false })
+            .limit(1);
+          tsId = (who?.[0] as { id?: string } | undefined)?.id ?? null;
+        } catch { /* attribution is best-effort — never block a send on it */ }
+
         const resp = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { "Authorization": `Bearer ${resendKey}`, "Content-Type": "application/json" },
           // List-Unsubscribe header: Gmail/Yahoo bulk-sender requirement.
           // Keeps us out of the spam folder and gives the one-click unsub UI.
           body: JSON.stringify({ from: fromEmail, to: [r.email], subject, html,
-            headers: { "List-Unsubscribe": "<mailto:hello@betterbodybootcamp.com?subject=unsubscribe>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } }),
+            headers: { "List-Unsubscribe": "<mailto:hello@betterbodybootcamp.com?subject=unsubscribe>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+            // 2026-10-05 — TAGS. Without these, resend-webhook logs the
+            // opened/clicked/bounced events for this blast with send_path NULL
+            // and trial_signup_id NULL, so every open and click it generated is
+            // orphaned. The insert below only covers the "sent" row; opens and
+            // clicks arrive later via the webhook and can ONLY be attributed
+            // through these tags.
+            tags: [
+              { name: "send_path", value: sendPath },
+              ...(tsId ? [{ name: "trial_signup_id", value: tsId }] : []),
+              { name: "studio", value: String(r.studio ?? "") },
+            ],
+          }),
         });
         const j = await resp.json().catch(() => ({} as Record<string, unknown>));
         await client.from("email_log").insert({
           resend_id: (j as { id?: string }).id ?? null, event_type: resp.ok ? "email.sent" : "email.failed",
           from_addr: fromEmail, to_addrs: [r.email], subject, send_path: sendPath,
+          trial_signup_id: tsId,
           raw: { offer: r.offer, studio: r.studio, status: resp.status },
         });
         if (resp.ok) { report.sent++; sentEmails.add(r.email); } else report.errors.push(`email ${r.email}: ${resp.status}`);

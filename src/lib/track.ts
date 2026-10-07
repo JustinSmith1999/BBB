@@ -15,6 +15,8 @@
 // - sendBeacon when available so views still record when someone closes the
 //   tab mid-navigation; fetch(keepalive) fallback.
 
+import { visitorId } from './visitor';
+
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
@@ -50,6 +52,9 @@ export function trackPageView(path: string): void {
       utm_campaign: params.get('utm_campaign'),
       studio: params.get('studio'),
       sid: sessionId(),
+      // 2026-10-07: the persistent half of identity. sid dies with the tab;
+      // this is what lets a page view join back to a named person later.
+      visitor_id: visitorId() || null,
       device: window.innerWidth < 768 ? 'mobile' : window.innerWidth < 1100 ? 'tablet' : 'desktop',
       ua: navigator.userAgent ? navigator.userAgent.slice(0, 300) : null,
     };

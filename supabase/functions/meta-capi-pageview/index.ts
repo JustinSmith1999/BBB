@@ -88,13 +88,31 @@ Deno.serve(async (req) => {
     req.headers.get("cf-connecting-ip") ||
     "";
 
-  // ── Geo from Cloudflare edge headers (free, server-side) ──────────────
-  const geoCountry = req.headers.get("cf-ipcountry") || "";
-  const geoCity    = req.headers.get("cf-ipcity") || "";
-  const geoRegion  = req.headers.get("cf-region") || "";
-  const geoPostal  = req.headers.get("cf-postal-code") || "";
-  const geoLat     = req.headers.get("cf-iplatitude") || "";
-  const geoLon     = req.headers.get("cf-iplongitude") || "";
+  // ── Geo from edge headers ────────────────────────────────────────────
+  // 2026-10-05 BUGFIX — this only ever read Cloudflare's cf-* headers, but
+  // betterbodybootcamp.com is served by NETLIFY, which does not send them.
+  // Every cf-* lookup returned "", so visitor_meta never carried geo_postal
+  // and get_trial_page_visitors_overview reported from_nyc_count = 0 and
+  // from_outside_nyc = 0 for all four studios, permanently. The "wasted ad
+  // spend on out-of-area traffic" signal has never worked.
+  //
+  // Netlify exposes geo as x-nf-geo: a base64-encoded JSON blob shaped
+  //   { city, country: {code,name}, subdivision: {code,name}, postal_code,
+  //     latitude, longitude, timezone }
+  // We read Netlify first, then fall back to Cloudflare so this keeps working
+  // if the site ever moves behind Cloudflare.
+  let nf: Record<string, any> = {};
+  try {
+    const raw = req.headers.get("x-nf-geo");
+    if (raw) nf = JSON.parse(atob(raw)) ?? {};
+  } catch { /* malformed header — fall through to the cf-* values */ }
+
+  const geoCountry = nf?.country?.code     || req.headers.get("cf-ipcountry")    || "";
+  const geoCity    = nf?.city              || req.headers.get("cf-ipcity")       || "";
+  const geoRegion  = nf?.subdivision?.code || req.headers.get("cf-region")       || "";
+  const geoPostal  = nf?.postal_code       || req.headers.get("cf-postal-code")  || "";
+  const geoLat     = (nf?.latitude  ?? "") !== "" ? String(nf.latitude)  : (req.headers.get("cf-iplatitude")  || "");
+  const geoLon     = (nf?.longitude ?? "") !== "" ? String(nf.longitude) : (req.headers.get("cf-iplongitude") || "");
 
   // Cheap UA → browser/OS classifier (avoid bringing in a parser library).
   const uaLower = userAgent.toLowerCase();

@@ -81,6 +81,14 @@ const TIERS: Record<string, Array<{ fn: string; body: Record<string, unknown> }>
     // 2026-06-28: dropped mindbody-clients-sync — we don't use MindBody.
   ],
   hourly: [
+    // 2026-10-07: mt-token-keepalive was written on 2026-10-05 and then never
+    // scheduled, so the only thing keeping mt_oauth alive was someone noticing
+    // and re-seeding by hand. It had already been expired for a month once
+    // (2026-09-04 -> 2026-10-05) and free3-claim, a customer-facing flow, ran
+    // on the dead credential the whole time. The hand-seeded token expires
+    // 2026-10-12; this entry is what stops that happening again. It no-ops
+    // unless the token is inside 24h of expiry, so running it hourly is cheap.
+    { fn: "mt-token-keepalive",        body: {} },
     { fn: "comeback-offer-cron",       body: {} },
     // 2026-07-08: attendance / check-ins. Was scheduled by NOTHING — the only
     // way mariana_tek_visits ever updated was Justin manually running
@@ -94,7 +102,12 @@ const TIERS: Record<string, Array<{ fn: string; body: Record<string, unknown> }>
     // 2026-09-01: clients-sync was written but NEVER deployed or scheduled —
     // the customer roster froze on July 11 and Homebase went stale. Runs the
     // rolling 45-day window every cycle so the roster can never freeze again.
-    { fn: "mariana-tek-clients-sync",  body: { max_ids: 2000 } },
+    // 2026-10-05: was { max_ids: 2000 } — which CRASHED every single hourly
+    // run from 2026-09-08 onward (the function dies above ~30 nested per-user
+    // fetches, and only upserted after the full loop, so each crash wrote
+    // nothing). v3 pages the list endpoint 200 users at a time and resumes
+    // from a cursor, so 8 pages an hour walks the whole roster inside a day.
+    { fn: "mariana-tek-clients-sync",  body: { pages_per_run: 8 } },
     // 2026-09-01: Lead Ads poll — pulls Meta lead-form submissions into
     // trial_signups so the desk sees them on Today within one cycle.
     { fn: "meta-lead-ads",             body: { action: "poll" } },

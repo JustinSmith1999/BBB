@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { MapPin, Lock } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
 import { captureUtmsFromUrl, getUtmParams } from '../lib/utm';
@@ -48,8 +48,12 @@ function getMetaClickIds(): { fbp: string; fbc: string } {
 }
 
 export default function BackToSchool() {
+  // 2026-10-05: also mounted at /twomonths/:studio for the offer ladder, so
+  // accept the studio from the PATH as well as ?studio=. The old /bts and
+  // /backtoschool links only ever used the query form; both still work.
+  const { studio: pathStudio } = useParams<{ studio?: string }>();
   const [params] = useSearchParams();
-  const paramStudio = params.get('studio') ?? '';
+  const paramStudio = (pathStudio || params.get('studio') || '').toLowerCase();
   const [slug, setSlug] = useState<string>(
     STUDIOS.some((s) => s.slug === paramStudio) ? paramStudio : '',
   );

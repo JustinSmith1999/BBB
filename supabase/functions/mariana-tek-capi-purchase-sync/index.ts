@@ -24,6 +24,10 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const ADMIN_SECRET = Deno.env.get("BBB_ADMIN_SECRET") || "bbb-test-2026-05-27";
 
+// Meta's Conversions API hard-rejects any event whose event_time is more than
+// 7 days in the past (error subcode 2804003, "Event Timestamp Too Old").
+const SEVEN_DAYS_SECONDS = 7 * 24 * 60 * 60;
+
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -90,6 +94,50 @@ function classify(sale: MTSale): { event_name: "Purchase" | "Subscribe"; content
       itemsLower.includes("14-day"));
 
   const isMembership = !isTrial && total >= 10000;
+
+  // 2026-10-05 — THE DEAD ZONE. Before today, a sale that was not a recognisable
+  // trial and was under $100 returned null and was never reported to Meta. In a
+  // 14-day dry run that was 350 of 667 sales — over half the business, invisible
+  // to the ad platform. Meta was credited with 2 purchases in a fortnight while
+  // 207 paid trials actually happened.
+  //
+  // Everything in $0.01–$99.99 fell in the hole, including offers we are about
+  // to run on purpose:
+  //     $29 one-week comeback   (2900)  → dropped
+  //     $99 one-month           (9900)  → dropped, it is a dollar under the bar
+  // Anything paid is a purchase and Meta should hear about it. The only things
+  // worth withholding are retail sundries and penalty fees, which are not
+  // acquisition signals and would teach the optimiser the wrong thing. That
+  // exclusion list mirrors the one in get_converted_members.
+  const isNoise =
+    itemsLower.includes("water") ||
+    itemsLower.includes("towel") ||
+    itemsLower.includes("snack") ||
+    itemsLower.includes("no show") ||
+    itemsLower.includes("late cancel") ||
+    itemsLower.includes("retail");
+
+  // VALUE FLOOR. My first pass at this fix reported everything above $0, and a
+  // dry run showed what that actually meant: 55 events with a median value of
+  // $25, a $4 minimum, and 29 of them under $29 — drop-in fees and counter
+  // retail. Feeding those to Meta as Purchases is worse than sending nothing,
+  // because the optimiser learns to go find more $4 buyers instead of people
+  // who take a trial and become members. Volume is not the goal; teaching Meta
+  // what a good customer looks like is.
+  // $29 is the floor because it is the cheapest thing we deliberately sell as a
+  // way in (the one-week comeback). Anything below it is incidental spend by
+  // someone already here, not an acquisition.
+  const ACQUISITION_FLOOR_CENTS = 2900;
+  const isOtherPaid =
+    !isTrial && !isMembership && total >= ACQUISITION_FLOOR_CENTS && !isNoise;
+
+  if (isOtherPaid) {
+    return {
+      event_name: "Purchase",
+      content_name: items.slice(0, 60) || "BBB Purchase",
+      content_category: "offer",
+    };
+  }
 
   if (isTrial) {
     return {
@@ -241,6 +289,7 @@ async function handler(req: Request): Promise<Response> {
   const results: any[] = [];
   let sentPurchase = 0, sentSubscribe = 0;
   let skippedAlready = 0, skippedNoEmail = 0, skippedNoCreds = 0, skippedNotEligible = 0;
+  let skippedTooOld = 0;
   let failed = 0;
 
   for (const sale of sales) {
@@ -325,6 +374,23 @@ async function handler(req: Request): Promise<Response> {
 
     const apiVersion = acct.api_version || "v19.0";
     const eventTime = Math.floor(new Date(sale.sale_date_time).getTime() / 1000);
+
+    // 2026-10-05 — Meta hard-rejects any event whose event_time is more than 7
+    // days old ("Event Timestamp Too Old", subcode 2804003). This function's
+    // default lookback reaches further back than that, so every nightly run was
+    // throwing errors on the 7-14 day tail: astoria and williamsburg both show
+    // that exact failure at 07:00 today. The events were never going to land,
+    // and the noise buried real failures.
+    // Skip them deliberately and count them, instead of firing into a wall.
+    const ageSeconds = Math.floor(Date.now() / 1000) - eventTime;
+    if (ageSeconds > SEVEN_DAYS_SECONDS) {
+      skippedTooOld++;
+      results.push({
+        event_id: eid, status: "too_old_for_meta", studio: slug,
+        age_days: Math.floor(ageSeconds / 86400),
+      });
+      continue;
+    }
 
     const customData: Record<string, unknown> = {
       currency: "USD",
@@ -417,6 +483,7 @@ async function handler(req: Request): Promise<Response> {
     skipped_no_email: skippedNoEmail,
     skipped_no_meta_creds: skippedNoCreds,
     skipped_not_eligible: skippedNotEligible,
+    skipped_too_old_for_meta: skippedTooOld,
     failed,
     results,
   });
