@@ -66,19 +66,17 @@ function classify(a: HTMLAnchorElement, href: string): string {
   return 'internal';
 }
 
+// 2026-10-07: this used to try navigator.sendBeacon first. It silently lost
+// every row. sendBeacon returns true the moment the request is QUEUED, not
+// when it succeeds, and a Blob of type application/json is not a CORS-simple
+// content type, so the cross-origin POST needs an OPTIONS preflight — which
+// sendBeacon cannot perform. The browser dropped it and reported success.
+// fetch with keepalive gives the same survives-unload behavior AND handles
+// the preflight, which is what track.ts has always done for page_views.
 function send(row: Record<string, unknown>): void {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return;
   const url = `${SUPABASE_URL}/rest/v1/site_clicks`;
   const body = JSON.stringify(row);
-  try {
-    // sendBeacon can't set headers, so the key rides in the query string —
-    // the same anon key already shipped in the bundle, insert-only by RLS.
-    const beaconUrl = `${url}?apikey=${encodeURIComponent(SUPABASE_ANON_KEY)}`;
-    if (navigator.sendBeacon) {
-      const ok = navigator.sendBeacon(beaconUrl, new Blob([body], { type: 'application/json' }));
-      if (ok) return;
-    }
-  } catch { /* fall through */ }
   try {
     fetch(url, {
       method: 'POST',
@@ -118,7 +116,9 @@ export function startLinkTracking(): void {
 
       const el = (a || tracked) as HTMLElement;
       const path = window.location.pathname;
-      const utms = getUtmParams() as Record<string, string>;
+      // getUtmParams() returns camelCase (utmSource), not snake_case. Reading
+      // utms.utm_source off it silently wrote null into every utm column.
+      const utms = getUtmParams();
 
       send({
         visitor_id: visitorId() || null,
@@ -132,10 +132,10 @@ export function startLinkTracking(): void {
         studio_slug: studioFromPath(path),
         fbp: readCookie('_fbp') || null,
         fbc: readCookie('_fbc') || null,
-        utm_source: utms.utm_source || null,
-        utm_medium: utms.utm_medium || null,
-        utm_campaign: utms.utm_campaign || null,
-        utm_content: utms.utm_content || null,
+        utm_source: utms.utmSource || null,
+        utm_medium: utms.utmMedium || null,
+        utm_campaign: utms.utmCampaign || null,
+        utm_content: utms.utmContent || null,
         referrer: (document.referrer || '').slice(0, 300) || null,
         device_hint: window.innerWidth < 768 ? 'mobile' : 'desktop',
         build_id: BUILD_ID,
