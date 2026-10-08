@@ -102,6 +102,38 @@ export default function FreeClasses() {
               <p className="mx-auto mt-3 max-w-md text-gray-600">
                 The <span className="font-semibold">{studio?.name}</span> team will text you shortly to book your 3 classes. Come ready to work.
               </p>
+
+              {/* 2026-10-08 (Justin): "we need a way to get them from offer to
+                  app". This is the highest-intent moment in the whole funnel -
+                  they have just claimed and are still looking at the screen.
+                  Waiting for the welcome text loses the ones who put the phone
+                  down. /app/<studio> is the tracked smart link: track-link
+                  reads the user agent and sends them to the App Store or Play
+                  Store, logging the tap to link_clicks.
+
+                  The SIGN IN line is not decoration. free3-claim has already
+                  created their Mariana Tek account with the email above, so
+                  tapping "Sign up" in the app makes a SECOND account with no
+                  free classes on it. Same trap as the trial welcome text. */}
+              <div className="mx-auto mt-7 max-w-md rounded-2xl border border-gray-200 bg-white p-5 text-left">
+                <p className="text-sm font-bold text-gray-900">One more thing: get the app</p>
+                <p className="mt-1 text-sm leading-relaxed text-gray-600">
+                  It is how you book and see live spots. We have already made your
+                  account, so tap <span className="font-semibold text-gray-900">Sign in</span> (not
+                  sign up) with <span className="font-semibold text-gray-900 break-all">{form.email}</span>,
+                  then "Forgot password".
+                </p>
+                <a
+                  href={`https://betterbodybootcamp.com/app/${studio?.slug ?? ''}`}
+                  data-track={`app_free3_success_${studio?.slug ?? 'unknown'}`}
+                  className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-black px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-gray-800"
+                >
+                  Download the app
+                </a>
+                <p className="mt-2 text-center text-xs text-gray-400">
+                  Signing up again makes a duplicate without your classes on it.
+                </p>
+              </div>
             </div>
           ) : (
             <>

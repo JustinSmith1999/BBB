@@ -95,29 +95,25 @@ function free3Html(slug: string): string {
 <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="width:640px;max-width:100%;background-color:#0D0D0D;font-family:Arial,Helvetica,sans-serif;">
 <tr><td style="padding:28px 32px 20px 32px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
 <td align="left" valign="middle"><img src="${LOGO}" alt="bbb" width="74" style="display:block;border:0;"></td>
-<td align="right" valign="middle" style="font-size:13px;line-height:19px;font-weight:bold;letter-spacing:3px;color:#C8F31E;text-align:right;">STILL&nbsp;THINKING<br>ABOUT&nbsp;IT?</td>
+<td align="right" valign="middle" style="font-size:13px;line-height:19px;font-weight:bold;letter-spacing:3px;color:#FF5A5A;text-align:right;">STILL&nbsp;THINKING<br>ABOUT&nbsp;IT?</td>
 </tr></table></td></tr>
 <tr><td><img src="${HERO[pair]}" alt="Better Body Bootcamp" width="640" style="display:block;width:100%;height:auto;border:0;"></td></tr>
 <tr><td align="center" style="padding:44px 24px 10px 24px;"><div style="font-family:'Arial Black',Arial,sans-serif;font-size:44px;line-height:46px;font-weight:900;color:#F2EFE6;letter-spacing:-1px;">COME&nbsp;SEE&nbsp;FOR&nbsp;YOURSELF</div></td></tr>
 <tr><td align="center" style="padding:8px 24px 6px 24px;"><table role="presentation" cellpadding="0" cellspacing="0"><tr>
-<td valign="middle" align="right" style="font-family:'Arial Black',Arial,sans-serif;font-size:150px;line-height:150px;font-weight:900;color:#C8F31E;padding-right:14px;">3</td>
-<td valign="middle" style="background-color:#C8F31E;padding:22px 26px;">
-<div style="font-family:'Arial Black',Arial,sans-serif;font-size:52px;line-height:50px;font-weight:900;color:#0D0D0D;">FREE<br>CLASSES</div>
-<div style="font-family:'Arial Black',Arial,sans-serif;font-size:17px;line-height:22px;font-weight:900;color:#0D0D0D;padding-top:8px;">ALL&nbsp;BETTER&nbsp;BODY&nbsp;LOCATIONS</div>
+<td valign="middle" align="right" style="font-family:'Arial Black',Arial,sans-serif;font-size:150px;line-height:150px;font-weight:900;color:#FF5A5A;padding-right:14px;">3</td>
+<td valign="middle" style="background-color:#D83B3B;padding:22px 26px;">
+<div style="font-family:'Arial Black',Arial,sans-serif;font-size:52px;line-height:50px;font-weight:900;color:#FFFFFF;">FREE<br>CLASSES</div>
+<div style="font-family:'Arial Black',Arial,sans-serif;font-size:17px;line-height:22px;font-weight:900;color:#FFFFFF;padding-top:8px;">ALL&nbsp;BETTER&nbsp;BODY&nbsp;LOCATIONS</div>
 </td></tr></table></td></tr>
-<tr><td style="padding:28px 32px 0 32px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #4A4A4A;"><tr>
-<td style="padding:16px 20px;font-size:13px;letter-spacing:3px;color:#9A9A9A;">LIMITED&nbsp;TIME&nbsp;OFFER</td>
-<td align="right" style="padding:16px 20px;font-size:18px;letter-spacing:2px;font-weight:bold;color:#FFFFFF;">EXPIRES&nbsp;SEP&nbsp;21</td>
-</tr></table></td></tr>
-<tr><td style="padding:22px 32px 0 32px;"><a href="${cta}" style="display:block;background-color:#C8F31E;color:#0D0D0D;font-family:'Arial Black',Arial,sans-serif;font-size:26px;font-weight:900;letter-spacing:8px;text-align:center;text-decoration:none;padding:24px 10px;">CLAIM&nbsp;MY&nbsp;3&nbsp;CLASSES</a></td></tr>
-<tr><td align="center" style="padding:16px 24px 0 24px;font-size:15px;color:#BDBDBD;">No commitment. Just come see for yourself.</td></tr>
-<tr><td style="padding:44px 32px 0 32px;">
+<tr><td style="padding:22px 32px 0 32px;"><a href="${cta}" style="display:block;background-color:#D83B3B;color:#FFFFFF;font-family:'Arial Black',Arial,sans-serif;font-size:26px;font-weight:900;letter-spacing:8px;text-align:center;text-decoration:none;padding:24px 10px;">CLAIM&nbsp;MY&nbsp;3&nbsp;CLASSES</a></td></tr>
+<tr><td align="center" style="padding:20px 24px 0 24px;font-size:17px;line-height:25px;color:#FFFFFF;text-align:center;">No commitment. Just come see for yourself.</td></tr>
+<tr><td align="center" style="padding:44px 32px 0 32px;text-align:center;">
 <div style="font-size:20px;font-weight:bold;color:#FFFFFF;">Better Than Yesterday.</div>
 <div style="padding-top:14px;font-size:14px;line-height:24px;color:#CFCFCF;">${ADDR[pair]}</div>
 <div style="padding-top:16px;font-size:13px;letter-spacing:2px;font-weight:bold;">
-<a href="https://instagram.com/betterbodybootcamp" style="color:#C8F31E;text-decoration:none;">INSTAGRAM</a><span style="color:#666666;">&nbsp;&middot;&nbsp;</span>
-<a href="https://www.tiktok.com/@betterbodybootcamp" style="color:#C8F31E;text-decoration:none;">TIKTOK</a><span style="color:#666666;">&nbsp;&middot;&nbsp;</span>
-<a href="https://betterbodybootcamp.com" style="color:#C8F31E;text-decoration:none;">WEBSITE</a></div>
+<a href="https://instagram.com/betterbodybootcamp" style="color:#FF5A5A;text-decoration:none;">INSTAGRAM</a><span style="color:#666666;">&nbsp;&middot;&nbsp;</span>
+<a href="https://www.tiktok.com/@betterbodybootcamp" style="color:#FF5A5A;text-decoration:none;">TIKTOK</a><span style="color:#666666;">&nbsp;&middot;&nbsp;</span>
+<a href="https://betterbodybootcamp.com" style="color:#FF5A5A;text-decoration:none;">WEBSITE</a></div>
 <div style="padding:22px 0 34px 0;font-size:12px;line-height:19px;color:#8A8A8A;">You are receiving this because you asked us about classes.<br>Don't want these? Just reply "unsubscribe" and we'll take you off the list. &middot; Better Body Bootcamp, NYC</div>
 </td></tr></table></td></tr></table></body></html>`;
 }
@@ -226,6 +222,112 @@ Deno.serve(async (req: Request) => {
     }
     return json(out);
   }
+  // ── build_batch — make the audience from the DATABASE, not by hand ───────
+  // 2026-10-08 (Justin: "we need a well oiled email funnel between all
+  // studios"). Until now every batch file was assembled by hand and uploaded,
+  // so an audience could not be rebuilt or audited later. This selects from
+  // leads, applies every exclusion in one place, and writes the batch file.
+  //
+  // Segments map to leads.stage values seen in the real data:
+  //   warm      inquiry, new_inquiry, pending_checkout, soft_conversion
+  //             -> enquired or abandoned a checkout, touched within weeks
+  //   paid      converted
+  //             -> bought from us before. 6+ months cold.
+  //   cold      new, contacted
+  //             -> never engaged. Highest complaint risk, send last if ever.
+  //
+  // EXCLUSIONS, all applied here so no caller can forget one:
+  //   * no usable email
+  //   * already a member (trial_signups member / converted_to_member)
+  //   * opted out on any matching trial_signups row
+  //   * duplicate email across the two studios (first studio wins, so nobody
+  //     gets the same offer twice from two gyms)
+  //   * leads.win_back_sent_at already set
+  //
+  // Writes nothing unless dry_run is false. Always returns the counts and a
+  // redacted sample so the audience can be checked before it exists.
+  //   { action:"build_batch", segment:"warm", studios:["astoria","williamsburg"],
+  //     offer:"free3", channel:"email", out:"warm-free3-2026-10-08.json",
+  //     dry_run:true }
+  if (body.action === "build_batch") {
+    const SEGMENTS: Record<string, string[]> = {
+      warm: ["inquiry", "new_inquiry", "pending_checkout", "soft_conversion"],
+      paid: ["converted"],
+      cold: ["new", "contacted"],
+    };
+    const segment = String(body.segment || "warm");
+    const stages = SEGMENTS[segment];
+    if (!stages) return json({ ok: false, error: `unknown segment '${segment}' (warm|paid|cold)` }, 400);
+    const studios: string[] = Array.isArray(body.studios) && body.studios.length
+      ? body.studios.map(String) : ["astoria", "williamsburg"];
+    const offer = String(body.offer || "free3");
+    const channel = String(body.channel || "email");
+    const outPath = String(body.out || `${segment}-${offer}-${new Date().toISOString().slice(0, 10)}.json`);
+    const isDry = body.dry_run !== false;
+    const c = sb();
+
+    const { data: leads, error: lErr } = await c.from("leads")
+      .select("email, first_name, last_name, full_name, studio_slug, stage, win_back_sent_at")
+      .in("studio_slug", studios).in("stage", stages).limit(10000);
+    if (lErr) return json({ ok: false, error: `leads: ${lErr.message}` }, 500);
+
+    // One pass over trial_signups for the member / opt-out checks.
+    const { data: ts } = await c.from("trial_signups")
+      .select("email, front_desk_stage, converted_to_member, opted_out_at, deleted_at").limit(10000);
+    const members = new Set<string>(), optedOut = new Set<string>();
+    for (const t of ts ?? []) {
+      const e = String(t.email || "").trim().toLowerCase();
+      if (!e) continue;
+      if (t.opted_out_at) optedOut.add(e);
+      if (!t.deleted_at && (t.front_desk_stage === "member" || t.converted_to_member)) members.add(e);
+    }
+
+    const seen = new Set<string>();
+    const rows: any[] = [];
+    const drop = { no_email: 0, member: 0, opted_out: 0, duplicate: 0, already_sent: 0 };
+    for (const l of leads ?? []) {
+      const email = String(l.email || "").trim().toLowerCase();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { drop.no_email++; continue; }
+      if (members.has(email)) { drop.member++; continue; }
+      if (optedOut.has(email)) { drop.opted_out++; continue; }
+      if (l.win_back_sent_at) { drop.already_sent++; continue; }
+      if (seen.has(email)) { drop.duplicate++; continue; }
+      seen.add(email);
+      const first = String(l.first_name || "").trim()
+        || String(l.full_name || "").trim().split(/\s+/)[0] || "there";
+      rows.push({
+        studio: l.studio_slug, name: `${first}`.slice(0, 60), email,
+        phone: "", offer, channel,
+      });
+    }
+
+    const byStudio: Record<string, number> = {};
+    for (const r of rows) byStudio[r.studio] = (byStudio[r.studio] || 0) + 1;
+
+    if (!isDry) {
+      const blob = new Blob([JSON.stringify({
+        built_at: new Date().toISOString(), segment, stages, studios, offer, channel,
+        rows,
+      }, null, 1)], { type: "application/json" });
+      const up = await c.storage.from("campaigns").upload(outPath, blob, { upsert: true });
+      if (up.error) return json({ ok: false, error: `upload: ${up.error.message}` }, 500);
+    }
+
+    return json({
+      ok: true, action: "build_batch", dry_run: isDry, segment, stages, studios,
+      offer, channel, out: outPath,
+      considered: (leads ?? []).length, in_batch: rows.length, by_studio: byStudio,
+      excluded: drop,
+      sample: rows.slice(0, 3).map((r) => ({
+        studio: r.studio, name: r.name,
+        email: r.email.replace(/^(.).*(@.*)$/, "$1***$2"),
+      })),
+      note: isDry
+        ? "Nothing written. Re-run with dry_run:false to create the batch file."
+        : `Batch written to campaigns/${outPath}. Send with { batch_path, offer, limit }.`,
+    });
+  }
+
   const limit = typeof body.limit === "number" ? Math.min(body.limit, 100) : 25;
   const offerFilter = typeof body.offer === "string" ? body.offer : null;
   const studioFilter = typeof body.studio === "string" ? body.studio : null;
