@@ -84,12 +84,11 @@ export default function FreeClasses() {
           <span className="text-red-600">3 Free Classes.</span> On Us.
         </h1>
         <p className="mx-auto mt-4 max-w-xl text-lg text-gray-300">
-          No commitment, no card. Claim your classes and your studio texts you to get you booked.
+          No commitment. Claim your classes and your studio texts you to get you booked.
         </p>
         <div className="mx-auto mt-6 flex max-w-2xl flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-gray-300">
           <span className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-red-600" />Coach-led small group classes</span>
           <span className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-red-600" />All levels welcome</span>
-          <span className="flex items-center gap-2"><CheckCircle className="h-4 w-4 text-red-600" />Offer ends Sep 21</span>
         </div>
       </section>
 
