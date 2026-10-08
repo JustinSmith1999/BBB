@@ -77,13 +77,54 @@ export function captureUtmsFromUrl(): void {
  * to whatever captureUtmsFromUrl() previously saved.
  */
 export function getUtmParams(): UtmParams {
-  // Re-capture so the current URL always wins if it has fresh tags.
+  // 2026-10-08 FIX — THIS IS WHY EVERY PAID TRIAL READ AS "DIRECT".
+  //
+  // This used to call captureUtmsFromUrl() and then return ONLY what
+  // sessionStorage handed back. captureUtmsFromUrl parses the URL and writes
+  // to sessionStorage; it returns nothing. Every storage access in this file
+  // is wrapped in try/catch that falls back to {}. So whenever sessionStorage
+  // was unavailable, the tags were sitting right there in the URL, got parsed,
+  // and were then discarded — the function returned four nulls.
+  //
+  // That is not a rare edge case here: roughly 95% of this traffic is mobile
+  // arriving through the Instagram and Facebook in-app browsers, which is
+  // exactly where storage gets restricted.
+  //
+  // The proof is in our own data over 30 days:
+  //   page_views  2,832 rows tagged facebook/cpc   <- track.ts reads the URL directly
+  //   trial_signups       0 rows with any utm      <- this function, via sessionStorage
+  // Same visitors, same pages, same visit. The only difference is that one
+  // path trusted storage and the other didn't.
+  //
+  // Now: read the URL FIRST and use it when present, with sessionStorage only
+  // as the fallback for people who landed tagged earlier in the session and
+  // are now on an untagged internal page. Never depends on storage working.
+  let fromUrl: StoredUtm = {};
+  if (typeof window !== 'undefined') {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const v = (k: string) => {
+        const x = (p.get(k) || '').trim().slice(0, MAX_LEN);
+        return x || null;
+      };
+      const src = v('utm_source'), med = v('utm_medium');
+      const cmp = v('utm_campaign'), con = v('utm_content');
+      if (src) fromUrl.utmSource   = src;
+      if (med) fromUrl.utmMedium   = med;
+      if (cmp) fromUrl.utmCampaign = cmp;
+      if (con) fromUrl.utmContent  = con;
+    } catch { /* malformed query string — fall through to storage */ }
+  }
+
+  // Keep persisting for later pages in the journey. Best-effort by design:
+  // if this throws, the URL values above still get returned.
   captureUtmsFromUrl();
   const stored = readSession();
+
   return {
-    utmSource:   stored.utmSource   ?? null,
-    utmMedium:   stored.utmMedium   ?? null,
-    utmCampaign: stored.utmCampaign ?? null,
-    utmContent:  stored.utmContent  ?? null,
+    utmSource:   fromUrl.utmSource   ?? stored.utmSource   ?? null,
+    utmMedium:   fromUrl.utmMedium   ?? stored.utmMedium   ?? null,
+    utmCampaign: fromUrl.utmCampaign ?? stored.utmCampaign ?? null,
+    utmContent:  fromUrl.utmContent  ?? stored.utmContent  ?? null,
   };
 }
