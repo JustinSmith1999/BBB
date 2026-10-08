@@ -133,8 +133,29 @@ function normalizeE164(p: string | null | undefined): string | null {
 }
 
 // ─── Templates ──────────────────────────────────────────────────────────────
-function customerSmsBody(firstName: string, studioShort: string, bookingUrl: string): string {
-  return `Hi ${firstName}, welcome to BBB ${studioShort}! Your $49 trial is live. Book your first class: ${bookingUrl} Reply with any questions. - BBB`;
+// 2026-10-08 (Justin): the day-0 text now sends new trial buyers to the app,
+// not the website schedule. betterbodybootcamp.com/app/<studio> hits
+// track-link, which reads the user agent and bounces to the App Store or Play
+// Store (desktop falls back to /schedule/<studio>), so the customer gets one
+// short link instead of two to choose between.
+//
+// The SIGN IN line is not optional. We created their Mariana Tek account at
+// checkout, so if they tap "Sign up" in the app they make a SECOND account
+// with no trial on it, cannot book, and ring the front desk. free3-claim has
+// carried the same warning since it launched for exactly this reason.
+function appUrlOf(slug: string): string {
+  return `https://betterbodybootcamp.com/app/${slug}`;
+}
+// Kept to 2 SMS segments. The first draft ran to 3 (362 chars) because the
+// sign-in warning was written out in full; trimmed to the part that actually
+// prevents the duplicate account. Strip the https:// from the display URL —
+// phones still linkify it and it buys back 8 characters.
+function customerSmsBody(firstName: string, studioShort: string, appUrl: string, email: string): string {
+  const shortUrl = appUrl.replace(/^https?:\/\//, "");
+  return `Hi ${firstName}, welcome to BBB ${studioShort}! Your $49 trial is live.\n\n`
+    + `Book your classes in the app: ${shortUrl}\n\n`
+    + `Tap SIGN IN (not sign up) with ${email}, then "Forgot password". Your account is already made.\n\n`
+    + `Questions? Just reply. - BBB`;
 }
 // Customer email templates — mirror the stripe-webhook designed welcome
 // email so manual and automated paths look identical to the customer.
@@ -405,7 +426,8 @@ Deno.serve(async (req) => {
     const studioShort = studioName;
     const studioSlug  = studioSlugOf(studioName);
     const studioMail  = studioMailboxOf(studioSlug);
-    const bookingUrl  = bookingUrlOf(studioSlug);
+    const bookingUrl  = bookingUrlOf(studioSlug);   // still used by the EMAIL
+    const appUrl      = appUrlOf(studioSlug);       // the SMS now points here
     const firstName   = firstNameOf(t.name);
     const customerTo  = normalizeE164(t.phone);
     const paidEt      = t.payment_date
@@ -440,7 +462,7 @@ Deno.serve(async (req) => {
 
     // 1. Customer SMS
     if (sendCustomerSms && (dryRun || smsClaimed)) {
-      const txt = customerSmsBody(firstName, studioShort, bookingUrl);
+      const txt = customerSmsBody(firstName, studioShort, appUrl, t.email || "");
       if (!customerTo) {
         out.customer_sms = { ok: false, error: "invalid phone" };
         if (smsClaimed) { try { await sb.from("trial_signups").update({ welcome_sms_sent_at: null }).eq("id", t.id); } catch {} }

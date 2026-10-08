@@ -54,9 +54,60 @@ const LINKS: Record<
 const BOT_RE =
   /bot|crawl|spider|facebookexternalhit|whatsapp|telegram|slackbot|discord|linkedinbot|twitterbot|preview|headless|lighthouse|pingdom|monitor/i;
 
+// ─── App store links ───────────────────────────────────────────────────────
+// 2026-10-08 (Justin): the day-0 welcome text used to send a brand-new trial
+// buyer to the website schedule. It now sends them to the app instead, via
+// /app/<studio>, which lands here and bounces to the right store for whatever
+// phone they are holding. One short link in the SMS rather than two the
+// customer has to choose between on a 4-inch screen.
+const APP_IOS = "https://apps.apple.com/us/app/better-body-studios/id6778182425";
+const APP_PLAY = "https://play.google.com/store/apps/details?id=com.marianatek.betterbodybootcamp";
+// Desktop has no app to install, so send those few to the schedule page they
+// would otherwise have got. Better than a dead-end store page on a laptop.
+const APP_FALLBACK = (studio: string) => `${SITE}/schedule/${studio}`;
+
+const IOS_RE = /iphone|ipad|ipod/i;
+const ANDROID_RE = /android/i;
+
+/** app-<studio> keys are handled before the LINKS table. */
+function appStudioFrom(key: string): string | null {
+  const m = key.match(/^app-([a-z-]+)$/);
+  return m && ["astoria", "bayside", "fresh-meadows", "williamsburg"].includes(m[1]) ? m[1] : null;
+}
+
 Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
   const key = url.searchParams.get("l") ?? "";
+
+  // ── /app/<studio> — send them to the store for the phone they are on ─────
+  const appStudio = appStudioFrom(key);
+  if (appStudio) {
+    const ua = req.headers.get("user-agent") ?? "";
+    const dest = IOS_RE.test(ua) ? APP_IOS
+               : ANDROID_RE.test(ua) ? APP_PLAY
+               : APP_FALLBACK(appStudio);
+    const platform = IOS_RE.test(ua) ? "ios" : ANDROID_RE.test(ua) ? "android" : "other";
+    if (!BOT_RE.test(ua)) {
+      try {
+        const supabase = createClient(
+          Deno.env.get("SUPABASE_URL") ?? "",
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+        );
+        await supabase.from("link_clicks").insert({
+          link_key: key,
+          studio: appStudio,
+          utm_source: "sms",
+          utm_medium: "welcome",
+          utm_campaign: "app_install",
+          utm_content: platform,
+          user_agent: ua || null,
+          referrer: req.headers.get("referer"),
+        });
+      } catch (_e) { /* swallow — the redirect always wins */ }
+    }
+    return Response.redirect(dest, 302);
+  }
+
   const link = LINKS[key];
 
   // Unknown / missing key — fall back to the studio picker instead of erroring.

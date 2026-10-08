@@ -41,6 +41,29 @@
 # 302s on to /trial/<studio> with the UTM params.
 # NOTE: netlify.toml redirects are evaluated BEFORE public/_redirects, so the
 # tracked-link rules must live here — keep this list and _redirects in sync.
+# /app/<studio> — the day-0 welcome text sends new trial buyers here instead of
+# the website schedule. track-link reads the user agent and 302s to the App
+# Store or Play Store; desktop falls back to /schedule/<studio>.
+[[redirects]]
+  from   = "/app/astoria"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=app-astoria"
+  status = 302
+
+[[redirects]]
+  from   = "/app/bayside"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=app-bayside"
+  status = 302
+
+[[redirects]]
+  from   = "/app/fresh-meadows"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=app-fresh-meadows"
+  status = 302
+
+[[redirects]]
+  from   = "/app/williamsburg"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=app-williamsburg"
+  status = 302
+
 [[redirects]]
   from   = "/ig/astoria"
   to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=ig-astoria"

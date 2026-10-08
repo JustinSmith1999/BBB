@@ -20,6 +20,13 @@
 # or the catch-all swallows them and the redirect never fires.
 # These route through the track-link edge function, which logs the click in
 # link_clicks and then 302s on to /trial/<studio> with the UTM params.
+# /app/<studio> — day-0 welcome text. track-link sniffs the user agent and
+# bounces to the App Store or Play Store; desktop falls back to /schedule.
+/app/astoria        https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=app-astoria              302
+/app/bayside        https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=app-bayside              302
+/app/fresh-meadows  https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=app-fresh-meadows        302
+/app/williamsburg   https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=app-williamsburg         302
+
 /ig/astoria        https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=ig-astoria              302
 /ig/bayside        https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=ig-bayside              302
 /ig/fresh-meadows  https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=ig-fresh-meadows        302
