@@ -176,11 +176,47 @@ Deno.serve(async (req: Request) => {
       const known = ["astoria", "bayside", "freshmeadows", "williamsburg"];
       return known.includes(key) ? `${key}@betterbodybootcamp.com` : null;
     };
-    // Studio mailbox first; locationEmail then info@ only as fallbacks
-    // (e.g. when the visitor didn't pick a studio).
-    const TO_EMAIL = studioMailbox(location) || locationEmail || "info@betterbodybootcamp.com";
+    // 2026-10-15 — the fallback used to be info@betterbodybootcamp.com. That
+    // address does not exist on the Google Workspace behind this domain, so
+    // Google hard-bounced it, Resend put it on the suppression list, and every
+    // send to it has since been refused before it was even attempted. Any
+    // visitor who left the studio dropdown on "Select a location" produced a
+    // contact alert nobody received. (The submission itself was never lost —
+    // the page writes it to contact_submissions before calling this function.)
+    //
+    // Two changes so this cannot happen again:
+    //   1. No single address is a point of failure. When we cannot tell which
+    //      studio the visitor meant, mail ALL FOUR studio mailboxes. Those are
+    //      real and are already receiving trial alerts every day.
+    //   2. Never send to an address we cannot verify exists. locationEmail
+    //      comes from the locations.contact_email column, which is free text
+    //      and has been wrong before, so it is now only used when it matches
+    //      a studio we actually know.
+    const ALL_STUDIO_MAILBOXES = [
+      "astoria@betterbodybootcamp.com",
+      "bayside@betterbodybootcamp.com",
+      "freshmeadows@betterbodybootcamp.com",
+      "williamsburg@betterbodybootcamp.com",
+    ];
 
-    console.log("Sending email to:", TO_EMAIL);
+    // Accept the three forms the callers actually send: a display name
+    // ("Fresh Meadows" from the dropdown), a slug ("fresh-meadows"), or a
+    // squashed key ("freshmeadows").
+    const resolved = studioMailbox(location);
+    const TO_EMAILS: string[] = resolved
+      ? [resolved]
+      : (locationEmail && /@betterbodybootcamp\.com$/i.test(locationEmail)
+          ? [locationEmail]
+          : ALL_STUDIO_MAILBOXES);
+    const TO_EMAIL = TO_EMAILS[0]; // kept for the logging/record fields below
+
+    if (!resolved) {
+      console.warn(
+        `contact form: could not resolve studio from location="${location}" — ` +
+        `falling back to all four studio mailboxes`,
+      );
+    }
+    console.log("Sending email to:", TO_EMAILS.join(", "));
     console.log("From:", name, email);
     console.log("Location requested:", location);
 
@@ -202,7 +238,7 @@ Deno.serve(async (req: Request) => {
 
     const emailPayload = {
       from: "Better Body Bootcamp <noreply@betterbodybootcamp.com>",
-      to: [TO_EMAIL],
+      to: TO_EMAILS,
       reply_to: email,
       subject: `New Contact Form Submission from ${name}`,
       text: emailBody,

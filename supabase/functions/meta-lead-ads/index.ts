@@ -325,6 +325,131 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // ── register_forms — make the scheduled poller aware a form exists ────
+    // 2026-10-07. poll reads its form list from project_log, and only
+    // create_form ever writes there. Every one of the 33 forms that already
+    // existed on the four pages was therefore invisible to it, including the
+    // Astoria one holding 62 submissions. The poller has been running hourly
+    // against an empty list and reporting success.
+    //
+    // This registers forms so the hourly orchestrator picks them up with no
+    // arguments. Idempotent: re-registering an existing form_id does nothing.
+    //
+    // Pass { auto: true } to register every ACTIVE form Meta reports on each
+    // studio's page, which is what you want after a token swap.
+    // { action:"register_forms", studios?:[...], forms?:[{studio,form_id,page_id}], auto?:true }
+    if (action === 'register_forms') {
+      const { data: known } = await sb.from('project_log')
+        .select('detail').eq('category', 'meta_lead_form');
+      const already = new Set<string>();
+      for (const row of known ?? []) {
+        try { already.add(String(JSON.parse(row.detail).form_id)); } catch { /* skip */ }
+      }
+
+      let wanted: Array<{ studio: string; form_id: string; page_id?: string; name?: string }> = [];
+      if (Array.isArray(body.forms) && body.forms.length) {
+        wanted = body.forms
+          .map((f: any) => ({ studio: String(f.studio || studio), form_id: String(f.form_id || ''), page_id: f.page_id }))
+          .filter((f: any) => f.form_id && TOKENS[f.studio]);
+      } else {
+        // auto: ask Meta what forms each page actually has.
+        const slugs: string[] = Array.isArray(body.studios) && body.studios.length
+          ? body.studios.filter((s: string) => TOKENS[s]) : Object.keys(TOKENS);
+        for (const slug of slugs) {
+          const token = tokenFor(slug);
+          if (!token) continue;
+          try {
+            const me = await fbGet('me/accounts', token, { fields: 'id,name,access_token' });
+            for (const page of me.data ?? []) {
+              const forms = await fbGet(`${page.id}/leadgen_forms`, page.access_token || token,
+                { fields: 'id,name,status', limit: '100' });
+              for (const f of forms.data ?? []) {
+                if (String(f.status || '').toUpperCase() !== 'ACTIVE') continue;
+                wanted.push({ studio: slug, form_id: String(f.id), page_id: page.id, name: f.name });
+              }
+            }
+          } catch (e) {
+            // keep going; one studio's token problem should not stop the rest
+            console.error('register_forms', slug, String((e as Error).message).slice(0, 160));
+          }
+        }
+      }
+
+      const added: any[] = [], skipped: any[] = [];
+      for (const f of wanted) {
+        if (already.has(f.form_id)) { skipped.push(f.form_id); continue; }
+        const { error } = await sb.from('project_log').insert({
+          category: 'meta_lead_form', status: 'open',
+          detail: JSON.stringify({
+            studio: f.studio, form_id: f.form_id, page_id: f.page_id ?? null,
+            name: f.name ?? null, created: new Date().toISOString(),
+            registered_by: 'register_forms',
+          }),
+        });
+        if (error) skipped.push(`${f.form_id} (${String(error.message).slice(0, 60)})`);
+        else { added.push({ studio: f.studio, form_id: f.form_id, name: f.name }); already.add(f.form_id); }
+      }
+      return json({
+        ok: true, action: 'register_forms',
+        found: wanted.length, registered: added.length, already_known: skipped.length,
+        added,
+        note: 'poll (hourly in sync-orchestrator) now sees these forms. It still needs leads_retrieval on the token to read submissions.',
+      });
+    }
+
+    // ── token_info — is this a SCOPE problem or a PAGE problem? ───────────
+    // 2026-10-07. All four studios return the identical
+    // "(#200) Requires leads_retrieval permission" error. Four pages across
+    // three differently-owned business portfolios failing in exactly the same
+    // way points at the tokens rather than at any one page's settings - if it
+    // were page-level access we would expect at least one to behave
+    // differently. This proves which it is instead of guessing, because the
+    // two causes have completely different fixes:
+    //
+    //   scope missing  -> regenerate the system user tokens WITH
+    //                     leads_retrieval. No amount of Business Settings
+    //                     clicking will help.
+    //   page access    -> grant lead access per page in Business Settings.
+    //                     No amount of token regeneration will help.
+    //
+    // Read-only. Returns the token's identity, its granted scopes, and the
+    // page roles it holds. Never returns the token itself.
+    // { action:"token_info", studios?: [...] }
+    if (action === 'token_info') {
+      const slugs: string[] = Array.isArray(body.studios) && body.studios.length
+        ? body.studios.filter((s: string) => TOKENS[s])
+        : Object.keys(TOKENS);
+      const out: any[] = [];
+      for (const slug of slugs) {
+        const token = tokenFor(slug);
+        if (!token) { out.push({ studio: slug, error: 'no token configured' }); continue; }
+        const row: any = { studio: slug, env_var: TOKENS[slug] };
+        try {
+          const me = await fbGet('me', token, { fields: 'id,name' });
+          row.identity = { id: me.id, name: me.name };
+        } catch (e) { row.identity_error = String((e as Error).message).slice(0, 200); }
+        try {
+          const perms = await fbGet('me/permissions', token, {});
+          const granted = (perms.data ?? []).filter((p: any) => p.status === 'granted').map((p: any) => p.permission);
+          row.scopes = granted.sort();
+          row.has_leads_retrieval = granted.includes('leads_retrieval');
+        } catch (e) {
+          // System user tokens often refuse /me/permissions.
+          row.scopes_error = String((e as Error).message).slice(0, 200);
+          row.has_leads_retrieval = null;
+        }
+        try {
+          const accts = await fbGet('me/accounts', token, { fields: 'id,name,tasks' });
+          row.pages = (accts.data ?? []).map((p: any) => ({ id: p.id, name: p.name, tasks: p.tasks }));
+        } catch (e) { row.pages_error = String((e as Error).message).slice(0, 200); }
+        out.push(row);
+      }
+      return json({
+        ok: true, action: 'token_info', wrote: false, studios: out,
+        how_to_read: 'has_leads_retrieval false on every studio = the tokens were minted without the scope; regenerate them. true everywhere while /leads still 403s = page-level lead access, fix in Business Settings. A page whose tasks list lacks MANAGE cannot be granted lead access by this token at all.',
+      });
+    }
+
     // ── import_leads — the manual way in, when the API door is shut ───────
     // 2026-10-07. The Astoria form held 62 submissions the poller could never
     // reach: leads_retrieval is refused because the page is owned by a

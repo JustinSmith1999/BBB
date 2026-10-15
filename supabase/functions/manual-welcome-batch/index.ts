@@ -164,22 +164,35 @@ const LOGO_URL = "https://uracuwugpxqjfgtuobal.supabase.co/storage/v1/object/pub
 function customerEmailSubject(_firstName: string, _studioShort: string): string {
   return `You're in! Your 2-week trial at Better Body Bootcamp`;
 }
-function customerEmailText(firstName: string, studioShort: string, bookingUrl: string): string {
+// 2026-10-14 (Justin): the welcome EMAIL still sent people to the website
+// schedule while the welcome SMS had already been switched to the app. Same
+// customer, two different instructions. The app is where they actually book and
+// see live spots, so the email leads with it too now.
+//
+// The SIGN IN line is the important part, not decoration. Their Mariana Tek
+// account already exists from the purchase, so tapping "Sign up" in the app
+// creates a SECOND account with no trial on it. That is the single most common
+// thing that goes wrong for a new trial.
+function customerEmailText(firstName: string, studioShort: string, bookingUrl: string, appUrl: string, customerEmail: string): string {
   return [
     `You're in, ${firstName}.`, "",
     `Welcome to Better Body Bootcamp ${studioShort}. Your 2-week trial is locked in.`, "",
-    `Book your first class today — schedule updates live:`,
-    bookingUrl, "",
+    `FIRST THING: get the app. It's how you book classes and see live spots.`,
+    appUrl, "",
+    `When you open it, tap SIGN IN, not sign up.${customerEmail ? ` Use ${customerEmail}` : ""}, then "Forgot password" to set one.`,
+    `We already made your account. Signing up again creates a duplicate with no trial on it.`, "",
+    `Then book your first class today. Spots fill up.`, "",
     `What you've got:`,
     `- Offer: $49 · 2 Weeks`,
     `- Studio: ${studioShort}`,
     `- Access: Unlimited classes for the full window`, "",
     `Tips: show up 10 minutes early, wear sneakers, bring water.`, "",
+    `On a computer? You can also book here: ${bookingUrl}`, "",
     `Questions? Reply to this email and it goes straight to your studio.`, "",
     `— Better Body Bootcamp`,
   ].join("\n");
 }
-function customerEmailHtml(firstName: string, studioShort: string, bookingUrl: string, studioSlug: string): string {
+function customerEmailHtml(firstName: string, studioShort: string, bookingUrl: string, studioSlug: string, appUrl: string, customerEmail: string): string {
   const studioInfoUrl = `https://betterbodybootcamp.com/locations/${studioSlug}`;
   return `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:0;color:#111;background:#fff">
@@ -190,10 +203,17 @@ function customerEmailHtml(firstName: string, studioShort: string, bookingUrl: s
       </div>
       <div style="padding:28px">
         <p style="margin:0 0 18px;font-size:16px;line-height:1.55;color:#222">Welcome to Better Body Bootcamp ${studioShort}. Your 2-week trial is locked in.</p>
-        <p style="margin:0 0 22px;font-size:15px;line-height:1.6;color:#444">You'll get the most out of this if you book your <strong>first class today</strong>. The schedule updates live — pick a time that fits and we'll see you on the floor.</p>
-        <div style="text-align:center;margin:26px 0 28px">
-          <a href="${bookingUrl}" style="background:${HERO_HEX};color:#fff;text-decoration:none;font-weight:700;padding:14px 28px;border-radius:999px;display:inline-block;font-size:15px;letter-spacing:0.01em">Book My First Class →</a>
+        <p style="margin:0 0 22px;font-size:15px;line-height:1.6;color:#444">First thing: <strong>get the app</strong>. It's how you book classes, see live spots, and keep track of your trial.</p>
+        <div style="text-align:center;margin:26px 0 20px">
+          <a href="${appUrl}" style="background:${HERO_HEX};color:#fff;text-decoration:none;font-weight:700;padding:14px 28px;border-radius:999px;display:inline-block;font-size:15px;letter-spacing:0.01em">Get the App &amp; Book →</a>
         </div>
+        <div style="background:#FFF4F4;border-left:3px solid ${HERO_HEX};border-radius:0 10px 10px 0;padding:14px 18px;margin:0 0 24px">
+          <div style="font-size:13px;line-height:1.6;color:#222">
+            When it opens, tap <strong>Sign in</strong>, not sign up${customerEmail ? `, using <strong>${customerEmail}</strong>` : ""}, then "Forgot password".
+            We already made your account. Signing up again creates a duplicate with no trial on it.
+          </div>
+        </div>
+        <p style="margin:0 0 22px;font-size:15px;line-height:1.6;color:#444">Then book your <strong>first class today</strong>. Spots fill up.</p>
         <div style="background:#fafafa;border:1px solid #eee;border-radius:12px;padding:18px 20px;margin-bottom:22px">
           <div style="font-size:12px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px">What you've got</div>
           <table style="width:100%;border-collapse:collapse;font-size:14px">
@@ -208,7 +228,7 @@ function customerEmailHtml(firstName: string, studioShort: string, bookingUrl: s
         </div>
         <div style="border-top:1px solid #eee;margin-top:24px;padding-top:18px;font-size:12px;color:#888;text-align:center">
           <a href="${studioInfoUrl}" style="color:#888;text-decoration:underline">Studio info & directions</a>
-          &nbsp;·&nbsp; <a href="${bookingUrl}" style="color:#888;text-decoration:underline">Class schedule</a>
+          &nbsp;·&nbsp; <a href="${bookingUrl}" style="color:#888;text-decoration:underline">Book on the web instead</a>
         </div>
       </div>
     </div>
@@ -488,8 +508,8 @@ Deno.serve(async (req) => {
     // 2. Customer Email
     if (sendCustomerEmail && (dryRun || emailClaimed)) {
       const subject = customerEmailSubject(firstName, studioShort);
-      const text    = customerEmailText(firstName, studioShort, bookingUrl);
-      const html    = customerEmailHtml(firstName, studioShort, bookingUrl, studioSlug);
+      const text    = customerEmailText(firstName, studioShort, bookingUrl, appUrl, t.email || "");
+      const html    = customerEmailHtml(firstName, studioShort, bookingUrl, studioSlug, appUrl, t.email || "");
       if (!t.email) {
         out.customer_email = { ok: false, error: "no email" };
       } else if (dryRun) {

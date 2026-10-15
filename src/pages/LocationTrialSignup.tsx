@@ -3,6 +3,7 @@ import { useParams, Navigate } from 'react-router-dom';
 import { CheckCircle, Lock } from 'lucide-react';
 import SEOHead from '../components/SEOHead';
 import { getUtmParams, captureUtmsFromUrl } from '../lib/utm';
+import { getMetaClickIds } from '../lib/metaClickIds';
 import { getVariant } from '../lib/abTest';
 import { visitorId } from '../lib/visitor';
 
@@ -168,19 +169,12 @@ function loadMetaPixel(pixelId: string): () => void {
 // tie a server-side Purchase event back to the ad that drove it — without
 // them, ad conversions under-report badly. Threaded through checkout ->
 // Stripe metadata -> stripe-webhook -> CAPI.
-function getMetaClickIds(): { fbp: string; fbc: string } {
-  if (typeof document === 'undefined') return { fbp: '', fbc: '' };
-  const readCookie = (name: string): string => {
-    const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
-    return m ? decodeURIComponent(m[1]) : '';
-  };
-  let fbc = readCookie('_fbc');
-  if (!fbc) {
-    const fbclid = new URLSearchParams(window.location.search).get('fbclid');
-    if (fbclid) fbc = `fb.1.${Date.now()}.${fbclid}`;
-  }
-  return { fbp: readCookie('_fbp'), fbc };
-}
+// 2026-10-15 — was a private copy of this logic, cookie-then-URL only. That
+// copy could not see the in-memory fbc that lib/metaClickIds.ts captures at
+// boot, so on in-app-browser traffic (where the cookie write is dropped and
+// the SPA has since rewritten the URL) it returned an empty fbc and every
+// lead from this page — the main ad landing page — was recorded with no ad
+// click id. Use the shared reader, which falls back to the boot capture.
 
 export default function LocationTrialSignup() {
   const { location: locationParam } = useParams<{ location: string }>();

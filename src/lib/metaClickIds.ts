@@ -34,14 +34,38 @@ function writeCookie(name: string, value: string, days: number): void {
 // Run once, as early as possible in app boot (see main.tsx). Captures the
 // ad-click id from the landing URL into a durable cookie so it is still around
 // when the visitor reaches checkout later in the session.
+// 2026-10-15 — in-memory copy of the landing fbc, the one store that cannot
+// be taken away.
+//
+// Both persistence layers this module relied on can silently fail in exactly
+// the traffic we care about. ~95% of ad traffic arrives in the Instagram and
+// Facebook in-app browsers, where cookie writes are restricted the same way
+// sessionStorage is (see the matching note in lib/utm.ts, where the identical
+// problem had zero utm_* on trial_signups against 2,832 tagged page_views).
+// When the cookie write below is dropped, getMetaClickIds falls through to
+// reading ?fbclid from the live URL — but by the time someone has typed their
+// phone number, this SPA has usually mutated the URL and the parameter is
+// gone. Cookie blocked plus URL rewritten equals no fbc, which is how the
+// Astoria trial page took 36 ad-tagged landings on 2026-10-14 and produced a
+// paid trial recorded as "no ad signal".
+//
+// A module-level variable survives SPA navigation within the page session and
+// needs no permission from anyone. Cookie first (survives a full reload and
+// multi-session journeys), then this, then the URL.
+let fbcFromLanding = "";
+
 export function captureMetaClickIds(): void {
   if (typeof window === "undefined") return;
   try {
     const fbclid = new URLSearchParams(window.location.search).get("fbclid");
+    if (!fbclid) return;
+    const value = `fb.1.${Date.now()}.${fbclid}`;
+    // Hold it in memory regardless of whether the cookie write survives.
+    if (!fbcFromLanding) fbcFromLanding = value;
     // Only write if we don't already have an _fbc (don't clobber the pixel's,
     // and keep the FIRST touch that actually carried the click id).
-    if (fbclid && !readCookie("_fbc")) {
-      writeCookie("_fbc", `fb.1.${Date.now()}.${fbclid}`, FBC_TTL_DAYS);
+    if (!readCookie("_fbc")) {
+      writeCookie("_fbc", value, FBC_TTL_DAYS);
     }
   } catch {
     /* never break the app over attribution */
@@ -53,6 +77,7 @@ export function captureMetaClickIds(): void {
 export function getMetaClickIds(): { fbp: string; fbc: string } {
   if (typeof document === "undefined") return { fbp: "", fbc: "" };
   let fbc = readCookie("_fbc");
+  if (!fbc) fbc = fbcFromLanding;          // captured at boot, cannot be blocked
   if (!fbc) {
     try {
       const fbclid = new URLSearchParams(window.location.search).get("fbclid");

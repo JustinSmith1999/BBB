@@ -59,6 +59,7 @@ type MTSale = {
   customer_email: string | null;
   total_cents: number | null;
   item_names: string[] | string | null;
+  sales_channel: string | null;
 };
 
 type MTClient = {
@@ -194,7 +195,7 @@ async function handler(req: Request): Promise<Response> {
   // ── 1. Pull MT sales in window ────────────────────────────────────────────
   const { data: salesRaw, error: salesErr } = await sb
     .from("mariana_tek_sales")
-    .select("mt_sale_id, studio_slug, sale_date_time, customer_mt_id, customer_first_name, customer_last_name, customer_email, total_cents, item_names")
+    .select("mt_sale_id, studio_slug, sale_date_time, customer_mt_id, customer_first_name, customer_last_name, customer_email, total_cents, item_names, sales_channel")
     .gte("sale_date_time", since.toISOString())
     .order("sale_date_time", { ascending: true });
   if (salesErr) return json({ ok: false, error: `mariana_tek_sales: ${salesErr.message}` }, 500);
@@ -361,14 +362,49 @@ async function handler(req: Request): Promise<Response> {
     // low-match physical_store event so we don't claim web attribution we
     // can't back up.
     const m = matchByEmail.get(email.toLowerCase());
-    let actionSource = "physical_store";
+
+    // 2026-10-14 — action_source was decided by whether we happened to have
+    // fbp/fbc/IP on the matching trial_signups row. capi-health showed what
+    // that costs: at Fresh Meadows 18 of 20 events went out as physical_store,
+    // and Meta credits none of those to a website ad set. The signals are
+    // missing because almost every $49 trial is bought through the Mariana Tek
+    // buy widget, which never passes through our own checkout — so there is no
+    // browser for us to read a click ID from. Absence of fbc was being treated
+    // as evidence the sale did not happen on the web. It is not.
+    //
+    // WHERE the sale happened is already known: mt-orders-sync derives
+    // sales_channel on every row from MT's originating_partner_id / broker_id.
+    // Drive action_source off that instead, which is both more accurate and
+    // more complete:
+    //
+    //   web   our own site checkout                       -> website
+    //   app   MT e-commerce / hosted store / buy widget    -> website
+    //   self  customer self-serve via location partner     -> website
+    //   desk  staff rang it up in the studio               -> physical_store
+    //
+    // 'app' maps to website on purpose: MT's opId=1 covers the embedded buy
+    // widget on our own trial pages as well as the member app, and the widget
+    // is where the ad traffic actually converts. Meta's "app" action_source
+    // means app-SDK events, which these are not, so website is the honest
+    // value for a web checkout we host.
+    //
+    // Hashed email/phone/name still carry the match on their own; fbc only
+    // strengthens it. When we DO have the browser signals we still attach them.
+    const channel = String((sale as any).sales_channel || "unknown");
+    let actionSource: string;
+    if (channel === "desk") actionSource = "physical_store";
+    else if (channel === "web" || channel === "app" || channel === "self") actionSource = "website";
+    else actionSource = (m && (m.fbc || m.fbp || m.client_ip)) ? "website" : "physical_store";
+
     let eventSourceUrl: string | undefined;
-    if (m && (m.fbc || m.fbp || m.client_ip)) {
+    if (m) {
       if (m.fbp) userData.fbp = m.fbp;
       if (m.fbc) userData.fbc = m.fbc;
       if (m.client_ip) userData.client_ip_address = m.client_ip;
       if (m.client_user_agent) userData.client_user_agent = m.client_user_agent;
-      actionSource = "website";
+    }
+    // Meta requires event_source_url on website events.
+    if (actionSource === "website") {
       eventSourceUrl = `https://betterbodybootcamp.com/trial/${slug}`;
     }
 
@@ -420,7 +456,7 @@ async function handler(req: Request): Promise<Response> {
       results.push({
         event_id: eid, status: "dry_run", studio: slug, event_name: klass.event_name,
         value: valueUsd, name: `${firstName} ${lastName}`.trim(),
-        action_source: actionSource, attributable: actionSource === "website",
+        action_source: actionSource, sales_channel: channel, attributable: actionSource === "website",
         match_signals: m ? { fbc: !!m.fbc, fbp: !!m.fbp, ip: !!m.client_ip, ua: !!m.client_user_agent } : null,
       });
       continue;
@@ -451,7 +487,7 @@ async function handler(req: Request): Promise<Response> {
           http_status: res.status,
           meta_event_id: metaEventId,
           error: ok ? null : (respJson?.error?.message || respText.slice(0, 500)),
-          raw: { source: "mariana-tek-capi-purchase-sync", action_source: actionSource, attributable: actionSource === "website", response: respJson },
+          raw: { source: "mariana-tek-capi-purchase-sync", action_source: actionSource, sales_channel: channel, attributable: actionSource === "website", response: respJson },
         });
       } catch (logErr) {
         console.error("capi_events insert failed:", (logErr as Error).message);

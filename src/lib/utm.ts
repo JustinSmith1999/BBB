@@ -17,6 +17,30 @@ export interface UtmParams {
   utmMedium: string | null;
   utmCampaign: string | null;
   utmContent: string | null;
+  // 2026-10-15 — snake_case aliases, carrying the SAME values.
+  //
+  // THIS IS WHY PAID TRIALS HAD NO AD ATTRIBUTION even after the 2026-10-08
+  // fix below made the values available. Every server function that stores
+  // attribution reads snake_case (capture-lead: `b.utm_source`), but this
+  // function only ever returned camelCase, and eight pages pass it on with
+  // `...getUtmParams()`. The spread handed over utmSource/utmMedium/
+  // utmCampaign/utmContent, the server looked for utm_source/utm_medium/
+  // utm_campaign/utm_content, found nothing, and wrote four nulls. No error
+  // anywhere — the request succeeded, the row was created, the tags were
+  // silently dropped.
+  //
+  // Measured cost: on 2026-10-14 the Astoria trial page took 36 ad-tagged
+  // landings in three hours, every one carrying utm_content and fbclid in the
+  // URL, and produced a paid trial whose row read "no ad signal".
+  //
+  // Three pages (both Contact components, Services) already worked around this
+  // with an inline IIFE remapping each key, and MonthOffer carries a comment
+  // describing the bug it was avoiding. Rather than add a ninth workaround,
+  // return both spellings so a plain spread is correct everywhere.
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_content: string | null;
 }
 
 type StoredUtm = Partial<Record<keyof UtmParams, string>>;
@@ -121,10 +145,22 @@ export function getUtmParams(): UtmParams {
   captureUtmsFromUrl();
   const stored = readSession();
 
+  const source   = fromUrl.utmSource   ?? stored.utmSource   ?? null;
+  const medium   = fromUrl.utmMedium   ?? stored.utmMedium   ?? null;
+  const campaign = fromUrl.utmCampaign ?? stored.utmCampaign ?? null;
+  const content  = fromUrl.utmContent  ?? stored.utmContent  ?? null;
+
+  // Both spellings, same values — see the note on UtmParams. Callers that
+  // spread this into a request body now send what the server actually reads,
+  // and callers that remap explicitly keep working unchanged.
   return {
-    utmSource:   fromUrl.utmSource   ?? stored.utmSource   ?? null,
-    utmMedium:   fromUrl.utmMedium   ?? stored.utmMedium   ?? null,
-    utmCampaign: fromUrl.utmCampaign ?? stored.utmCampaign ?? null,
-    utmContent:  fromUrl.utmContent  ?? stored.utmContent  ?? null,
+    utmSource:   source,
+    utmMedium:   medium,
+    utmCampaign: campaign,
+    utmContent:  content,
+    utm_source:   source,
+    utm_medium:   medium,
+    utm_campaign: campaign,
+    utm_content:  content,
   };
 }

@@ -46,6 +46,7 @@ type Studio = {
   city: string;
   zip: string;
   bookingUrl: string;
+  appUrl: string;
   memberSignupUrl: string;
   studioEmail: string;
 };
@@ -60,6 +61,7 @@ const LOCATION_TO_STUDIO: Record<string, Studio> = {
     city: "Brooklyn",
     zip: "11211",
     bookingUrl: "https://betterbodybootcamp.com/schedule/williamsburg",
+    appUrl: "https://betterbodybootcamp.com/app/williamsburg",
     memberSignupUrl: "https://betterbodybootcamp.com/membership/williamsburg",
     studioEmail: "williamsburg@betterbodybootcamp.com",
   },
@@ -72,6 +74,7 @@ const LOCATION_TO_STUDIO: Record<string, Studio> = {
     city: "Astoria",
     zip: "11103",
     bookingUrl: "https://betterbodybootcamp.com/schedule/astoria",
+    appUrl: "https://betterbodybootcamp.com/app/astoria",
     memberSignupUrl: "https://betterbodybootcamp.com/membership/astoria",
     studioEmail: "astoria@betterbodybootcamp.com",
   },
@@ -84,6 +87,7 @@ const LOCATION_TO_STUDIO: Record<string, Studio> = {
     city: "Bayside",
     zip: "11361",
     bookingUrl: "https://betterbodybootcamp.com/schedule/bayside",
+    appUrl: "https://betterbodybootcamp.com/app/bayside",
     memberSignupUrl: "https://betterbodybootcamp.com/membership/bayside",
     studioEmail: "bayside@betterbodybootcamp.com",
   },
@@ -96,6 +100,7 @@ const LOCATION_TO_STUDIO: Record<string, Studio> = {
     city: "Fresh Meadows",
     zip: "11366",
     bookingUrl: "https://betterbodybootcamp.com/schedule/fresh-meadows",
+    appUrl: "https://betterbodybootcamp.com/app/fresh-meadows",
     memberSignupUrl: "https://betterbodybootcamp.com/membership/fresh-meadows",
     studioEmail: "freshmeadows@betterbodybootcamp.com",
   },
@@ -197,7 +202,11 @@ You bought the 14 day unlimited trial. Two things to know before your first clas
 1. Show up 10 minutes early so we can show you the floor and your station.
 2. Wear sneakers and bring water. We have everything else.
 
-Book your first class: ${studio.bookingUrl}
+Get the app and book your first class: ${studio.appUrl}
+
+Tap SIGN IN, not sign up, then "Forgot password". We already made your account from your purchase. Signing up again makes a duplicate with no trial on it.
+
+On a computer? You can book here instead: ${studio.bookingUrl}
 
 Most people who book within 48 hours stay for months. The ones who wait two weeks usually never come in.
 
@@ -210,14 +219,14 @@ Team ${studio.shortName}`,
         <h2 style="margin:0 0 16px;font-size:22px">Welcome in, ${first}.</h2>
         <p style="margin:0 0 16px;line-height:1.6;font-size:16px">You bought the 14 day unlimited trial at ${studio.shortName}. Here's what to do next.</p>
         <ol style="margin:0 0 16px 20px;padding:0;line-height:1.7;font-size:16px">
-          <li><strong>Book your first class</strong> in the next 48 hours. Trial members who book fast almost always finish.</li>
+          <li><strong>Get the app and book your first class</strong> in the next 48 hours. Trial members who book fast almost always finish. When the app opens tap <strong>Sign in</strong>, not sign up, then "Forgot password" &mdash; your account already exists from the purchase.</li>
           <li><strong>Show up 10 minutes early.</strong> We'll show you the floor and your station.</li>
           <li><strong>Wear sneakers, bring water.</strong> We have the rest.</li>
         </ol>
         <p style="margin:0 0 8px;line-height:1.6;font-size:16px">Two weeks of unlimited classes is only useful if you actually book them. The next click is the one that matters.</p>
       `,
-      ctaText: "BOOK YOUR FIRST CLASS",
-      ctaUrl: studio.bookingUrl,
+      ctaText: "GET THE APP & BOOK",
+      ctaUrl: studio.appUrl,
       studio,
     }),
   };
@@ -237,7 +246,9 @@ Not pressure. Just want you to actually use what you paid for.
 
 If you have already booked, ignore this and we will see you on the floor.
 
-If you have not, here is the direct link: ${studio.bookingUrl}
+If you have not, get the app and book there: ${studio.appUrl}
+
+Tap SIGN IN, not sign up. Your account already exists. On a computer you can use ${studio.bookingUrl} instead.
 
 Pick whatever class fits. They are all welcoming to new folks. Show up 10 minutes early so we can walk you through the floor and your station.
 
@@ -253,8 +264,8 @@ Team ${studio.shortName}`,
         <p style="margin:0 0 16px;line-height:1.6;font-size:16px">Not pressure. Just want you to actually use what you paid for.</p>
         <p style="margin:0 0 8px;line-height:1.6;font-size:16px">If you have already booked, ignore this and we'll see you on the floor. If you have not, the link below takes you straight to the schedule.</p>
       `,
-      ctaText: "BOOK YOUR FIRST CLASS",
-      ctaUrl: studio.bookingUrl,
+      ctaText: "GET THE APP & BOOK",
+      ctaUrl: studio.appUrl,
       studio,
     }),
   };

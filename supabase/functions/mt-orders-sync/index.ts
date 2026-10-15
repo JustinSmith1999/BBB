@@ -385,6 +385,15 @@ serve(async (req) => {
   };
 
   const trialEmailsToWelcome: { trial_id: string; email: string; first: string; studio_slug: string }[] = [];
+  // 2026-10-13 (Chris: "I put one in but I didn't get text"). Audit of 22 Sep to
+  // 13 Oct: 34 paid trials at Astoria + Williamsburg, only 16 studio alerts.
+  // Cause: the STAFF alert was riding on trialEmailsToWelcome, which is gated by
+  // (a) the 3-hour past-send guard and (b) the row having an email address.
+  // Both guards exist to stop late/duplicate messages reaching the CUSTOMER.
+  // Neither should apply to telling the team a trial came in. A desk sale with
+  // no email, or a sync that ran 4 hours late, still needs to reach the front
+  // desk. This list collects every new trial for staff notification only.
+  const staffAlertsOnly: { trial_id: string; studio_slug: string }[] = [];
   // 2026-08-21 (Justin): owners get texted for big purchases too, not just
   // trials. New PAID membership/contract/PIF sales collect here for the
   // owner-SMS kickoff at the bottom (send path 'owner_membership_sms').
@@ -706,6 +715,9 @@ serve(async (req) => {
             first:      np.first || 'there',
             studio_slug: studioSlug || 'unknown',
           });
+        } else if (adopted?.id && adoptAgeMs < 24 * 3600 * 1000) {
+          // Not eligible for a customer welcome, but the team still needs to know.
+          staffAlertsOnly.push({ trial_id: adopted.id, studio_slug: studioSlug || 'unknown' });
         }
         continue;
       }
@@ -744,6 +756,11 @@ serve(async (req) => {
           first:      np.first || 'there',
           studio_slug: studioSlug || 'unknown',
         });
+      } else if (ins?.id && orderAgeMs < 24 * 3600 * 1000) {
+        // Same reasoning as the adopt branch: no customer message, but the
+        // studio and the owners still get told. Covers desk sales with no email
+        // on the MT user record, and any sync that lands more than 3h late.
+        staffAlertsOnly.push({ trial_id: ins.id, studio_slug: studioSlug || 'unknown' });
       }
     }
   }
@@ -810,7 +827,11 @@ serve(async (req) => {
           // 2026-07-31 (Justin): owner texts on every new paid trial — but if a
           // catch-up sync lands MANY trials at once (post-outage), don't machine-gun
           // the owners' phones; they'll see the batch on the board/sheets instead.
-          send_owner_sms:      trialEmailsToWelcome.length <= 3,
+          // 2026-10-13: was <= 3, which silently dropped the owner text for every
+          // trial whenever a sync happened to pick up four at once. Raised to 12:
+          // still protects against a post-outage backfill machine-gunning phones,
+          // but a normal busy morning now actually texts them.
+          send_owner_sms:      trialEmailsToWelcome.length <= 12,
           send_studio_email:   true,
           dry_run:             false,
         }),
@@ -822,6 +843,36 @@ serve(async (req) => {
       }
     } catch (e) {
       welcome_kickoff = { fired: 0, ok: false, error: `fetch failed: ${(e as Error).message}` };
+    }
+  }
+
+  // ── STAFF-ONLY ALERTS (2026-10-13) ────────────────────────────────────────
+  // Trials that were ingested but are not eligible for a customer welcome:
+  // older than the 3h guard, or no email address on the MT user record. The
+  // customer hears nothing, which is the point of those guards. The studio
+  // inbox and the owners still get told, which is what was missing.
+  let staff_alert_kickoff: { fired: number; ok: boolean; error?: string; skipped?: boolean } | null = null;
+  if (skipWelcome && staffAlertsOnly.length > 0) {
+    staff_alert_kickoff = { fired: 0, ok: true, skipped: true };
+  } else if (!dryRun && staffAlertsOnly.length > 0) {
+    try {
+      const url = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/manual-welcome-batch`;
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-bbb-secret': ADMIN_SECRET },
+        body: JSON.stringify({
+          trial_ids:           staffAlertsOnly.map(t => t.trial_id),
+          send_customer_sms:   false,   // never: that is what the 3h guard protects
+          send_customer_email: false,   // never, same reason
+          send_owner_sms:      staffAlertsOnly.length <= 12,
+          send_studio_email:   true,
+          dry_run:             false,
+        }),
+      });
+      staff_alert_kickoff = { fired: staffAlertsOnly.length, ok: r.ok };
+      if (!r.ok) staff_alert_kickoff.error = (await r.text()).slice(0, 200);
+    } catch (e) {
+      staff_alert_kickoff = { fired: 0, ok: false, error: `fetch failed: ${(e as Error).message}` };
     }
   }
 
@@ -1149,5 +1200,7 @@ serve(async (req) => {
     membership_welcome_kickoff,
     membership_owner_email_kickoff,
     new_trials_needing_welcome: trialEmailsToWelcome,
+    staff_alerts_only: staffAlertsOnly,
+    staff_alert_kickoff,
   });
 });
