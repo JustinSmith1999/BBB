@@ -226,6 +226,14 @@ async function markPersonHandled(
     await supabase.from("trial_signups")
       .update({ abandoned_email2_sent_at: ts })
       .is("abandoned_email2_sent_at", null)
+      // 2026-10-16: phone-only trial-page leads carry a placeholder address
+      // lead-…@no-email.bbb.local that cannot receive mail. capture-lead
+      // pre-stamps abandoned_email_sent_at on those rows to silence touch 1,
+      // but THIS query treats a stamped row as "already had touch 1" and sends
+      // touch 2 — so they have been getting mailed at an address that hard-
+      // bounces every time. Hard bounces are what put info@ on Resend's
+      // suppression list. Never mail the placeholder.
+      .not("email", "like", "%@no-email.bbb.local")
       .eq("phone", row.phone);
   }
   if (row.email) {

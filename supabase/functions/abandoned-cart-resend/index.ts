@@ -164,6 +164,7 @@ Deno.serve(async (req) => {
       .or("source_category.is.null,source_category.not.in.(contact_form,schedule_request)")
     .not("abandoned_email_sent_at", "is", null)
     .not("email", "is", null)
+    .not("email", "like", "%@no-email.bbb.local")   // 2026-10-16: placeholder cannot receive mail
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .limit(limit);

@@ -161,6 +161,19 @@ Deno.serve(async (req: Request) => {
     // a NEW sender is ever written it MUST check that field.
     const placeholderEmail = `lead-${(phone || '').replace(/\D/g, '') || Date.now()}@no-email.bbb.local`;
 
+    // 2026-10-16 — the drip is being switched ON for trial-page bailers, so
+    // this guard matters now. A/B variant B asks for phone only, so those rows
+    // carry the placeholder address above, which does not resolve. Letting the
+    // abandoned-cart sender loose on those would hard-bounce every one of them
+    // and put the sending domain on Resend's suppression list — exactly what
+    // happened to info@betterbodybootcamp.com, which still bounces today.
+    //
+    // So: the drip is only ever un-silenced for a row we can actually reach.
+    // Phone-only leads stay silent and belong to the desk, which is the right
+    // channel for them anyway.
+    const hasRealEmail = !!email && !email.endsWith('@no-email.bbb.local');
+    const dripThisRow = drip && hasRealEmail;
+
     const { data: ins, error } = await sb.from('trial_signups').insert({
       name: name || 'Website lead',          // name is NOT NULL too
       phone,
@@ -170,7 +183,7 @@ Deno.serve(async (req: Request) => {
       front_desk_stage: 'new_lead',
       source_category: 'trial_partial',
       lead_source: `trial-page-partial-${String(b.studio_slug || '').trim() || 'unknown'}`,
-      abandoned_email_sent_at: drip ? null : nowIso,
+      abandoned_email_sent_at: dripThisRow ? null : nowIso,
       ...attribution,
     }).select('id').single();
 

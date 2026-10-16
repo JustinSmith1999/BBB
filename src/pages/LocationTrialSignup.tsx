@@ -238,10 +238,9 @@ export default function LocationTrialSignup() {
   // BEFORE the card is touched. Anyone who bails at the card is now a row in
   // Homebase's New Lead column for the desk to ring.
   //
-  // Silent: capture-lead stamps abandoned_email_sent_at and withholds the
-  // email address, which is what every automated sender keys on. Nothing
-  // messages these people. Flip `drip: true` below to put them in the normal
-  // abandoned-cart sequence instead.
+  // 2026-10-16: no longer silent. These leads now enter the abandoned-cart
+  // sequence (drip: true below). capture-lead still withholds the drip for any
+  // row without a real email, so phone-only leads remain desk-only.
   // ── A/B: both variants are now two-step, contact first and card second,
   // because capturing the lead before the card is the baseline rather than
   // the experiment. What is being tested is how much typing step 1 demands.
@@ -298,7 +297,15 @@ export default function LocationTrialSignup() {
           time_on_page_ms: Math.max(0, Date.now() - pageLoadAtRef.current),
           ab_variant: variant,
           visitor_id: visitorId(),
-          drip: false,
+          // 2026-10-16 (Justin: "turn the drip on") — was false, which made
+          // capture-lead pre-stamp abandoned_email_sent_at so no automated
+          // sender would ever touch these people. They are the highest-intent
+          // non-buyers on the site: they typed a phone number and then bailed
+          // at the card. They now enter the normal abandoned-cart sequence.
+          // capture-lead still silences any row without a REAL email address,
+          // so phone-only (variant B) leads stay desk-only and nothing is sent
+          // to the lead-…@no-email.bbb.local placeholder.
+          drip: true,
         }),
         keepalive: true,   // survives the tab closing mid-request
       });

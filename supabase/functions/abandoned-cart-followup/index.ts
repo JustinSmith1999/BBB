@@ -254,6 +254,10 @@ async function markPersonHandled(
       .update({ abandoned_email_sent_at: ts })
       .eq("payment_status", "pending")
       .is("abandoned_email_sent_at", null)
+      // 2026-10-16: phone-only leads carry a lead-…@no-email.bbb.local
+      // placeholder that cannot receive mail. Sending to it hard-bounces
+      // and risks the whole domain being suppressed (see info@). Never mail it.
+      .not("email", "like", "%@no-email.bbb.local")
       .eq("phone", row.phone);
   }
   if (row.email) {
