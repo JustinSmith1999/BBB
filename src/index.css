@@ -247,6 +247,13 @@ h1, h2, h3 {
    Scoped to the direct children of body/#root so it can only ever hit the
    global chrome, never a <header> or <footer> inside page content.
    ───────────────────────────────────────────────────────────────────────── */
+/* VERIFIED LIVE 2026-10-19: the real path is
+   body > div#root > div > header — one level deeper than the two guesses
+   below, which is why the first version of this rule shipped and did nothing.
+   Measured in the browser, not assumed. The wrapper div is the z-index
+   isolation layer added for the iOS header-stacking fix in App.tsx. */
+body.bbb-onepager > #root > div > header,
+body.bbb-onepager > #root > div > footer,
 body.bbb-onepager > header,
 body.bbb-onepager > footer,
 body.bbb-onepager > #root > header,
