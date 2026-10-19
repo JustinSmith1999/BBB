@@ -89,6 +89,10 @@ Deno.serve(async (req) => {
   try { body = await req.json(); } catch { /* defaults */ }
   const days = Math.min(Math.max(Number(body.days ?? 7), 1), 90);
   const only = body.studio ? String(body.studio).toLowerCase() : null;
+  // 2026-10-16: was a hard 60. Astoria alone has 72 leads in 30 days, so the
+  // cap was silently dropping 12 of them — and the dropped ones are the
+  // oldest, i.e. the non-buyers who have been waiting longest.
+  const maxRows = Math.min(Math.max(Number(body.max_rows ?? 60), 1), 1000);
   const studios = only ? STUDIOS.filter((s) => s.slug === only) : STUDIOS;
   if (!studios.length) return json({ ok: false, error: `unknown studio: ${only}` }, 400);
 
@@ -102,7 +106,7 @@ Deno.serve(async (req) => {
   // ── C. the named rows ─────────────────────────────────────────────────────
   const { data: trials, error: tErr } = await sb
     .from("trial_signups")
-    .select("id,name,email,location_id,payment_date,created_at,source_category,utm_source,utm_medium,utm_campaign,utm_content,fbc,fbp")
+    .select("id,name,email,phone,location_id,payment_date,created_at,source_category,utm_source,utm_medium,utm_campaign,utm_content,fbc,fbp")
     .or(`payment_date.gte.${since},created_at.gte.${since}`)
     .limit(3000);
   if (tErr) return json({ ok: false, error: `trial_signups: ${tErr.message}` }, 502);
@@ -290,9 +294,14 @@ Deno.serve(async (req) => {
           rows: [...realTrials]
             .sort((a: any, b: any) =>
               String(b.payment_date || b.created_at).localeCompare(String(a.payment_date || a.created_at)))
-            .slice(0, 60)
+            .slice(0, maxRows)
             .map((t: any) => ({
               name: t.name,
+              // 2026-10-16: phone added because this list is used as a call
+              // list. Meta lead-ad rows have no usable email at all (the
+              // @no-email.bbb.local placeholder), so the phone is the ONLY way
+              // to reach a chunk of these people.
+              phone: t.phone ?? null,
               email: t.email,
               created: t.created_at,
               paid_at: t.payment_date ?? null,

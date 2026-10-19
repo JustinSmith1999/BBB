@@ -4,6 +4,7 @@ import { MapPin, ArrowRight } from 'lucide-react';
 import { supabase, LOCATION_PUBLIC_COLUMNS, Location } from '../lib/supabase';
 import SEOHead from '../components/SEOHead';
 import PageHero, { Red } from '../components/PageHero';
+import StickyTrialBar from '../components/StickyTrialBar';
 
 const locationImages: Record<string, string> = {
   'Williamsburg': '/williamsburg-final.webp',
@@ -59,12 +60,22 @@ export default function LocationsPage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {locations.map((location) => {
+                {locations.map((location, i) => {
                   const imgSrc = location.image_url || locationImages[location.name];
                   const slug = location.name.toLowerCase().replace(/\s+/g, '-');
                   return (
+                    /* 2026-10-16. Measured at 375x812: this page was 6.7 screens
+                       tall and the FIRST actionable trial CTA sat at 4,413px —
+                       5.4 screens of scrolling, four 600px photo cards, and the
+                       only thing any of them offered was "View Studio". Someone
+                       who has already picked their studio had no way to start the
+                       $49 trial without a detour through the studio page. Each
+                       card now carries a direct trial link.
+                       The button is a SIBLING of the card link, not a child:
+                       an <a> inside an <a> is invalid and browsers unnest it,
+                       which would have broken both taps. */
+                    <div key={location.id} className="relative">
                     <Link
-                      key={location.id}
                       to={`/locations/${slug}`}
                       className="group relative rounded-2xl overflow-hidden block"
                       style={{
@@ -80,6 +91,11 @@ export default function LocationsPage() {
                         <img
                           src={imgSrc}
                           alt={location.name}
+                          /* The four studio photos are ~800 KB together and only
+                             the first is anywhere near the fold on a phone, yet
+                             all four were fetched eagerly. Cards 2-4 now wait. */
+                          loading={i === 0 ? 'eager' : 'lazy'}
+                          decoding="async"
                           className="absolute inset-0 w-full h-full object-cover grayscale-[45%] group-hover:grayscale-0 transition-all duration-700 group-hover:scale-105"
                         />
                       ) : (
@@ -155,6 +171,30 @@ export default function LocationsPage() {
                         </div>
                       </div>
                     </Link>
+
+                      {/* Top-right, clear of the "View Studio" cue at the bottom
+                          left so the two never collide on a narrow screen. */}
+                      <Link
+                        to={`/trial/${slug}`}
+                        className="absolute flex items-center justify-center font-display font-bold uppercase"
+                        style={{
+                          top: '28px',
+                          right: '28px',
+                          zIndex: 2,
+                          minHeight: '44px',
+                          padding: '0 18px',
+                          fontSize: '13px',
+                          letterSpacing: '0.1em',
+                          borderRadius: '999px',
+                          backgroundColor: 'var(--brand-red)',
+                          color: '#fff',
+                          textDecoration: 'none',
+                          boxShadow: '0 2px 12px rgba(0,0,0,0.35)',
+                        }}
+                      >
+                        $49 Trial
+                      </Link>
+                    </div>
                   );
                 })}
               </div>
@@ -257,6 +297,7 @@ export default function LocationsPage() {
         </section>
 
       </div>
+      <StickyTrialBar to="/trial" label="Start 2 Weeks for $49" />
     </>
   );
 }

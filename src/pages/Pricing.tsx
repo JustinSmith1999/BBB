@@ -2,6 +2,7 @@ import { Check, Zap, Dumbbell, Heart, Flame, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import SEOHead from '../components/SEOHead';
 import PageHero, { Red } from '../components/PageHero';
+import StickyTrialBar from '../components/StickyTrialBar';
 
 const plans = [
   {
@@ -465,6 +466,7 @@ export default function PricingPage() {
         </section>
 
       </div>
+      <StickyTrialBar to="/trial" label="Start 2 Weeks for $49" />
     </>
   );
 }

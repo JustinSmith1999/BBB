@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import SEOHead from '../components/SEOHead';
 import PageHero, { Red } from '../components/PageHero';
 import NativeClassList from '../components/NativeClassList';
+import StickyTrialBar from '../components/StickyTrialBar';
 
 // 2026-06-26 v2: Iframe gone. NativeClassList hits the mt-public-classes
 // Supabase proxy and renders BBB-branded cards. Switches instantly when the
@@ -206,6 +207,7 @@ export default function Classes() {
         </div>
       </div>
     </div>
+    <StickyTrialBar to="/trial" label="Start 2 Weeks for $49" />
     </>
   );
 }

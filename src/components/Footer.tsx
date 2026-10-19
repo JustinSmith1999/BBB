@@ -74,7 +74,12 @@ export default function Footer() {
                     placeholder="your@email.com"
                     required
                     disabled={submitting}
-                    className="flex-1 min-w-0 text-sm px-4 outline-none disabled:opacity-60"
+                    autoComplete="email"
+                    inputMode="email"
+                    aria-label="Email address"
+                    // text-base (16px), not text-sm: this input is in the footer of
+                    // every page, and at 14px iOS zooms the page on focus.
+                    className="flex-1 min-w-0 text-base px-4 outline-none disabled:opacity-60"
                     style={{
                       backgroundColor: 'var(--bg-elevated)',
                       border: '1px solid var(--divider)',

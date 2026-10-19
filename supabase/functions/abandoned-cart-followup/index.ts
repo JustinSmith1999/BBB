@@ -27,6 +27,20 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// 2026-10-16 — NEVER MAIL THE PLACEHOLDER ADDRESS.
+// Rows created without a usable email (phone-only trial leads, and every lead
+// imported from Meta lead ads) carry lead-…/meta-…@no-email.bbb.local, which
+// does not resolve. Each send is a guaranteed hard bounce, and hard bounces
+// are what put info@betterbodybootcamp.com on Resend's suppression list.
+//
+// A first attempt used a PostgREST filter, .not("email","like","%@no-email…").
+// It silently matched nothing — the dry run still queued 64 of them — because
+// the % wildcard is not interpreted the way it is in SQL. Doing it in JS
+// instead: unambiguous, and visible in the row count.
+const PLACEHOLDER_EMAIL_DOMAIN = "@no-email.bbb.local";
+const isUnmailable = (e: unknown) =>
+  !e || String(e).toLowerCase().endsWith(PLACEHOLDER_EMAIL_DOMAIN);
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -254,10 +268,6 @@ async function markPersonHandled(
       .update({ abandoned_email_sent_at: ts })
       .eq("payment_status", "pending")
       .is("abandoned_email_sent_at", null)
-      // 2026-10-16: phone-only leads carry a lead-…@no-email.bbb.local
-      // placeholder that cannot receive mail. Sending to it hard-bounces
-      // and risks the whole domain being suppressed (see info@). Never mail it.
-      .not("email", "like", "%@no-email.bbb.local")
       .eq("phone", row.phone);
   }
   if (row.email) {
@@ -302,6 +312,10 @@ Deno.serve(async (req: Request) => {
       .is("abandoned_email_sent_at", null)  // not yet emailed
       .order("created_at", { ascending: true })
       .limit(100);
+
+    // Drop anything we cannot actually deliver to (see PLACEHOLDER note above).
+    const mailable = (candidates ?? []).filter((r: any) => !isUnmailable(r.email));
+    const droppedUnmailable = ((candidates ?? []).length) - mailable.length;
 
     if (queryErr) {
       console.error("Query error:", queryErr);
@@ -379,7 +393,7 @@ Deno.serve(async (req: Request) => {
 
     const results: Array<{ id: string; email: string; ok: boolean; err?: string }> = [];
 
-    for (const row of candidates ?? []) {
+    for (const row of mailable) {
       const email = normEmail(row.email);
       const phone = normPhone(row.phone);
       const studio = LOCATION_TO_STUDIO[row.location_id ?? ""];
@@ -427,6 +441,7 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({
         ok: true,
         processed: results.length,
+        dropped_unmailable_placeholder: droppedUnmailable,
         sent: results.filter(r => r.ok).length,
         skipped: results.filter(r => !r.ok && (r.err ?? "").startsWith("skipped")).length,
         failed: results.filter(r => !r.ok && !(r.err ?? "").startsWith("skipped")).length,

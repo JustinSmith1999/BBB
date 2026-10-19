@@ -73,7 +73,10 @@ export default function ContactPage() {
   const fieldStyle = (name: string): React.CSSProperties => ({
     width: '100%',
     padding: '14px 18px',
-    fontSize: '14px',
+    // 16px, not 14px. Mobile Safari zooms the whole page in when you focus an
+    // input under 16px, which shoves the rest of this form off-screen mid-fill
+    // and leaves the visitor pinch-zooming back out. Measured at 375x812.
+    fontSize: '16px',
     fontFamily: 'inherit',
     backgroundColor: 'var(--bg-primary)',
     border: `1px solid ${focused === name ? 'var(--brand-red)' : 'var(--divider)'}`,
@@ -186,7 +189,19 @@ export default function ContactPage() {
                           {loc.phone && (
                             <a
                               href={`tel:${loc.phone.replace(/[^0-9]/g, '')}`}
-                              style={{ fontSize: '12px', color: 'var(--brand-red)', textDecoration: 'none', fontWeight: 600 }}
+                              // 2026-10-16: was 12px text in a 15px-tall box — a
+                              // tap target a third of the 44px minimum, on the one
+                              // page where people are actively trying to phone the
+                              // studio. Now a proper 44px row.
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                minHeight: '44px',
+                                fontSize: '15px',
+                                color: 'var(--brand-red)',
+                                textDecoration: 'none',
+                                fontWeight: 700,
+                              }}
                             >
                               {loc.phone}
                             </a>
@@ -253,7 +268,7 @@ export default function ContactPage() {
                               Full Name *
                             </label>
                             <input
-                              type="text" name="name" required
+                              type="text" name="name" required autoComplete="name"
                               value={formData.name} onChange={handleChange}
                               placeholder="Jane Smith"
                               style={fieldStyle('name')}
@@ -266,7 +281,7 @@ export default function ContactPage() {
                               Email Address *
                             </label>
                             <input
-                              type="email" name="email" required
+                              type="email" name="email" required autoComplete="email" inputMode="email"
                               value={formData.email} onChange={handleChange}
                               placeholder="jane@example.com"
                               style={fieldStyle('email')}
@@ -283,7 +298,7 @@ export default function ContactPage() {
                               Phone Number
                             </label>
                             <input
-                              type="tel" name="phone"
+                              type="tel" name="phone" autoComplete="tel" inputMode="tel"
                               value={formData.phone} onChange={handleChange}
                               placeholder="(555) 123-4567"
                               style={fieldStyle('phone')}

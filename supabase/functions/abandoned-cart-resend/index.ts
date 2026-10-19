@@ -32,6 +32,20 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// 2026-10-16 — NEVER MAIL THE PLACEHOLDER ADDRESS.
+// Rows created without a usable email (phone-only trial leads, and every lead
+// imported from Meta lead ads) carry lead-…/meta-…@no-email.bbb.local, which
+// does not resolve. Each send is a guaranteed hard bounce, and hard bounces
+// are what put info@betterbodybootcamp.com on Resend's suppression list.
+//
+// A first attempt used a PostgREST filter, .not("email","like","%@no-email…").
+// It silently matched nothing — the dry run still queued 64 of them — because
+// the % wildcard is not interpreted the way it is in SQL. Doing it in JS
+// instead: unambiguous, and visible in the row count.
+const PLACEHOLDER_EMAIL_DOMAIN = "@no-email.bbb.local";
+const isUnmailable = (e: unknown) =>
+  !e || String(e).toLowerCase().endsWith(PLACEHOLDER_EMAIL_DOMAIN);
+
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -164,12 +178,16 @@ Deno.serve(async (req) => {
       .or("source_category.is.null,source_category.not.in.(contact_form,schedule_request)")
     .not("abandoned_email_sent_at", "is", null)
     .not("email", "is", null)
-    .not("email", "like", "%@no-email.bbb.local")   // 2026-10-16: placeholder cannot receive mail
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .limit(limit);
 
+    // Drop anything we cannot actually deliver to (see PLACEHOLDER note above).
   if (cErr) return json({ ok: false, where: "candidates", error: cErr.message }, 500);
+
+  // Drop anything we cannot actually deliver to (see PLACEHOLDER note above).
+  const mailable = (candidates ?? []).filter((r: any) => !isUnmailable(r.email));
+  const droppedUnmailable = ((candidates ?? []).length) - mailable.length;
 
   // ── 2. Exclusion sets
 
@@ -269,7 +287,7 @@ Deno.serve(async (req) => {
   const willSend: Array<{ row: Row; studio: typeof STUDIOS[string] }> = [];
   const skipped: Array<{ id: string; name: string; email: string; reason: string }> = [];
 
-  for (const row of candidates ?? []) {
+  for (const row of mailable) {
     const email = normEmail(row.email);
     const phone = normPhone(row.phone);
     const studio = STUDIOS[row.location_id ?? ""];
@@ -318,6 +336,7 @@ Deno.serve(async (req) => {
       ok: true,
       dry_run: true,
       candidate_pool: candidates?.length ?? 0,
+      dropped_unmailable_placeholder: droppedUnmailable,
       would_send: willSend.length,
       skipped: skipped.length,
       skip_breakdown: skipped.reduce<Record<string, number>>((acc, s) => {

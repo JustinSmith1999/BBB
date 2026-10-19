@@ -34,6 +34,20 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// 2026-10-16 — NEVER MAIL THE PLACEHOLDER ADDRESS.
+// Rows created without a usable email (phone-only trial leads, and every lead
+// imported from Meta lead ads) carry lead-…/meta-…@no-email.bbb.local, which
+// does not resolve. Each send is a guaranteed hard bounce, and hard bounces
+// are what put info@betterbodybootcamp.com on Resend's suppression list.
+//
+// A first attempt used a PostgREST filter, .not("email","like","%@no-email…").
+// It silently matched nothing — the dry run still queued 64 of them — because
+// the % wildcard is not interpreted the way it is in SQL. Doing it in JS
+// instead: unambiguous, and visible in the row count.
+const PLACEHOLDER_EMAIL_DOMAIN = "@no-email.bbb.local";
+const isUnmailable = (e: unknown) =>
+  !e || String(e).toLowerCase().endsWith(PLACEHOLDER_EMAIL_DOMAIN);
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -226,14 +240,6 @@ async function markPersonHandled(
     await supabase.from("trial_signups")
       .update({ abandoned_email2_sent_at: ts })
       .is("abandoned_email2_sent_at", null)
-      // 2026-10-16: phone-only trial-page leads carry a placeholder address
-      // lead-…@no-email.bbb.local that cannot receive mail. capture-lead
-      // pre-stamps abandoned_email_sent_at on those rows to silence touch 1,
-      // but THIS query treats a stamped row as "already had touch 1" and sends
-      // touch 2 — so they have been getting mailed at an address that hard-
-      // bounces every time. Hard bounces are what put info@ on Resend's
-      // suppression list. Never mail the placeholder.
-      .not("email", "like", "%@no-email.bbb.local")
       .eq("phone", row.phone);
   }
   if (row.email) {
@@ -280,6 +286,10 @@ Deno.serve(async (req: Request) => {
       .is("deleted_at", null)
       .order("abandoned_email_sent_at", { ascending: true })
       .limit(100);
+
+    // Drop anything we cannot actually deliver to (see PLACEHOLDER note above).
+    const mailable = (candidates ?? []).filter((r: any) => !isUnmailable(r.email));
+    const droppedUnmailable = ((candidates ?? []).length) - mailable.length;
 
     if (queryErr) {
       console.error("Query error:", queryErr);
@@ -328,7 +338,7 @@ Deno.serve(async (req: Request) => {
       ok: boolean; err?: string; dry_run?: boolean;
     }> = [];
 
-    for (const row of candidates ?? []) {
+    for (const row of mailable) {
       const email = normEmail(row.email);
       const phone = normPhone(row.phone);
       const studio = LOCATION_TO_STUDIO[row.location_id ?? ""];
@@ -378,6 +388,7 @@ Deno.serve(async (req: Request) => {
         ok: true,
         dry_run: dryRun,
         processed: results.length,
+        dropped_unmailable_placeholder: droppedUnmailable,
         sent: results.filter(r => r.ok && !r.dry_run).length,
         would_send: results.filter(r => r.ok && r.dry_run).length,
         skipped: results.filter(r => !r.ok && (r.err ?? "").startsWith("skipped")).length,

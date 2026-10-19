@@ -241,24 +241,45 @@ export default function LocationTrialSignup() {
   // 2026-10-16: no longer silent. These leads now enter the abandoned-cart
   // sequence (drip: true below). capture-lead still withholds the drip for any
   // row without a real email, so phone-only leads remain desk-only.
-  // ── A/B: both variants are now two-step, contact first and card second,
-  // because capturing the lead before the card is the baseline rather than
-  // the experiment. What is being tested is how much typing step 1 demands.
+  // ── A/C test, started 2026-10-19. Replaces the trial_form_v2 field-count
+  // test (A = 4 fields, B = 2 fields), which is retired.
   //
-  //   A = step 1 asks first name, last name, email, phone   (4 fields)
-  //   B = step 1 asks first name and phone only             (2 fields)
-  //       Last name and email move to step 2, beside the card.
+  // WHY IT WAS RETIRED, not paused: in two weeks it produced 27 leads and 14
+  // paid trials across all four studios. Fresh Meadows never got a single B
+  // assignment and Bayside's B arm was n=1 showing "100%". It was never going
+  // to reach an answer at this volume, and it was measuring the wrong thing.
+  // In the last 7 days 880 paid ad landings produced 27 leads — about 97% of
+  // the spend leaves before touching the form at all. How many fields step 1
+  // asks cannot move that. What someone lands on can.
   //
-  // Why this is the right challenger: 95% of this traffic is on a phone, and
-  // an email address is the slowest thing anyone types on a mobile keyboard.
-  // We do not need it to ring somebody. One variable changes, so whatever the
-  // result is, it is attributable.
+  //   A = the current trial page          (control)
+  //   C = a link-in-bio style one-pager   (challenger)
   //
-  // Assigned once per browser and pinned, so a returning visitor never flips.
-  const [variant] = useState(() => getVariant('trial_form_v2'));
+  // NEW TEST KEY on purpose: reusing trial_form_v2 would hand every returning
+  // browser its old pinned assignment and silently bias the split.
+  //
+  // Recorded as 'A' / 'C', not 'A' / 'B', so these rows can never be confused
+  // with the retired test's. Historical B rows stay readable as what they were,
+  // and anything before 2026-10-19 belongs to the old test — filter by date
+  // when reading ab_trial_form_results.
+  const [variant] = useState<'A' | 'C'>(() => getVariant('trial_page_v3') === 'B' ? 'C' : 'A');
+  const onePager = variant === 'C';
   const [step, setStep] = useState<1 | 2>(1);
-  // Fields that live in step 1 for this visitor.
-  const shortIntake = variant === 'B';
+  // Full 4-field intake in BOTH arms now. The retired test's short intake is
+  // gone deliberately: if the form differed between arms, a win could be the
+  // layout or the field count and we could not tell which. Page shell is the
+  // single variable.
+  const shortIntake = false;
+
+  // Variant C only: strip the global Header/Footer, which render in App.tsx
+  // outside <Routes> and so cannot be opted out of from here. The class is
+  // removed on unmount, so navigating away always restores the chrome even if
+  // the visitor leaves mid-checkout.
+  useEffect(() => {
+    if (!onePager) return;
+    document.body.classList.add('bbb-onepager');
+    return () => document.body.classList.remove('bbb-onepager');
+  }, [onePager]);
 
   const leadCapturedRef = useRef(false);
   const captureLead = async () => {
@@ -325,7 +346,13 @@ export default function LocationTrialSignup() {
   // audience, no Meta Lead). Surfacing this capture inline under the widget
   // feeds soft_conversions + fires a Meta Lead for every identified visitor,
   // reusing the tested request-schedule-sms path. Collapsible via Cancel.
-  const [scheduleOpen,      setScheduleOpen]      = useState(true);
+  // Collapsed by default. This was flipped to `true` inside commit 1e09cc2 (a
+  // Bayside/Stripe commit that had nothing to do with this form), which left the
+  // free "text me the schedule" escape hatch expanded on every trial page — a
+  // second, identical set of name/email/phone fields sitting under the paid form,
+  // offering a no-card alternative before the visitor has tried the $49 path. It
+  // also made the "Not ready to commit to $49 today?" prompt below unreachable.
+  const [scheduleOpen,      setScheduleOpen]      = useState(false);
   const [scheduleFirstName, setScheduleFirstName] = useState('');
   const [scheduleLastName,  setScheduleLastName]  = useState('');
   const [scheduleEmail,     setScheduleEmail]     = useState('');
@@ -717,8 +744,42 @@ export default function LocationTrialSignup() {
           The banner-image hero, feature chips, benefit columns, reviews and
           FAQ are gone; this compact block is the entire offer statement so
           the form is visible without scrolling on mobile. */}
-      <div className="relative bg-gradient-to-br from-red-600 via-red-700 to-red-800 text-white pt-28 pb-8 sm:pt-32 sm:pb-12 overflow-hidden">
-        <div className="absolute inset-0 bg-black/10"></div>
+      <div className={(onePager
+        // Measured at 375x812, the control starts its form at 778px — below
+        // the fold on an iPhone, despite the Sept 11 note above claiming the
+        // form is visible without scrolling. Two things push it down: this
+        // 112px of hero top padding, and the global Header, which is in normal
+        // flow (relative, not fixed) and so occupies real height above it.
+        // Variant C drops both.
+        ? "pt-5 pb-5"
+        : "pt-28 pb-8 sm:pt-32 sm:pb-12")
+        + " relative bg-red-800 text-white overflow-hidden"}>
+        {/* 2026-10-19 (Justin: "use pictures of the gym as backgrounds").
+            Real training footage, not the flat red gradient.
+
+            WHY THIS IMAGE AND NOT A PER-STUDIO ONE: there is no interior photo
+            of any individual studio in the repo. astoria/williamsburg-final are
+            exterior storefronts shot from the street (parked cars in frame) and
+            bayside/fresh-meadows-hero-*.jpg are finished ad creatives with
+            "TWO WEEKS FOR $49" already burned into them, which would print the
+            headline twice on one screen. This is the same asset the location
+            heroes use (task #84), so it is at least known-good and on-brand.
+            Swap to per-studio stills the moment real interiors exist.
+
+            Still, not the .mp4: this is the top of a checkout page on mobile,
+            and the poster is 46KB against a 973KB video. */}
+        <img
+          src="/services/hero-poster.webp"
+          alt=""
+          aria-hidden="true"
+          loading="eager"
+          fetchPriority="high"
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+        {/* Dark enough that white headline text stays legible over any frame of
+            the photo, which is mid-tone and busy in places. */}
+        <div className="absolute inset-0 bg-black/55"></div>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30"></div>
         <div className="max-w-3xl mx-auto px-3 sm:px-6 text-center relative z-10">
           <span className="inline-block px-3 py-1 sm:px-4 sm:py-1.5 bg-white/15 backdrop-blur-sm rounded-full text-[10px] sm:text-xs font-bold tracking-[0.2em] uppercase border border-white/30 mb-3 sm:mb-4 whitespace-nowrap">
             {location.badge}
@@ -781,11 +842,19 @@ export default function LocationTrialSignup() {
                         reframe it: make crystal-clear the ONLY charge today is
                         $49, nothing recurring. Pure copy — no logic touched. */}
                     <div className="mb-4 rounded-xl bg-red-50 border border-red-100 p-3 sm:p-4 text-center">
+                      {/* 2026-10-19 (Justin: "tacky and AI"). Was: "You pay $49
+                          today — that's the whole price." / "No membership, no
+                          auto-renewal, no commitment. Two weeks of unlimited
+                          classes, then it's up to you." Em-dash, a three-item
+                          rule-of-three, and a reassuring sign-off: the same
+                          tells task #50 stripped out of the location heroes.
+                          The block still exists to kill sticker shock. It just
+                          states the facts now. */}
                       <p className="text-sm sm:text-base font-extrabold text-gray-900">
-                        You pay <span className="text-red-600">$49 today</span> — that's the whole price.
+                        <span className="text-red-600">$49</span> once, for both weeks.
                       </p>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                        No membership, no auto-renewal, no commitment. Two weeks of unlimited classes, then it's up to you.
+                        Unlimited classes. No membership, and nothing auto-renews.
                       </p>
                     </div>
                     <div
@@ -934,8 +1003,12 @@ export default function LocationTrialSignup() {
                   </form>
                 )}
 
-                {/* ── Soft-conversion: "text me the schedule" ───────────── */}
-                <div className="mt-8 pt-6 border-t border-gray-200">
+                {/* ── Soft-conversion: "text me the schedule" ─────────────
+                    Hidden in variant C. A one-pager has exactly one thing to
+                    do; offering a free no-card alternative underneath the paid
+                    form is the competing CTA this test exists to remove. Still
+                    present in the control arm, so the comparison is honest. */}
+                <div className={(onePager ? "hidden " : "") + "mt-8 pt-6 border-t border-gray-200"}>
                   {!scheduleSent ? (
                     !scheduleOpen ? (
                       <div className="text-center">
@@ -964,7 +1037,7 @@ export default function LocationTrialSignup() {
                             required
                             placeholder="First name *"
                             autoComplete="given-name"
-                            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900 text-sm"
+                            className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900 text-base"
                           />
                           <input
                             type="text"
@@ -973,7 +1046,7 @@ export default function LocationTrialSignup() {
                             required
                             placeholder="Last name *"
                             autoComplete="family-name"
-                            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900 text-sm"
+                            className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900 text-base"
                           />
                           <input
                             type="email"
@@ -983,7 +1056,7 @@ export default function LocationTrialSignup() {
                             inputMode="email"
                             autoComplete="email"
                             placeholder="Email *"
-                            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900 text-sm sm:col-span-2"
+                            className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900 text-base sm:col-span-2"
                           />
                           <input
                             type="tel"
@@ -993,7 +1066,7 @@ export default function LocationTrialSignup() {
                             inputMode="tel"
                             autoComplete="tel"
                             placeholder="Mobile phone *"
-                            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900 text-sm sm:col-span-2"
+                            className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 text-gray-900 text-base sm:col-span-2"
                           />
                         </div>
                         {scheduleError && (

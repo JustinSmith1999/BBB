@@ -233,3 +233,23 @@ body::before {
 h1, h2, h3 {
   text-wrap: balance;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   One-pager arm (variant C) of the trial-page test, 2026-10-19.
+
+   The site Header and Footer render globally in App.tsx, outside <Routes>,
+   so a single route cannot opt out of them by rendering differently. Rather
+   than restructure routing — which would put every other page at risk for
+   one experiment — variant C sets this class on <body> while it is mounted
+   and removes it on unmount. Nothing outside this class is affected, and if
+   the test is ever deleted this rule becomes inert rather than breaking.
+
+   Scoped to the direct children of body/#root so it can only ever hit the
+   global chrome, never a <header> or <footer> inside page content.
+   ───────────────────────────────────────────────────────────────────────── */
+body.bbb-onepager > header,
+body.bbb-onepager > footer,
+body.bbb-onepager > #root > header,
+body.bbb-onepager > #root > footer {
+  display: none !important;
+}
