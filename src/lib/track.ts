@@ -43,13 +43,20 @@ export function trackPageView(path: string): void {
     // Don't record our own staging/lab traffic.
     if (path.startsWith('/staging')) return;
 
+    const lastQ = (p: URLSearchParams, k: string) => {
+      const all = p.getAll(k);
+      return all.length ? all[all.length - 1] : null;
+    };
     const params = new URLSearchParams(window.location.search);
     const row = {
       path,
       referrer: document.referrer ? document.referrer.slice(0, 300) : null,
-      utm_source: params.get('utm_source'),
-      utm_medium: params.get('utm_medium'),
-      utm_campaign: params.get('utm_campaign'),
+      // Last occurrence wins — see lib/utm.ts lastParam(). Meta appends its
+      // url_tags after any tag already baked into the destination link, and
+      // the appended one is the per-ad value we actually want.
+      utm_source: lastQ(params, 'utm_source'),
+      utm_medium: lastQ(params, 'utm_medium'),
+      utm_campaign: lastQ(params, 'utm_campaign'),
       studio: params.get('studio'),
       sid: sessionId(),
       // 2026-10-07: the persistent half of identity. sid dies with the tab;

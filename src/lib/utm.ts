@@ -45,6 +45,28 @@ export interface UtmParams {
 
 type StoredUtm = Partial<Record<keyof UtmParams, string>>;
 
+/**
+ * Read one utm_* value, taking the LAST occurrence when the parameter appears
+ * more than once.
+ *
+ * 2026-10-20. WHY LAST AND NOT FIRST. Several ads have the tag baked into the
+ * destination link (…/trial/bayside?…&utm_content=bayside) AND carry Meta's
+ * own `url_tags`, which Meta APPENDS at click time. The click then arrives as
+ *   ?…&utm_content=bayside&utm_source=ads&utm_content=120243094611610436
+ * URLSearchParams.get() returns the FIRST match, so the generic studio-wide
+ * value won and Meta's per-ad id was silently discarded. That is why every
+ * Bayside click for 90 days read as the same creative: the specific tag was
+ * arriving and being thrown away.
+ *
+ * The appended value is always the more specific one, so last wins.
+ */
+function lastParam(p: URLSearchParams, key: string, maxLen = MAX_LEN): string | null {
+  const all = p.getAll(key);
+  const raw = all.length ? all[all.length - 1] : '';
+  const x = (raw || '').trim().slice(0, maxLen);
+  return x || null;
+}
+
 function readSession(): StoredUtm {
   try {
     const raw = sessionStorage.getItem(SESSION_KEY);
@@ -74,10 +96,7 @@ export function captureUtmsFromUrl(): void {
   try {
     const p = new URLSearchParams(window.location.search);
     const fromUrl: StoredUtm = {};
-    const v = (k: string) => {
-      const x = (p.get(k) || '').trim().slice(0, MAX_LEN);
-      return x || null;
-    };
+    const v = (k: string) => lastParam(p, k);
     const src = v('utm_source');
     const med = v('utm_medium');
     const cmp = v('utm_campaign');
@@ -127,10 +146,7 @@ export function getUtmParams(): UtmParams {
   if (typeof window !== 'undefined') {
     try {
       const p = new URLSearchParams(window.location.search);
-      const v = (k: string) => {
-        const x = (p.get(k) || '').trim().slice(0, MAX_LEN);
-        return x || null;
-      };
+      const v = (k: string) => lastParam(p, k);
       const src = v('utm_source'), med = v('utm_medium');
       const cmp = v('utm_campaign'), con = v('utm_content');
       if (src) fromUrl.utmSource   = src;
