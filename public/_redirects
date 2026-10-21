@@ -40,6 +40,13 @@
 /flyer/fresh-meadows  https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=flyer-fresh-meadows        302
 /flyer/williamsburg   https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=flyer-williamsburg         302
 
+# /card/<studio> — the QR printed on owner business cards (2026-10-21).
+# Separate from /flyer so a card scan is distinguishable from the window decal.
+/card/astoria         https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=card-astoria               302
+/card/bayside         https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=card-bayside               302
+/card/fresh-meadows   https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=card-fresh-meadows         302
+/card/williamsburg    https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=card-williamsburg          302
+
 # /mb/{slug} — legacy MindBody shortlinks that went out in old SMS sends.
 # 2026-09-02: MindBody is retired (MT cutover June 2026). Repointed to our
 # own live schedule pages so any old text/QR still lands somewhere that works.

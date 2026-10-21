@@ -126,6 +126,29 @@
   to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=flyer-williamsburg"
   status = 302
 
+# /card/<studio> — the QR printed on owner business cards (2026-10-21, Chris).
+# Kept separate from /flyer so a business-card scan and a window-decal scan are
+# two different rows in link_clicks, which is the whole point of printing it.
+[[redirects]]
+  from   = "/card/astoria"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=card-astoria"
+  status = 302
+
+[[redirects]]
+  from   = "/card/bayside"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=card-bayside"
+  status = 302
+
+[[redirects]]
+  from   = "/card/fresh-meadows"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=card-fresh-meadows"
+  status = 302
+
+[[redirects]]
+  from   = "/card/williamsburg"
+  to     = "https://uracuwugpxqjfgtuobal.supabase.co/functions/v1/track-link?l=card-williamsburg"
+  status = 302
+
 # Google Business Profile post CTAs — paste these in the GBP post "Link for
 # your button" field instead of the raw /trial/<studio> URL. track-link logs
 # the click in link_clicks AND stamps the eventual trial_signup row with

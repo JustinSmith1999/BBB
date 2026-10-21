@@ -30,6 +30,16 @@ const LINKS: Record<
   "flyer-bayside":        { studio: "bayside",       source: "flyer", medium: "print" },
   "flyer-fresh-meadows":  { studio: "fresh-meadows", source: "flyer", medium: "print" },
   "flyer-williamsburg":   { studio: "williamsburg",  source: "flyer", medium: "print" },
+  // Business-card QR (2026-10-21, Chris: "I'm gonna make new business cards
+  // with that one"). Deliberately NOT reusing flyer-<studio>: the flyer key is
+  // already on the window decals and door flyers, so sharing it would make a
+  // card scan and a walk-past scan indistinguishable — which is the one thing
+  // Chris is paying a print run to find out. Same destination, same medium
+  // (it is still print), new source so the dashboard splits them.
+  "card-astoria":         { studio: "astoria",       source: "business-card", medium: "print", content: "owner-card" },
+  "card-bayside":         { studio: "bayside",       source: "business-card", medium: "print", content: "owner-card" },
+  "card-fresh-meadows":   { studio: "fresh-meadows", source: "business-card", medium: "print", content: "owner-card" },
+  "card-williamsburg":    { studio: "williamsburg",  source: "business-card", medium: "print", content: "owner-card" },
   // Google Business Profile post button → /gbp/<studio>. Source 'gbp-post'
   // so the Trial Sources widget on the dashboard separates GBP traffic
   // from Google Search / Google Ads. Medium 'organic' because these are
