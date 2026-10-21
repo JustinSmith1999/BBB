@@ -252,11 +252,26 @@ h1, h2, h3 {
    below, which is why the first version of this rule shipped and did nothing.
    Measured in the browser, not assumed. The wrapper div is the z-index
    isolation layer added for the iOS header-stacking fix in App.tsx. */
-body.bbb-onepager > #root > div > header,
-body.bbb-onepager > #root > div > footer,
-body.bbb-onepager > header,
-body.bbb-onepager > footer,
-body.bbb-onepager > #root > header,
-body.bbb-onepager > #root > footer {
-  display: none !important;
+/* MOBILE ONLY, 2026-10-21 (Justin, looking at /trial/astoria on a desktop:
+   "this is shit").
+
+   He was right, and the cause was this rule running at every width. The
+   one-pager is a link-in-bio pattern: on a phone, stripping the chrome puts
+   the form above the fold and that is the whole point. On a desktop the same
+   strip leaves a 185px letterbox of hero photo, a floating card, and roughly
+   450px of blank white under it, with no logo, no address and no footer to
+   close the page — it reads as a half-loaded site, not a checkout.
+
+   Scoped to the phone widths the variant was designed for. At sm (640px) and
+   up the global Header and Footer come back and the page frames itself.
+   Everything else about variant C is unchanged, so the test keeps running. */
+@media (max-width: 639px) {
+  body.bbb-onepager > #root > div > header,
+  body.bbb-onepager > #root > div > footer,
+  body.bbb-onepager > header,
+  body.bbb-onepager > footer,
+  body.bbb-onepager > #root > header,
+  body.bbb-onepager > #root > footer {
+    display: none !important;
+  }
 }

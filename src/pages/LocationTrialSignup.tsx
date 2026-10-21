@@ -751,7 +751,13 @@ export default function LocationTrialSignup() {
         // 112px of hero top padding, and the global Header, which is in normal
         // flow (relative, not fixed) and so occupies real height above it.
         // Variant C drops both.
-        ? "pt-5 pb-5"
+        // 2026-10-21: the tight padding is a PHONE measurement and stays a
+        // phone measurement. At desktop width it made the hero 185px tall, so
+        // object-cover sliced the gym photo into an unreadable letterbox strip
+        // across a 1960px screen. From sm up the global header is back (see
+        // index.css) and there is no fold to protect, so the hero gets real
+        // height and the photo reads as a photo.
+        ? "pt-5 pb-5 sm:pt-28 sm:pb-20"
         : "pt-28 pb-8 sm:pt-32 sm:pb-12")
         + " relative bg-red-800 text-white overflow-hidden"}>
         {/* 2026-10-19 (Justin: "use pictures of the gym as backgrounds").
@@ -795,8 +801,13 @@ export default function LocationTrialSignup() {
 
       {/* MAIN CARD ────────────────────────────────────────────────────────── */}
       {/* No overlap on mobile so the hero subtitle is fully visible. Desktop
-          keeps the -mt-8 lift for the existing layered look. */}
-      <div className="max-w-2xl mx-auto px-3 sm:px-6 mt-0 sm:-mt-6 relative z-20">
+          keeps a lift for the existing layered look.
+
+          2026-10-21: the -mt-6 lift was cutting the subtitle in half, because
+          variant C's hero had only 20px of bottom padding — the card's top
+          edge landed on the text, not below it. The hero now carries sm:pb-20,
+          so a -mt-10 lift sits in empty space and the line stays whole. */}
+      <div className="max-w-2xl mx-auto px-3 sm:px-6 mt-0 sm:-mt-10 relative z-20">
         <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl p-4 sm:p-8 mb-8 sm:mb-12">
 
             {/* Form ─────────────────────────────────────────────────────── */}
