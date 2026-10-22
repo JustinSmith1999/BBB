@@ -89,6 +89,53 @@ Deno.serve(async (req) => {
     }
   }
 
+  // 1c. OPEN + CLICK TRACKING — read, and optionally turn on.
+  // ───────────────────────────────────────────────────────────────────────────
+  // 2026-10-21 (Justin: "I need literally every interaction tracked").
+  // tracking-audit showed 0 opens and 0 clicks across all 3,767 email_log rows:
+  // delivered events arrive, engagement events never do. The cause is that
+  // open/click tracking is a per-DOMAIN setting in Resend and it is off. No
+  // amount of sender-side code produces an `email.opened` webhook while it is.
+  //
+  // Resend exposes it on the domain object, so this does not need the dashboard:
+  //   GET   /domains/<id>  → { open_tracking, click_tracking }
+  //   PATCH /domains/<id>  → set them
+  //
+  // Read is the default. Flipping it needs an explicit enable:true, because it
+  // changes how every future email is rendered — click tracking rewrites every
+  // link in the body to route through Resend, which is how clicks get counted
+  // but also means the raw URL is no longer what the recipient sees.
+  //
+  //   {"tracking": true}                 → report current state
+  //   {"tracking": true, "enable": true} → turn both on, then verify
+  if (body?.tracking === true) {
+    const domainId = String(body?.domain_id || "5b65595f-75fe-4224-b5ea-4307677f1a47");
+    const read = async () => {
+      const r = await fetch(`https://api.resend.com/domains/${domainId}`, {
+        headers: { Authorization: `Bearer ${key}` },
+      });
+      const d = await r.json();
+      return { status: r.status, name: d?.name, open_tracking: d?.open_tracking, click_tracking: d?.click_tracking };
+    };
+    try {
+      out.tracking_before = await read();
+      if (body?.enable === true) {
+        const r = await fetch(`https://api.resend.com/domains/${domainId}`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ open_tracking: true, click_tracking: true }),
+        });
+        out.tracking_patch_status = r.status;
+        out.tracking_patch_body = (await r.text()).slice(0, 300);
+        // Never trust the write — read it back, same rule as meta-set-url-tags.
+        await new Promise((res) => setTimeout(res, 600));
+        out.tracking_after = await read();
+      }
+    } catch (e) {
+      out.tracking_error = (e as Error).message;
+    }
+  }
+
   // 2. Optionally fire a real test email
   if (body?.send_test === true) {
     const to = String(body?.to || "").trim();

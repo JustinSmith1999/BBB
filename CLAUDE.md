@@ -13,7 +13,17 @@ on Netlify (`betterbodybootcamp.com`); Supabase edge functions (Deno/TS), projec
 sibling `bbb-marketing/` repo.
 
 ## Deploy / run workflow
-- **Site (this repo):** `git push` → Netlify auto-builds. Or `netlify deploy --prod --build`.
+- **Site (this repo): `git push` does NOT deploy. You must run `netlify deploy --prod --build`.**
+  Verified 2026-10-21: Netlify's continuous deployment is not firing on push. Every production
+  deploy on record comes back `deploy_source: "api"` / `manual_deploy: false` — i.e. the CLI.
+  Two commits (`0ffd1fc`, `5826940`) sat on `origin/main` unbuilt for hours while the live site
+  served the previous day's build; that is what made the new `/card/<studio>` QR codes 404.
+  **How to tell:** compare `git log -1 origin/main` against the `commit_ref` of the current
+  deploy in the Netlify dashboard. If they differ, the site is stale no matter what git says.
+  **Real fix (needs the Netlify UI, not code):** app.netlify.com → betterbodybootcamp →
+  Site configuration → Build & deploy → Continuous deployment. Check whether builds are
+  stopped, and whether the GitHub webhook still exists on the `BBB` repo. Until that is
+  sorted, treat `netlify deploy --prod --build` as a required second step after every push.
 - **Edge functions:** `bbb deploy-fn <name>` (= `supabase functions deploy <name> --no-verify-jwt --project-ref uracuwugpxqjfgtuobal`). Helper script: `bbb.sh` (commands: `deploy-fn`, `capi`, `deploy-site`, `sync`, `unlock`).
 - **Migrations:** run the SQL in the Supabase SQL editor (not via CLI).
 - **Calling functions:** header `x-bbb-secret: bbb-test-2026-05-27`. Docker isn't running locally; `--no-verify-jwt` is expected.
@@ -38,11 +48,18 @@ sibling `bbb-marketing/` repo.
 - `location_owners.notify_signups` decides who gets the trial text. It is filtered
   per `location_id`, so a studio's alert can only reach that studio's owners.
 - **Bayside + Fresh Meadows are on Quo.** The alert goes to the studio's Quo
-  inbox line (`+1 917-877-0759` / `+1 646-887-6483`), which is the row with
-  `notify_signups = true`. Devonte and Salim are in the table with
-  `notify_signups = false` **on purpose** — they work it from the shared Quo
-  inbox, where a reply threads back to the customer. A reply to a personal
-  phone threads nowhere. Do not enable their rows.
+  inbox line (`+1 917-877-0759` / `+1 646-887-6483`), which is a row with
+  `notify_signups = true`.
+- **CHANGED 2026-10-21 — Devonte and Salim are back ON, at BOTH studios.**
+  Justin: "Turn back on texts to Devonte and Salim from Twilio", then "Both
+  should get devonte and salim". Inbox lines kept on as well. Migrations:
+  `20261021_reenable_devonte_salim_alerts.sql` then
+  `20261021_devonte_salim_both_studios.sql`. This reverses the 10-07 call
+  ("that's what Quo is for, shouldn't be on personal phones") — it is deliberate,
+  do not revert it. Net: Bayside and Fresh Meadows each fire THREE texts per
+  trial (Quo inbox + Devonte + Salim); Carlos stays off on both. The personal
+  texts are notifications only — a reply from a personal phone does not thread
+  back to the customer, so the lead still gets worked in the Quo inbox.
 - **Astoria + Williamsburg are not on Quo**, so Chris and Steve take personal
   texts. Move them to the inbox pattern if those studios go onto Quo.
 - Carlos is in the table on Bayside + FM at `notify_signups = false`. Correct, leave it.

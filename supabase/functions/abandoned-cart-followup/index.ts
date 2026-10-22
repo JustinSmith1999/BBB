@@ -131,7 +131,7 @@ function buildEmail(customerName: string, studio: typeof LOCATION_TO_STUDIO[stri
             You were signing up for the <strong>2-week trial</strong> at ${studio.shortName} and stopped at the payment page. Happens all the time.
           </p>
           <p style="margin:0 0 24px;line-height:1.6;font-size:16px">
-            Your spot is still open. <strong>$49 covers two full weeks, every class we run.</strong> No contract, and nobody is going to chase you into a membership after.
+            Your spot is still open. <strong>$49 covers two full weeks, every class we run.</strong> One charge, nothing auto-renews.
           </p>
 
           <table cellpadding="0" cellspacing="0" border="0"><tr><td style="background:#d63838;border-radius:6px">
@@ -162,7 +162,7 @@ function buildEmail(customerName: string, studio: typeof LOCATION_TO_STUDIO[stri
 
 You were signing up for the 2-week trial at ${studio.shortName} and stopped at the payment page. Happens all the time.
 
-Your spot is still open. $49 covers two full weeks, every class we run. No contract, and nobody is going to chase you into a membership after.
+Your spot is still open. $49 covers two full weeks, every class we run. One charge, nothing auto-renews.
 
 Finish signing up: ${studio.bookingUrl}
 

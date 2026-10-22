@@ -319,7 +319,15 @@ Deno.serve(async (req) => {
       const r = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ from: FROM, to: j.to, cc: j.cc, subject: j.subject, html: j.html }),
+        // 2026-10-21: tags were missing when this was built on 10-19, so every
+        // digest landed in email_log with send_path NULL. Resend echoes tags
+        // onto the webhook events (sent/delivered/bounced), and resend-webhook
+        // is the only thing writing these rows — with no tag it had nothing to
+        // record. 12 of the 14 remaining orphans were this function.
+        body: JSON.stringify({
+          from: FROM, to: j.to, cc: j.cc, subject: j.subject, html: j.html,
+          tags: [{ name: "send_path", value: "daily_lead_digest" }],
+        }),
       });
       const b = await r.json().catch(() => ({}));
       // Surface the failure. A silently-dropped send is how info@ bounced for

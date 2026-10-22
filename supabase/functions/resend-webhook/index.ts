@@ -112,15 +112,48 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
   );
 
+  // ── Fall back to the original send row ────────────────────────────────────
+  // 2026-10-21. The 2026-10-05 fix above made the parser read both tag shapes,
+  // and that worked — but it only helps when Resend actually echoes the tags.
+  // It does not always do so: a `delivered` or `bounced` event can arrive with
+  // tags stripped, and every one of those still landed with send_path NULL.
+  // Fourteen such rows accumulated in a single day.
+  //
+  // The label is never actually lost, though. The sender already wrote an
+  // `email.sent` row carrying the same resend_id AND the correct send_path. So
+  // when the tag is missing, read it off that row instead of giving up.
+  //
+  // Cheap (one indexed lookup on resend_id, only on the miss path) and it
+  // cannot invent a label: no earlier row means it stays null and the default
+  // from the migration flags it for a human.
+  const resendId = data.email_id ?? data.id ?? null;
+  let sendPath = sendPathTag;
+  let trialId = trialSignupId;
+  if (resendId && (!sendPath || !trialId)) {
+    const { data: origin } = await sb
+      .from("email_log")
+      .select("send_path,trial_signup_id")
+      .eq("resend_id", resendId)
+      .not("send_path", "is", null)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (origin) {
+      sendPath = sendPath ?? origin.send_path ?? null;
+      trialId  = trialId  ?? origin.trial_signup_id ?? null;
+    }
+  }
+
   const { error } = await sb.from("email_log").insert({
-    resend_id: data.email_id ?? data.id ?? null,
+    resend_id: resendId,
     event_type: eventType || "unknown",
     from_addr:  data.from ?? null,
     to_addrs:   Array.isArray(data.to) ? data.to : (data.to ? [data.to] : null),
     subject:    data.subject ?? null,
-    send_path:  sendPathTag,
-    trial_signup_id: trialSignupId,
-    raw:        payload,
+    send_path:  sendPath,
+    trial_signup_id: trialId,
+    // so a future orphan says which path produced it, not just that it exists
+    raw: { ...payload, _send_path_source: sendPathTag ? "tag" : (sendPath ? "origin_row" : "none") },
   });
   if (error) {
     console.error("email_log insert error:", error.message);

@@ -240,6 +240,10 @@ Deno.serve(async (req: Request) => {
       from: "Better Body Bootcamp <noreply@betterbodybootcamp.com>",
       to: TO_EMAILS,
       reply_to: email,
+      // 2026-10-21: no tags meant resend-webhook had nothing to label these
+      // with, so every contact-form notification landed in email_log with
+      // send_path NULL and attributed to nothing.
+      tags: [{ name: "send_path", value: "contact_form_notify" }],
       subject: `New Contact Form Submission from ${name}`,
       text: emailBody,
       html: `

@@ -188,6 +188,59 @@ Deno.serve(async (req: Request) => {
     }).select('id').single();
 
     if (error) return json({ ok: false, error: error.message }, 500);
+
+    // ── Route the lead into its OWN Quo thread ───────────────────────────────
+    // 2026-10-21 (Justin: "we need to put all Leads to come in on a separate
+    // text thread on quo").
+    //
+    // Every other lead source already did this — contact form, schedule
+    // request, free-class claim, trial, membership all call quo-lead-router.
+    // capture-lead did not, and capture-lead is where MOST leads come from:
+    // it fires on step 1 of the trial page, before payment. So the biggest
+    // single source of leads was the one the desk never saw in Quo.
+    //
+    // The router upserts a NAMED contact + a Task on the studio's Quo line, so
+    // a reply threads back to that person instead of bouncing off the shared
+    // 877 relay ("Could not tell who this reply is for").
+    //
+    // ONLY ON CREATE. The update branch above returns earlier, so re-posting
+    // the same person as they retype the form cannot spam the desk with
+    // duplicate tasks — one human, one task.
+    //
+    // SILENT TO THE CUSTOMER. The router sends them nothing; it only puts the
+    // lead in front of staff. That keeps this function's "silent by default"
+    // contract intact — see the header note about the suppression-list
+    // incident. Nothing here un-silences the drip.
+    //
+    // Bayside + Fresh Meadows only. Astoria and Williamsburg are not on Quo,
+    // so the router returns {skipped:"not on quo"} and their existing email
+    // path is untouched (confirmed with Justin 2026-10-21).
+    //
+    // Best effort: wrapped, awaited only briefly, and never allowed to fail
+    // the lead capture. A lead saved but not routed is recoverable; a lead
+    // lost because Quo was down is not.
+    try {
+      await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/quo-lead-router`, {
+        method: 'POST',
+        headers: {
+          'x-bbb-secret': Deno.env.get('BBB_ADMIN_SECRET') || 'bbb-test-2026-05-27',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: name || 'Website lead',
+          phone,
+          // never hand the router the @no-email.bbb.local placeholder — it
+          // would render as a real address on the task and someone would email it
+          email: hasRealEmail ? email : '',
+          studio_slug: String(b.studio_slug || '').trim(),
+          kind: 'inquiry',
+          note: 'Started the $49 trial form but did not finish checkout.',
+        }),
+      });
+    } catch (quoErr) {
+      console.error('quo-lead-router (capture-lead) failed, lead still saved:', quoErr);
+    }
+
     return json({ ok: true, status: 'created', id: ins?.id, wrote: true, drip });
   } catch (e) {
     return json({ ok: false, error: String((e as Error).message).slice(0, 300) }, 500);
